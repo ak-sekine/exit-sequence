@@ -28,7 +28,7 @@ actions.className = 'terminal-actions'
 actions.setAttribute('role', 'group')
 actions.setAttribute('aria-label', '行動を選択')
 
-for (const action of ['周囲を見る', '扉を調べる', '端末を調べる']) {
+for (const action of ['周囲を見る', '扉を調べる', '端末を調べる', '持ち物', '状態確認', '待機する']) {
   const button = document.createElement('button')
   button.type = 'button'
   button.textContent = action
