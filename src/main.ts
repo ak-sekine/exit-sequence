@@ -119,7 +119,7 @@ function renderInventoryPage() {
     if (item) {
       actions.append(createButton(actionLabel(item), () => appendLog(item.label)))
     } else if (inventoryPage === pageCount - 1 && slot === itemsPerPage - 1) {
-      actions.append(createButton('戻る', () => {
+      actions.append(createButton(actionLabel({ label: '戻る', hasNext: true }), () => {
         renderMainActions()
         actions.querySelectorAll('button')[3]?.focus({ preventScroll: true })
       }))
