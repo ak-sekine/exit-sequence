@@ -52,13 +52,14 @@ body,
   display: grid;
   flex-shrink: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(48px, auto));
+  grid-template-rows: repeat(3, minmax(48px, 1fr));
   gap: 8px;
   border-top: 1px solid #2f7548;
   padding-top: 12px;
 }
 
-.terminal-actions button {
+.terminal-actions button,
+.inventory-empty {
   width: 100%;
   min-width: 0;
   min-height: 48px;
@@ -76,12 +77,59 @@ body,
 }
 
 .terminal-actions button:focus-visible,
+.inventory-navigation button:focus-visible,
 .terminal-log:focus-visible {
   outline: 1px solid currentColor;
   outline-offset: -1px;
 }
 
 .terminal-actions button:active {
+  background: #1b281b;
+  border-color: #4ade80;
+}
+
+.inventory-empty {
+  visibility: hidden;
+}
+
+.inventory-navigation {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 44px minmax(64px, auto) 44px;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 12px;
+  padding-top: 12px;
+  font-size: 14px;
+}
+
+.inventory-navigation button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 8px;
+  border: 1px solid #2f7548;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.inventory-page-indicator {
+  text-align: center;
+}
+
+.inventory-close {
+  grid-column: 2;
+}
+
+.inventory-navigation button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.inventory-navigation button:active:not(:disabled) {
   background: #1b281b;
   border-color: #4ade80;
 }

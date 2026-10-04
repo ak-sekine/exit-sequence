@@ -28,14 +28,30 @@ actions.className = 'terminal-actions'
 actions.setAttribute('role', 'group')
 actions.setAttribute('aria-label', '行動を選択')
 
-const inventory = [
-  '非常用ライト', '古い鍵', 'メモ', 'ドライバー',
-  'IDカード', '電池', '小型端末', 'ヒューズ',
-  '薬品ボトル', 'ケーブル',
+const mainActions = [
+  { label: '周囲を見る', hasNext: false },
+  { label: '扉を調べる', hasNext: true },
+  { label: '端末を調べる', hasNext: true },
+  { label: '持ち物', hasNext: true },
+  { label: '状態確認', hasNext: false },
+  { label: '待機する', hasNext: false },
 ]
-const itemsPerPage = 4
+const inventory = [
+  { label: '非常用ライト', hasNext: true },
+  { label: '古い鍵', hasNext: true },
+  { label: 'メモ', hasNext: false },
+  { label: 'ドライバー', hasNext: true },
+  { label: 'IDカード', hasNext: true },
+  { label: '電池', hasNext: false },
+  { label: '小型端末', hasNext: true },
+  { label: 'ヒューズ', hasNext: false },
+  { label: '薬品ボトル', hasNext: true },
+  { label: 'ケーブル', hasNext: true },
+]
+const itemsPerPage = 6
 const pageCount = Math.ceil(inventory.length / itemsPerPage)
 let inventoryPage = 0
+let inventoryOpen = false
 
 function createButton(label: string, onClick: () => void) {
   const button = document.createElement('button')
@@ -45,16 +61,53 @@ function createButton(label: string, onClick: () => void) {
   return button
 }
 
+function actionLabel(action: { label: string; hasNext: boolean }) {
+  return action.label + (action.hasNext ? ' >' : '')
+}
+
+const navigation = document.createElement('nav')
+navigation.className = 'inventory-navigation'
+navigation.setAttribute('aria-label', '持ち物のページ操作')
+const previous = createButton('＜', () => {
+  if (!inventoryOpen || inventoryPage === 0) return
+  inventoryPage -= 1
+  renderInventoryPage()
+})
+previous.setAttribute('aria-label', '前のページ')
+const next = createButton('＞', () => {
+  if (!inventoryOpen || inventoryPage === pageCount - 1) return
+  inventoryPage += 1
+  renderInventoryPage()
+})
+next.setAttribute('aria-label', '次のページ')
+const indicator = document.createElement('span')
+indicator.className = 'inventory-page-indicator'
+indicator.setAttribute('aria-live', 'polite')
+const close = createButton('閉じる', () => {
+  if (!inventoryOpen) return
+  renderMainActions()
+  actions.querySelectorAll('button')[3]?.focus({ preventScroll: true })
+})
+close.className = 'inventory-close'
+navigation.append(previous, indicator, next, close)
+
 function renderMainActions() {
+  inventoryOpen = false
+  navigation.style.visibility = 'hidden'
+  previous.disabled = true
+  next.disabled = true
+  close.disabled = true
   actions.replaceChildren()
   actions.setAttribute('aria-label', '行動を選択')
-  for (const action of ['周囲を見る', '扉を調べる', '端末を調べる', '持ち物', '状態確認', '待機する']) {
-    actions.append(createButton(action, () => {
-      if (action === '持ち物') {
+  for (const action of mainActions) {
+    actions.append(createButton(actionLabel(action), () => {
+      if (action.label === '持ち物') {
+        inventoryOpen = true
         inventoryPage = 0
         renderInventoryPage()
+        actions.querySelector('button')?.focus({ preventScroll: true })
       } else {
-        appendLog(action)
+        appendLog(action.label)
       }
     }))
   }
@@ -64,38 +117,29 @@ function renderInventoryPage() {
   actions.replaceChildren()
   actions.setAttribute('aria-label', `持ち物 ${inventoryPage + 1} / ${pageCount}ページ`)
   const start = inventoryPage * itemsPerPage
-  for (const item of inventory.slice(start, start + itemsPerPage)) {
-    actions.append(createButton(item, () => appendLog(item)))
+  for (let slot = 0; slot < itemsPerPage; slot += 1) {
+    const item = inventory[start + slot]
+    if (item) {
+      actions.append(createButton(actionLabel(item), () => appendLog(item.label)))
+    } else {
+      const empty = document.createElement('span')
+      empty.className = 'inventory-empty'
+      empty.setAttribute('aria-hidden', 'true')
+      // 最長ラベルと同じ幅・高さを確保し、空き枠で行が縮まるのを防ぐ。
+      empty.textContent = actionLabel(inventory[0]!)
+      actions.append(empty)
+    }
   }
-
-  const previous = createButton(inventoryPage === 0 ? '戻る' : '前へ', () => {
-    if (inventoryPage === 0) {
-      renderMainActions()
-      actions.querySelectorAll('button')[3]?.focus({ preventScroll: true })
-    } else {
-      inventoryPage -= 1
-      renderInventoryPage()
-    }
-  })
-  previous.style.gridArea = '3 / 1'
-
-  const next = createButton(inventoryPage === pageCount - 1 ? '戻る' : '次へ', () => {
-    if (inventoryPage === pageCount - 1) {
-      renderMainActions()
-      actions.querySelectorAll('button')[3]?.focus({ preventScroll: true })
-    } else {
-      inventoryPage += 1
-      renderInventoryPage()
-    }
-  })
-  next.style.gridArea = '3 / 2'
-  actions.append(previous, next)
-  actions.querySelector('button')?.focus({ preventScroll: true })
+  navigation.style.visibility = 'visible'
+  indicator.textContent = `${inventoryPage + 1} / ${pageCount}`
+  previous.disabled = inventoryPage === 0
+  next.disabled = inventoryPage === pageCount - 1
+  close.disabled = false
 }
 
 renderMainActions()
 
-terminal.append(log, actions)
+terminal.append(log, actions, navigation)
 app.append(terminal)
 
 for (const line of [
