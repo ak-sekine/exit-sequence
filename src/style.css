@@ -14,7 +14,8 @@ body {
 }
 
 html,
-body {
+body,
+#app {
   height: 100%;
   overflow: hidden;
 }
@@ -36,6 +37,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   overflow-x: hidden;
   padding-bottom: 16px;
 }
@@ -69,10 +71,16 @@ body {
   white-space: normal;
   overflow-wrap: anywhere;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .terminal-actions button:focus-visible,
 .terminal-log:focus-visible {
   outline: 1px solid currentColor;
   outline-offset: -1px;
+}
+
+.terminal-actions button:active {
+  background: #1b281b;
+  border-color: #c5dfc5;
 }

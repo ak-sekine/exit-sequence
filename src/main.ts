@@ -12,7 +12,7 @@ terminal.className = 'terminal'
 const log = document.createElement('div')
 log.className = 'terminal-log'
 log.setAttribute('role', 'log')
-log.setAttribute('aria-label', 'Terminal log')
+log.setAttribute('aria-label', 'ゲームログ')
 log.tabIndex = 0
 
 function appendLog(text: string) {
@@ -39,5 +39,14 @@ for (const action of ['周囲を見る', '扉を調べる', '端末を調べる'
 terminal.append(log, actions)
 app.append(terminal)
 
-appendLog('EXIT SEQUENCE')
-appendLog('Select an action.')
+for (const line of [
+  'EXIT SEQUENCE',
+  'SYSTEM ONLINE',
+  '',
+  '非常灯だけが点灯している。',
+  '正面には閉ざされた扉がある。',
+  '壁際に古い端末が設置されている。',
+  'どうする？',
+]) {
+  appendLog(line)
+}
