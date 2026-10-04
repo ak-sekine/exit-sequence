@@ -95,10 +95,9 @@ body,
 .inventory-navigation {
   display: grid;
   flex-shrink: 0;
-  grid-template-columns: 44px minmax(64px, auto) 44px;
-  justify-content: center;
+  grid-template-columns: 44px minmax(48px, 1fr) 44px auto;
   align-items: center;
-  gap: 4px 12px;
+  gap: 8px;
   padding-top: 12px;
   font-size: 14px;
 }
@@ -120,8 +119,8 @@ body,
   text-align: center;
 }
 
-.inventory-close {
-  grid-column: 2;
+.inventory-back {
+  grid-column: 4;
 }
 
 .inventory-navigation button:disabled {

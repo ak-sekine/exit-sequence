@@ -30,23 +30,23 @@ actions.setAttribute('aria-label', '行動を選択')
 
 const mainActions = [
   { label: '周囲を見る', hasNext: false },
-  { label: '扉を調べる', hasNext: true },
-  { label: '端末を調べる', hasNext: true },
+  { label: '扉を調べる', hasNext: false },
+  { label: '端末を調べる', hasNext: false },
   { label: '持ち物', hasNext: true },
   { label: '状態確認', hasNext: false },
   { label: '待機する', hasNext: false },
 ]
 const inventory = [
-  { label: '非常用ライト', hasNext: true },
-  { label: '古い鍵', hasNext: true },
+  { label: '非常用ライト', hasNext: false },
+  { label: '古い鍵', hasNext: false },
   { label: 'メモ', hasNext: false },
-  { label: 'ドライバー', hasNext: true },
-  { label: 'IDカード', hasNext: true },
+  { label: 'ドライバー', hasNext: false },
+  { label: 'IDカード', hasNext: false },
   { label: '電池', hasNext: false },
-  { label: '小型端末', hasNext: true },
+  { label: '小型端末', hasNext: false },
   { label: 'ヒューズ', hasNext: false },
-  { label: '薬品ボトル', hasNext: true },
-  { label: 'ケーブル', hasNext: true },
+  { label: '薬品ボトル', hasNext: false },
+  { label: 'ケーブル', hasNext: false },
 ]
 const itemsPerPage = 6
 const pageCount = Math.ceil(inventory.length / itemsPerPage)
@@ -67,7 +67,7 @@ function actionLabel(action: { label: string; hasNext: boolean }) {
 
 const navigation = document.createElement('nav')
 navigation.className = 'inventory-navigation'
-navigation.setAttribute('aria-label', '持ち物のページ操作')
+navigation.setAttribute('aria-label', '選択肢のページ操作')
 const previous = createButton('＜', () => {
   if (!inventoryOpen || inventoryPage === 0) return
   inventoryPage -= 1
@@ -83,20 +83,24 @@ next.setAttribute('aria-label', '次のページ')
 const indicator = document.createElement('span')
 indicator.className = 'inventory-page-indicator'
 indicator.setAttribute('aria-live', 'polite')
-const close = createButton('閉じる', () => {
+const back = createButton('戻る', () => {
   if (!inventoryOpen) return
   renderMainActions()
   actions.querySelectorAll('button')[3]?.focus({ preventScroll: true })
 })
-close.className = 'inventory-close'
-navigation.append(previous, indicator, next, close)
+back.className = 'inventory-back'
+navigation.append(previous, indicator, next, back)
+
+function updateNavigation(currentPage: number, totalPages: number, hasParent: boolean) {
+  indicator.textContent = `${currentPage + 1} / ${totalPages}`
+  previous.disabled = currentPage === 0
+  next.disabled = currentPage === totalPages - 1
+  back.disabled = !hasParent
+}
 
 function renderMainActions() {
   inventoryOpen = false
-  navigation.style.visibility = 'hidden'
-  previous.disabled = true
-  next.disabled = true
-  close.disabled = true
+  updateNavigation(0, 1, false)
   actions.replaceChildren()
   actions.setAttribute('aria-label', '行動を選択')
   for (const action of mainActions) {
@@ -130,11 +134,7 @@ function renderInventoryPage() {
       actions.append(empty)
     }
   }
-  navigation.style.visibility = 'visible'
-  indicator.textContent = `${inventoryPage + 1} / ${pageCount}`
-  previous.disabled = inventoryPage === 0
-  next.disabled = inventoryPage === pageCount - 1
-  close.disabled = false
+  updateNavigation(inventoryPage, pageCount, true)
 }
 
 renderMainActions()
