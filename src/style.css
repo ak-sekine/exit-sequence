@@ -52,6 +52,7 @@ body,
   display: grid;
   flex-shrink: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(48px, auto));
   gap: 8px;
   border-top: 1px solid #2f7548;
   padding-top: 12px;
