@@ -77,7 +77,7 @@ body,
 }
 
 .terminal-actions button:focus-visible,
-.inventory-navigation button:focus-visible,
+.action-navigation button:focus-visible,
 .terminal-log:focus-visible {
   outline: 1px solid currentColor;
   outline-offset: -1px;
@@ -92,17 +92,18 @@ body,
   visibility: hidden;
 }
 
-.inventory-navigation {
+.action-navigation {
   display: grid;
   flex-shrink: 0;
-  grid-template-columns: 44px minmax(48px, 1fr) 44px auto;
+  grid-template-columns: 44px minmax(64px, auto) 44px;
+  justify-content: center;
   align-items: center;
   gap: 8px;
   padding-top: 12px;
   font-size: 14px;
 }
 
-.inventory-navigation button {
+.action-navigation button {
   min-width: 44px;
   min-height: 44px;
   padding: 4px 8px;
@@ -115,20 +116,16 @@ body,
   touch-action: manipulation;
 }
 
-.inventory-page-indicator {
+.action-page-indicator {
   text-align: center;
 }
 
-.inventory-back {
-  grid-column: 4;
-}
-
-.inventory-navigation button:disabled {
+.action-navigation button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-.inventory-navigation button:active:not(:disabled) {
+.action-navigation button:active:not(:disabled) {
   background: #1b281b;
   border-color: #4ade80;
 }

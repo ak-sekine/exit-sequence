@@ -66,7 +66,7 @@ function actionLabel(action: { label: string; hasNext: boolean }) {
 }
 
 const navigation = document.createElement('nav')
-navigation.className = 'inventory-navigation'
+navigation.className = 'action-navigation'
 navigation.setAttribute('aria-label', '選択肢のページ操作')
 const previous = createButton('＜', () => {
   if (!inventoryOpen || inventoryPage === 0) return
@@ -81,26 +81,19 @@ const next = createButton('＞', () => {
 })
 next.setAttribute('aria-label', '次のページ')
 const indicator = document.createElement('span')
-indicator.className = 'inventory-page-indicator'
+indicator.className = 'action-page-indicator'
 indicator.setAttribute('aria-live', 'polite')
-const back = createButton('戻る', () => {
-  if (!inventoryOpen) return
-  renderMainActions()
-  actions.querySelectorAll('button')[3]?.focus({ preventScroll: true })
-})
-back.className = 'inventory-back'
-navigation.append(previous, indicator, next, back)
+navigation.append(previous, indicator, next)
 
-function updateNavigation(currentPage: number, totalPages: number, hasParent: boolean) {
+function updateNavigation(currentPage: number, totalPages: number) {
   indicator.textContent = `${currentPage + 1} / ${totalPages}`
   previous.disabled = currentPage === 0
   next.disabled = currentPage === totalPages - 1
-  back.disabled = !hasParent
 }
 
 function renderMainActions() {
   inventoryOpen = false
-  updateNavigation(0, 1, false)
+  updateNavigation(0, 1)
   actions.replaceChildren()
   actions.setAttribute('aria-label', '行動を選択')
   for (const action of mainActions) {
@@ -125,6 +118,11 @@ function renderInventoryPage() {
     const item = inventory[start + slot]
     if (item) {
       actions.append(createButton(actionLabel(item), () => appendLog(item.label)))
+    } else if (inventoryPage === pageCount - 1 && slot === itemsPerPage - 1) {
+      actions.append(createButton('戻る', () => {
+        renderMainActions()
+        actions.querySelectorAll('button')[3]?.focus({ preventScroll: true })
+      }))
     } else {
       const empty = document.createElement('span')
       empty.className = 'inventory-empty'
@@ -134,7 +132,7 @@ function renderInventoryPage() {
       actions.append(empty)
     }
   }
-  updateNavigation(inventoryPage, pageCount, true)
+  updateNavigation(inventoryPage, pageCount)
 }
 
 renderMainActions()
