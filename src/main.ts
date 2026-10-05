@@ -89,7 +89,11 @@ const back = createButton('戻る', () => {
   actions.querySelectorAll('button')[3]?.focus({ preventScroll: true })
 })
 back.setAttribute('aria-label', '親メニューへ戻る')
-navigation.append(back, previous, indicator, next)
+back.className = 'back-button'
+const pageNavigation = document.createElement('div')
+pageNavigation.className = 'page-navigation'
+pageNavigation.append(previous, indicator, next)
+navigation.append(back, pageNavigation)
 
 function updateNavigation(currentPage: number, totalPages: number, hasParent: boolean) {
   indicator.textContent = `${currentPage + 1} / ${totalPages}`

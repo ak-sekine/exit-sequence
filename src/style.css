@@ -93,11 +93,9 @@ body,
 }
 
 .action-navigation {
-  display: grid;
+  display: flex;
   flex-shrink: 0;
-  grid-template-columns: auto 44px minmax(48px, 1fr) 44px;
   align-items: center;
-  gap: 8px;
   padding-top: 12px;
   font-size: 14px;
 }
@@ -115,8 +113,25 @@ body,
   touch-action: manipulation;
 }
 
+.action-navigation .back-button {
+  width: 72px;
+  flex-shrink: 0;
+}
+
+.page-navigation {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 44px 64px 44px;
+  gap: 8px;
+  /* 中央配置を基本とし、狭い画面では戻るとの8pxの間隔を優先する。 */
+  margin-left: max(8px, calc((100% - 168px) / 2 - 72px));
+  align-items: center;
+}
+
 .action-page-indicator {
   text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .action-navigation button:disabled {
