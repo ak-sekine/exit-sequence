@@ -16,7 +16,10 @@ log.className = 'terminal-log'
 log.setAttribute('role', 'log')
 log.setAttribute('aria-label', 'ゲームログ')
 log.tabIndex = 0
+let prompt: HTMLDivElement | null = null
 function appendLog(...lines: string[]) {
+  prompt?.remove()
+  prompt = null
   for (const text of lines) {
     const line = document.createElement('div')
     line.className = 'terminal-line'
@@ -24,6 +27,18 @@ function appendLog(...lines: string[]) {
     log.append(line)
   }
   log.scrollTop = log.scrollHeight
+}
+function showPrompt(waiting: boolean) {
+  if (!waiting) { prompt?.remove(); prompt = null; return }
+  if (prompt) return
+  appendLog('>')
+  prompt = log.lastElementChild as HTMLDivElement
+}
+function confirmInput(label: string) {
+  showPrompt(true)
+  prompt!.textContent = `> ${label.split('\n')[0].replace(/ >$/, '')}`
+  prompt = null
+  appendLog('')
 }
 const actions = document.createElement('div')
 actions.className = 'terminal-actions'
@@ -47,7 +62,7 @@ function act(action: Action) {
   open(s.status !== 'playing' ? 'end' : s.encounter ? 'encounter' : 'main')
 }
 function restart() {
-  game.restart(); log.replaceChildren()
+  game.restart()
   appendLog('EXIT SEQUENCE', 'SYSTEM ONLINE', 'AI：基地は致命的損傷を受けた。恒久復旧は不可能。帰還船で地球へ帰還する。',
     '電力管理区で給電、管制区でロック解除、研究区の部品を整備区で使用、倉庫区で食糧確保。4条件を満たして発着区へ。',
     '医療区と観測区で各1回、ENERGY +6。監視は1ルート／ENERGY 1。情報は次の行動で古くなる。', 'ENERGY 20 / 20。現在地：居住区。', descriptions.居住)
@@ -85,7 +100,7 @@ function options(): Option[] {
     const closed = game.passage(s.location, target) === 'CLOSED'
     const freshness = game.freshness(s.location, target)
     const feed = s.feeds[`${s.location}:${target}`]
-    const details = closed ? 'CLOSED・移動不可' : feed ? `${freshness} ${feed.passage}\n${feed.passage === 'CLOSED' ? '当時移動不可' : `E${costs[feed.passage]}`} / 敵${feed.enemy ? 'あり' : 'なし'}` : '未確認：ENERGY 1〜3'
+    const details = closed ? 'CLOSED・移動不可' : feed ? `${freshness} ${feed.passage}\n${feed.passage === 'CLOSED' ? '当時移動不可' : `E${costs[feed.passage]}`}・敵${feed.enemy ? 'あり' : 'なし'}` : '未確認：ENERGY 1〜3'
     return { label: `${target}区\n${details}`, disabled: closed, run: () => act({ type: menu === 'flee' ? 'flee' : 'move', target }) }
   })
 }
@@ -125,7 +140,19 @@ function render() {
   for (let slot = 0; slot < 6; slot++) {
     const option = list[page * 6 + slot]
     if (option) {
-      const element = button(option.label, option.run)
+      const element = button(option.label, () => {
+        confirmInput(option.label)
+        option.run()
+        const nextOptions = options()
+        showPrompt(nextOptions.some(option => !option.disabled) || !!parent() || nextOptions.length > 6)
+      })
+      const lines = option.label.split('\n')
+      element.replaceChildren(...lines.map((text, index) => {
+        const line = document.createElement('span')
+        line.className = index === 0 ? 'option-title' : 'option-detail'
+        line.textContent = text
+        return line
+      }))
       element.disabled = option.disabled ?? false
       actions.append(element)
     } else {
@@ -137,6 +164,7 @@ function render() {
   }
   indicator.textContent = `${page + 1} / ${count}`
   back.disabled = !parent(); previous.disabled = page === 0; next.disabled = page === count - 1
+  showPrompt(list.some(option => !option.disabled) || !!parent() || count > 1)
 }
 terminal.append(log, actions, navigation)
 app.append(terminal)
