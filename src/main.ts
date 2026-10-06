@@ -18,7 +18,15 @@ log.setAttribute('role', 'log')
 log.setAttribute('aria-label', 'ゲームログ')
 log.tabIndex = 0
 let prompt: HTMLDivElement | null = null
-function appendLog(...lines: string[]) {
+// Prototype tuning value, not a fixed release specification.
+const TYPEWRITER_INTERVAL_MS = 25
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+const logQueue: string[] = []
+let isTyping = false
+let typingTimer: ReturnType<typeof setTimeout> | null = null
+let activeLine: HTMLDivElement | null = null
+let characters: string[] = [], characterPosition = 0
+function appendImmediate(...lines: string[]) {
   prompt?.remove()
   prompt = null
   for (const text of lines) {
@@ -29,17 +37,62 @@ function appendLog(...lines: string[]) {
   }
   log.scrollTop = log.scrollHeight
 }
+function finishTyping() {
+  if (typingTimer !== null) clearTimeout(typingTimer)
+  typingTimer = null
+  activeLine = null
+  characters = []; characterPosition = 0
+  isTyping = false
+  log.setAttribute('aria-busy', 'false')
+  render()
+}
+function typeNextCharacter() {
+  typingTimer = null
+  while (!activeLine && logQueue.length) {
+    characters = Array.from(logQueue.shift()!)
+    characterPosition = 0
+    appendImmediate('')
+    activeLine = log.lastElementChild as HTMLDivElement
+    if (!characters.length) activeLine = null
+  }
+  if (!activeLine) { finishTyping(); return }
+  activeLine.textContent += characters[characterPosition++]!
+  log.scrollTop = log.scrollHeight
+  if (characterPosition === characters.length) activeLine = null
+  if (!activeLine && !logQueue.length) { finishTyping(); return }
+  typingTimer = setTimeout(typeNextCharacter, TYPEWRITER_INTERVAL_MS)
+}
+function appendLog(...lines: string[]) {
+  if (!lines.length) return
+  if (reducedMotion.matches) { appendImmediate(...lines); return }
+  logQueue.push(...lines)
+  if (isTyping) return
+  showPrompt(false)
+  isTyping = true
+  log.setAttribute('aria-busy', 'true')
+  render()
+  typingTimer = setTimeout(typeNextCharacter, TYPEWRITER_INTERVAL_MS)
+}
+function skipTyping() {
+  if (!isTyping) return
+  if (typingTimer !== null) clearTimeout(typingTimer)
+  if (activeLine) activeLine.textContent += characters.slice(characterPosition).join('')
+  appendImmediate(...logQueue.splice(0))
+  finishTyping()
+}
+log.addEventListener('click', skipTyping)
+reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) skipTyping() })
 function showPrompt(waiting: boolean) {
-  if (!waiting) { prompt?.remove(); prompt = null; return }
+  if (!waiting || isTyping) { prompt?.remove(); prompt = null; return }
   if (prompt) return
-  appendLog('>')
+  appendImmediate('>')
   prompt = log.lastElementChild as HTMLDivElement
 }
 function confirmInput(label: string) {
   showPrompt(true)
   prompt!.textContent = `> ${[...pendingInput, label].join(' ')}`
   prompt = null
-  appendLog('')
+  appendImmediate('')
 }
 const actions = document.createElement('div')
 actions.className = 'terminal-actions'
@@ -48,7 +101,7 @@ function button(label: string, run: () => void) {
   const element = document.createElement('button')
   element.type = 'button'
   element.textContent = label
-  element.addEventListener('click', run)
+  element.addEventListener('click', () => { if (!isTyping && !element.disabled) run() })
   return element
 }
 function open(nextMenu: Menu) {
@@ -65,6 +118,12 @@ function act(action: Action) {
   open(s.status !== 'playing' ? 'end' : s.encounter ? 'encounter' : 'main')
 }
 function restart() {
+  if (typingTimer !== null) clearTimeout(typingTimer)
+  typingTimer = null
+  logQueue.length = 0
+  activeLine = null
+  characters = []; characterPosition = 0
+  isTyping = false
   game.restart()
   appendLog('EXIT SEQUENCE', 'SYSTEM ONLINE', 'AI：基地は致命的損傷を受けた。恒久復旧は不可能。帰還船で地球へ帰還する。',
     '電力管理区で給電、管制区でロック解除、研究区の部品を整備区で使用、倉庫区で食糧確保。4条件を満たして発着区へ。',
@@ -163,7 +222,7 @@ function render() {
         line.textContent = text
         return line
       }))
-      element.disabled = option.disabled ?? false
+      element.disabled = isTyping || (option.disabled ?? false)
       actions.append(element)
     } else {
       const empty = document.createElement('span')
@@ -173,7 +232,7 @@ function render() {
     }
   }
   indicator.textContent = `${page + 1} / ${count}`
-  back.disabled = !parent(); previous.disabled = page === 0; next.disabled = page === count - 1
+  back.disabled = isTyping || !parent(); previous.disabled = isTyping || page === 0; next.disabled = isTyping || page === count - 1
   showPrompt(list.some(option => !option.disabled) || !!parent() || count > 1)
 }
 terminal.append(log, actions, navigation)

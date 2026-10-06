@@ -37,10 +37,19 @@ class Element {
   querySelector(selector: string) { return this.querySelectorAll(selector)[0] }
 }
 
-function fixture() {
+function fixture(reduce = true) {
   const app = new Element('div')
+  let timerId = 0
+  const timers = new Map<number, () => void>()
   const context = vm.createContext({
     Game, taskInfo, costs, descriptions, neighbors,
+    window: { matchMedia: () => ({ matches: reduce, addEventListener() {} }) },
+    setTimeout: (callback: () => void, delay: number) => {
+      assert.equal(delay, 25)
+      timers.set(++timerId, callback)
+      return timerId
+    },
+    clearTimeout: (id: number) => timers.delete(id),
     document: { querySelector: () => app, createElement: (tag: string) => new Element(tag) },
   })
   const source = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8').replace(/^import .*$/gm, '')
@@ -63,8 +72,90 @@ function fixture() {
       assert.notEqual(lines()[index + 2], '')
     }
   }
-  return { game, actions: actions!, navigation: navigation!, lines, click, render, assertPrompt }
+  const tick = () => {
+    const entry = timers.entries().next().value
+    if (entry) { timers.delete(entry[0]); entry[1]() }
+  }
+  const flush = () => { let limit = 10000; while (timers.size && limit--) tick(); assert.ok(limit > 0) }
+  return { game, actions: actions!, navigation: navigation!, log: log!, lines, click, render, assertPrompt, tick, flush, timers,
+    enqueue: (...lines: string[]) => vm.runInContext(`appendLog(...${JSON.stringify(lines)})`, context) }
 }
+
+test('typing queues characters and lines, blocks actions, and finishes with one prompt', () => {
+  const ui = fixture(false)
+  assert.deepEqual(ui.lines(), [])
+  ui.click('ゲーム開始')
+  assert.equal(ui.game.state.turn, 0)
+  assert.ok(ui.actions.children.filter(e => e.tag === 'button').every(e => e.disabled))
+  ui.tick(); assert.deepEqual(ui.lines(), ['E'])
+  ui.tick(); assert.deepEqual(ui.lines(), ['EX'])
+  assert.ok(!ui.lines().includes('>'))
+  ui.flush(); ui.assertPrompt()
+  ui.click('ゲーム開始')
+  assert.deepEqual(ui.lines().slice(-2), ['> ゲーム開始', ''])
+  ui.flush()
+  const before = ui.lines().slice(0, -1)
+  ui.click('状態確認')
+  assert.deepEqual(ui.lines().slice(-2), ['> 状態確認', ''])
+  ui.click('状態確認')
+  ui.tick(); assert.equal(ui.lines().at(-1), 'L')
+  ui.flush()
+  assert.deepEqual(ui.lines(), [...before, '> 状態確認', '', ...ui.game.statusLines(), '>'])
+  ui.assertPrompt()
+  ui.game.state.items = Array(8).fill('食糧')
+  ui.click('持ち物 >')
+  ui.enqueue('A😀', 'B'); ui.enqueue('C')
+  ui.navigation.children[0]!.click()
+  ui.navigation.children[1]!.children[2]!.click()
+  assert.ok(ui.navigation.children[0]!.disabled)
+  ui.tick(); ui.tick(); assert.equal(ui.lines().at(-1), 'A😀')
+  ui.flush()
+  assert.deepEqual(ui.lines().slice(-4), ['A😀', 'B', 'C', '>'])
+  assert.equal(ui.navigation.children[0]!.disabled, false)
+  assert.equal(ui.navigation.children[1]!.children[0]!.disabled, true)
+  assert.equal(ui.navigation.children[1]!.children[2]!.disabled, false)
+})
+
+test('skip drains the queue once, cancels timers and restores original disabled states', () => {
+  const ui = fixture(false)
+  ui.tick(); ui.log.click(); ui.log.click()
+  assert.equal(ui.timers.size, 0)
+  ui.assertPrompt()
+  ui.click('ゲーム開始'); ui.log.click()
+  ui.game.state.location = '発着'
+  ui.render('equipment')
+  ui.enqueue('first', '', 'last')
+  ui.tick(); ui.log.click()
+  const result = ui.lines()
+  ui.tick(); ui.log.click()
+  assert.deepEqual(ui.lines(), result)
+  assert.deepEqual(result.slice(-4), ['first', '', 'last', '>'])
+  assert.equal(ui.actions.children[0]!.disabled, true)
+  assert.equal(ui.actions.children[1]!.disabled, false)
+  assert.equal(ui.timers.size, 0)
+  ui.assertPrompt()
+})
+
+test('end outputs lock restart; restart and reduced motion preserve identical output', () => {
+  for (const status of ['over', 'clear'] as const) {
+    const ui = fixture(false)
+    ui.log.click(); ui.click('ゲーム開始'); ui.log.click()
+    ui.game.state.status = status; ui.render('end')
+    ui.enqueue(status === 'over' ? 'GAME OVER' : 'GAME CLEAR', 'AI：終了。')
+    ui.click('最初から'); assert.equal(ui.game.state.status, status)
+    ui.log.click(); ui.click('最初から')
+    assert.deepEqual(ui.lines().slice(-2), ['> 最初から', ''])
+    ui.flush(); ui.assertPrompt(); assert.equal(ui.timers.size, 0)
+    assert.equal(ui.game.state.status, 'playing')
+  }
+  const animated = fixture(false), immediate = fixture(true)
+  animated.flush()
+  assert.deepEqual(animated.lines(), immediate.lines())
+  animated.click('ゲーム開始'); immediate.click('ゲーム開始'); animated.flush()
+  animated.click('状態確認'); immediate.click('状態確認'); animated.flush()
+  assert.deepEqual(animated.lines(), immediate.lines())
+  assert.equal(immediate.timers.size, 0)
+})
 
 test('start, confirmations, submenu inputs and navigation preserve a single prompt', () => {
   const ui = fixture()
@@ -180,22 +271,28 @@ test('encounter actions confirm immediately without display details', () => {
 })
 
 test('fatal movement and launch output end with a prompt for restart', () => {
-  const ui = fixture()
-  ui.click('ゲーム開始')
+  const ui = fixture(false)
+  ui.flush()
+  ui.click('ゲーム開始'); ui.log.click()
   ui.game.state.energy = 1
   for (const key of Object.keys(ui.game.state.passages)) ui.game.state.passages[key] = 'NORMAL'
   ui.click('移動 >'); ui.click('医療区')
+  assert.equal(ui.actions.children[0]!.disabled, true)
+  assert.ok(!ui.lines().includes('>'))
+  ui.flush()
   assert.ok(ui.lines().includes('GAME OVER'))
   assert.equal(ui.game.state.turn, 0)
   ui.assertPrompt()
-  ui.click('最初から')
+  ui.click('最初から'); ui.log.click()
   ui.game.state.location = '発着'
   ui.game.state.conditions = { power: true, control: true, repair: true, food: true }
   ui.click('設備 >'); ui.click('帰還船を発進する')
+  assert.equal(ui.actions.children[0]!.disabled, true)
+  ui.log.click()
   assert.ok(ui.lines().includes('GAME CLEAR'))
   assert.equal(ui.game.state.energy, 20)
   assert.equal(ui.game.state.turn, 1)
   ui.assertPrompt()
-  ui.click('最初から')
+  ui.click('最初から'); ui.flush()
   ui.assertPrompt()
 })
