@@ -7,8 +7,9 @@ const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('App element was not found')
 const game = new Game()
 type Menu = 'start' | 'main' | 'move' | 'camera' | 'equipment' | 'inventory' | 'encounter' | 'flee' | 'end'
-type Option = { label: string; run: () => void; disabled?: boolean }
+type Option = { label: string; inputLabel?: string; submenu?: Menu; run?: () => void; disabled?: boolean }
 let menu: Menu = 'start', page = 0
+const pendingInput: string[] = []
 const terminal = document.createElement('main')
 terminal.className = 'terminal'
 const log = document.createElement('div')
@@ -36,7 +37,7 @@ function showPrompt(waiting: boolean) {
 }
 function confirmInput(label: string) {
   showPrompt(true)
-  prompt!.textContent = `> ${label.split('\n')[0].replace(/ >$/, '')}`
+  prompt!.textContent = `> ${[...pendingInput, label].join(' ')}`
   prompt = null
   appendLog('')
 }
@@ -51,7 +52,9 @@ function button(label: string, run: () => void) {
   return element
 }
 function open(nextMenu: Menu) {
-  menu = nextMenu; page = 0; render()
+  menu = nextMenu; page = 0
+  if (!parent()) pendingInput.length = 0
+  render()
   const first = actions.querySelector<HTMLButtonElement>('button:not(:disabled)')
   const focusTarget = first ?? (parent() ? back : log)
   focusTarget.focus({ preventScroll: true })
@@ -74,16 +77,16 @@ function options(): Option[] {
   if (menu === 'end') return [{ label: '最初から', run: restart }, { label: '最終状態確認', run: () => appendLog(...game.statusLines()) }]
   if (menu === 'main') return [
     { label: '周囲を見る', run: () => appendLog(`${s.location}区`, descriptions[s.location]) },
-    { label: '移動 >', run: () => open('move') },
-    { label: '監視 >', run: () => open('camera') },
-    { label: '設備 >', run: () => open('equipment') },
-    { label: '持ち物 >', run: () => open('inventory') },
+    { label: '移動 >', submenu: 'move' },
+    { label: '監視 >', submenu: 'camera' },
+    { label: '設備 >', submenu: 'equipment' },
+    { label: '持ち物 >', submenu: 'inventory' },
     { label: '状態確認', run: () => appendLog(...game.statusLines()) },
   ]
   if (menu === 'encounter') return [
     { label: '隠れる\n成功80% / ENERGY 1', run: () => act({ type: 'hide' }) },
     { label: '強行突破\n成功60% / ENERGY 2', run: () => act({ type: 'force' }) },
-    { label: '逃げる >', run: () => open('flee') },
+    { label: '逃げる >', submenu: 'flee' },
   ]
   if (menu === 'inventory') return s.items.length ? s.items.map(item => ({ label: item, run: () => appendLog(item === '食糧' ? '食糧：帰還用物資。帰還まで保持する。' : '修理部品：整備区の設備で使用する。') })) : [{ label: '持ち物なし', run: () => {}, disabled: true }]
   if (menu === 'equipment') {
@@ -96,7 +99,7 @@ function options(): Option[] {
     return result.length ? result : [{ label: '操作できる設備なし', run: () => {}, disabled: true }]
   }
   return neighbors(s.location).map(target => {
-    if (menu === 'camera') return { label: `${target}区方面\n監視 ENERGY 1`, run: () => act({ type: 'camera', target }) }
+    if (menu === 'camera') return { label: `${target}区方面\n監視 ENERGY 1`, inputLabel: `${target}区`, run: () => act({ type: 'camera', target }) }
     const closed = game.passage(s.location, target) === 'CLOSED'
     const freshness = game.freshness(s.location, target)
     const feed = s.feeds[`${s.location}:${target}`]
@@ -114,6 +117,7 @@ navigation.setAttribute('aria-label', '選択肢のページ操作')
 const back = button('戻る', () => {
   const nextMenu = parent(), previousMenu = menu
   if (!nextMenu) return
+  pendingInput.pop()
   open(nextMenu)
   const index = { move: 1, camera: 2, equipment: 3, inventory: 4, flee: 2 }[previousMenu as 'move' | 'camera' | 'equipment' | 'inventory' | 'flee']
   actions.querySelectorAll<HTMLButtonElement>('button')[index]?.focus({ preventScroll: true })
@@ -141,8 +145,14 @@ function render() {
     const option = list[page * 6 + slot]
     if (option) {
       const element = button(option.label, () => {
-        confirmInput(option.label)
-        option.run()
+        const inputLabel = option.inputLabel ?? option.label.split('\n')[0].replace(/ >$/, '')
+        if (option.submenu) {
+          pendingInput.push(inputLabel)
+          open(option.submenu)
+        } else {
+          confirmInput(inputLabel)
+          option.run?.()
+        }
         const nextOptions = options()
         showPrompt(nextOptions.some(option => !option.disabled) || !!parent() || nextOptions.length > 6)
       })

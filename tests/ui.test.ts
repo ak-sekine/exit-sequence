@@ -58,7 +58,10 @@ function fixture() {
   const assertPrompt = () => {
     assert.equal(lines().at(-1), '>')
     assert.equal(lines().filter(line => line === '>').length, 1)
-    for (const [index, line] of lines().entries()) if (line.startsWith('> ')) assert.equal(lines()[index + 1], '')
+    for (const [index, line] of lines().entries()) if (line.startsWith('> ')) {
+      assert.equal(lines()[index + 1], '')
+      assert.notEqual(lines()[index + 2], '')
+    }
   }
   return { game, actions: actions!, navigation: navigation!, lines, click, render, assertPrompt }
 }
@@ -71,9 +74,10 @@ test('start, confirmations, submenu inputs and navigation preserve a single prom
   assert.equal(ui.actions.children.length, 6)
   const state = JSON.stringify(ui.game.state)
   for (const label of ['移動', '監視', '設備', '持ち物']) {
-    ui.click(`${label} >`)
-    assert.deepEqual(ui.lines().slice(-3), [`> ${label}`, '', '>'])
     const before = ui.lines()
+    ui.click(`${label} >`)
+    assert.deepEqual(ui.lines(), before)
+    ui.assertPrompt()
     ui.navigation.children[0]!.click()
     assert.deepEqual(ui.lines(), before)
     ui.assertPrompt()
@@ -91,6 +95,15 @@ test('start, confirmations, submenu inputs and navigation preserve a single prom
   assert.equal(ui.actions.children.filter(child => child.tag === 'button').length, 2)
   ui.navigation.children[1]!.children[0]!.click()
   assert.deepEqual(ui.lines(), before)
+  ui.navigation.children[1]!.children[2]!.click()
+  ui.click('食糧')
+  assert.deepEqual(ui.lines().slice(-4), ['> 持ち物 食糧', '', '食糧：帰還用物資。帰還まで保持する。', '>'])
+  ui.click('食糧')
+  assert.equal(ui.lines().filter(line => line === '> 持ち物 食糧').length, 2)
+  ui.navigation.children[0]!.click()
+  ui.click('周囲を見る')
+  assert.equal(ui.lines().filter(line => line === '> 周囲を見る').length, 1)
+  assert.equal(JSON.stringify(ui.game.state), JSON.stringify({ ...JSON.parse(state), items: Array(8).fill('食糧') }))
   ui.assertPrompt()
 })
 
@@ -100,14 +113,16 @@ test('movement, encounter and both end states use the same input format', () => 
   for (const key of Object.keys(ui.game.state.passages)) ui.game.state.passages[key] = 'NORMAL'
   ui.game.state.enemy = '管制'
   ui.click('移動 >'); ui.click('医療区')
-  assert.ok(ui.lines().includes('> 医療区'))
+  assert.ok(ui.lines().includes('> 移動 医療区'))
   assert.equal(ui.game.state.energy, 19)
   assert.equal(ui.game.state.turn, 1)
   ui.assertPrompt()
 
   ui.game.state.encounter = true
-  ui.render('encounter'); ui.click('逃げる >')
-  assert.deepEqual(ui.lines().slice(-3), ['> 逃げる', '', '>'])
+  ui.render('encounter')
+  const before = ui.lines()
+  ui.click('逃げる >')
+  assert.deepEqual(ui.lines(), before)
   ui.navigation.children[0]!.click()
   ui.assertPrompt()
 
@@ -122,6 +137,44 @@ test('movement, encounter and both end states use the same input format', () => 
     assert.deepEqual(ui.lines().slice(index, index + 4), ['> 最初から', '', 'EXIT SEQUENCE', 'SYSTEM ONLINE'])
     assert.equal(ui.game.state.energy, 20)
     assert.equal(ui.game.state.turn, 0)
+    ui.assertPrompt()
+  }
+})
+
+test('camera, equipment and flee confirm one concise selection path', () => {
+  for (const kind of ['camera', 'equipment', 'flee'] as const) {
+    const ui = fixture()
+    ui.click('ゲーム開始')
+    for (const key of Object.keys(ui.game.state.passages)) ui.game.state.passages[key] = 'NORMAL'
+    ui.game.state.enemy = '研究'
+    if (kind === 'equipment') ui.game.state.location = '電力管理'
+    if (kind === 'flee') { ui.game.state.encounter = true; ui.render('encounter') }
+    const label = { camera: '監視', equipment: '設備', flee: '逃げる' }[kind]
+    const before = ui.lines(), state = JSON.stringify(ui.game.state)
+    ui.click(`${label} >`)
+    assert.deepEqual(ui.lines(), before)
+    assert.equal(JSON.stringify(ui.game.state), state)
+    ui.assertPrompt()
+    const target = kind === 'equipment' ? '帰還船へ配電する' : '医療区'
+    ui.click(kind === 'camera' ? `${target}方面` : target)
+    const added = ui.lines().slice(before.length - 1)
+    assert.equal(added.filter(line => line.startsWith('> ')).length, 1)
+    assert.equal(added[0], `> ${label} ${target}`)
+    assert.equal(added[1], '')
+    assert.equal(ui.game.state.turn, 1)
+    ui.assertPrompt()
+  }
+})
+
+test('encounter actions confirm immediately without display details', () => {
+  for (const label of ['隠れる', '強行突破']) {
+    const ui = fixture()
+    ui.click('ゲーム開始')
+    ui.game.state.encounter = true
+    ui.render('encounter')
+    ui.click(label)
+    assert.equal(ui.lines().filter(line => line === `> ${label}`).length, 1)
+    assert.equal(ui.game.state.turn, 1)
     ui.assertPrompt()
   }
 })
