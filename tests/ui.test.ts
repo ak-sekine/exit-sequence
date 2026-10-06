@@ -45,7 +45,7 @@ function fixture(reduce = true) {
     Game, taskInfo, costs, descriptions, neighbors,
     window: { matchMedia: () => ({ matches: reduce, addEventListener() {} }) },
     setTimeout: (callback: () => void, delay: number) => {
-      assert.equal(delay, 25)
+      assert.equal(delay, 5)
       timers.set(++timerId, callback)
       return timerId
     },

@@ -19,7 +19,7 @@ log.setAttribute('aria-label', 'ゲームログ')
 log.tabIndex = 0
 let prompt: HTMLDivElement | null = null
 // Prototype tuning value, not a fixed release specification.
-const TYPEWRITER_INTERVAL_MS = 25
+const TYPEWRITER_INTERVAL_MS = 5
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 const logQueue: string[] = []
 let isTyping = false
