@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
-import { Game, taskInfo } from '../src/game.ts'
+import { Game, taskInfo, conditionNames } from '../src/game.ts'
 import { costs, descriptions, neighbors } from '../src/map.ts'
 
 // Exercise the real UI handlers with a small DOM adapter, without adding a test framework.
@@ -24,7 +24,8 @@ class Element {
   append(...children: Element[]) { children.forEach(child => { child.parent = this; this.children.push(child) }) }
   replaceChildren(...children: Element[]) { this.children = []; this.ownText = ''; this.append(...children) }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this) }
-  setAttribute() {}
+  attributes: Record<string, string> = {}
+  setAttribute(name: string, value: string) { this.attributes[name] = value }
   focus() {}
   addEventListener(event: string, handler: () => void) { this.handlers[event] = handler }
   click() { if (!this.disabled) this.handlers.click?.() }
@@ -42,7 +43,7 @@ function fixture(reduce = true) {
   let timerId = 0
   const timers = new Map<number, () => void>()
   const context = vm.createContext({
-    Game, taskInfo, costs, descriptions, neighbors,
+    Game, taskInfo, conditionNames, costs, descriptions, neighbors,
     window: { matchMedia: () => ({ matches: reduce, addEventListener() {} }) },
     setTimeout: (callback: () => void, delay: number) => {
       assert.equal(delay, 5)
@@ -183,7 +184,7 @@ test('start, confirmations, submenu inputs and navigation preserve a single prom
   ui.click('持ち物 >')
   const before = ui.lines()
   ui.navigation.children[1]!.children[2]!.click()
-  assert.equal(ui.actions.children.filter(child => child.tag === 'button').length, 2)
+  assert.equal(ui.actions.children.filter(child => child.tag === 'button').length, 3)
   ui.navigation.children[1]!.children[0]!.click()
   assert.deepEqual(ui.lines(), before)
   ui.navigation.children[1]!.children[2]!.click()
@@ -247,7 +248,7 @@ test('camera, equipment and flee confirm one concise selection path', () => {
     assert.equal(JSON.stringify(ui.game.state), state)
     ui.assertPrompt()
     const target = kind === 'equipment' ? '帰還船へ配電する' : '医療区'
-    ui.click(kind === 'camera' ? `${target}方面` : target)
+    ui.click(target)
     const added = ui.lines().slice(before.length - 1)
     assert.equal(added.filter(line => line.startsWith('> ')).length, 1)
     assert.equal(added[0], `> ${label} ${target}`)
@@ -294,5 +295,111 @@ test('fatal movement and launch output end with a prompt for restart', () => {
   assert.equal(ui.game.state.turn, 1)
   ui.assertPrompt()
   ui.click('最初から'); ui.flush()
+  ui.assertPrompt()
+})
+
+test('HELP toggle is silent, persistent, accessible and always labelled HELP', () => {
+  const ui = fixture(), help = ui.navigation.children[2]!
+  const before = ui.lines()
+  assert.equal(help.textContent, 'HELP')
+  assert.equal(help.attributes['aria-pressed'], 'false')
+  help.click()
+  assert.equal(help.attributes['aria-pressed'], 'true')
+  assert.ok(help.className.includes('help-active'))
+  assert.deepEqual(ui.lines(), before)
+  ui.click('ゲーム開始')
+  ui.game.state.items = Array(8).fill('食糧')
+  ui.click('持ち物 >')
+  ui.navigation.children[1]!.children[2]!.click()
+  ui.click('食糧')
+  ui.click('キャンセル')
+  assert.equal(help.attributes['aria-pressed'], 'true')
+  ui.game.state.status = 'over'; ui.render('end'); ui.click('最初から')
+  assert.equal(help.attributes['aria-pressed'], 'true')
+  const logs = ui.lines()
+  help.click()
+  assert.equal(help.attributes['aria-pressed'], 'false')
+  assert.ok(!help.className.includes('help-active'))
+  assert.equal(help.textContent, 'HELP')
+  assert.deepEqual(ui.lines(), logs)
+})
+
+test('all HELP targets read state without actions or random calls and retain their menu', () => {
+  for (const kind of ['move', 'camera', 'equipment', 'inventory', 'hide', 'force', 'flee', 'launch', 'supply', 'done'] as const) {
+    const ui = fixture()
+    ui.click('ゲーム開始')
+    if (kind === 'equipment' || kind === 'done') ui.game.state.location = '電力管理'
+    if (kind === 'done') ui.game.state.conditions.power = true
+    if (kind === 'launch') ui.game.state.location = '発着'
+    if (kind === 'supply') ui.game.state.location = '医療'
+    if (kind === 'inventory') ui.game.state.items = ['修理部品']
+    if (['hide', 'force', 'flee'].includes(kind)) ui.game.state.encounter = true
+    const menu = ['hide', 'force'].includes(kind) ? 'encounter' : ['launch', 'supply', 'done'].includes(kind) ? 'equipment' : kind
+    ui.render(menu)
+    const label = { move: '医療区', camera: '医療区', equipment: '帰還船へ配電する', inventory: '修理部品', hide: '隠れる', force: '強行突破', flee: '医療区', launch: '帰還船を発進する', supply: '予備バッテリーを回収', done: '帰還船へ配電する' }[kind]
+    const operation = { move: '移動', camera: '監視', equipment: '設備', inventory: '持ち物', hide: '', force: '', flee: '逃げる', launch: '設備', supply: '設備', done: '設備' }[kind]
+    const before = JSON.stringify(ui.game.state)
+    ui.game.act = () => { throw new Error('HELP must not call act') }
+    ;(ui.game as unknown as { random: () => number }).random = () => { throw new Error('HELP must not draw random numbers') }
+    ui.navigation.children[2]!.click()
+    ui.click(label)
+    assert.equal(JSON.stringify(ui.game.state), before)
+    assert.ok(ui.lines().includes(`> HELP ${operation ? operation + ' ' : ''}${label}`))
+    assert.ok(ui.actions.children.some(e => e.children[0]?.textContent === label))
+    assert.equal(ui.navigation.children[2]!.attributes['aria-pressed'], 'true')
+  }
+})
+
+test('route HELP reveals only known information, keeps freshness and allows CLOSED explanations', () => {
+  const ui = fixture()
+  ui.click('ゲーム開始'); ui.click('移動 >'); ui.navigation.children[2]!.click()
+  for (const key of Object.keys(ui.game.state.passages)) ui.game.state.passages[key] = 'DARK'
+  ui.click('医療区')
+  assert.ok(ui.lines().includes('状態：UNKNOWN / 未確認'))
+  assert.ok(ui.lines().includes('敵情報：UNKNOWN / 未確認'))
+  ui.game.state.feeds['居住:医療'] = { destination: '医療', passage: 'BLOCKED', enemy: true, turn: 0 }
+  ui.game.state.turn = 1
+  const before = JSON.stringify(ui.game.state)
+  ui.click('医療区')
+  assert.ok(ui.lines().includes('情報の鮮度：古い'))
+  assert.ok(ui.lines().includes('状態：BLOCKED'))
+  assert.ok(ui.lines().includes('推定ENERGY：3'))
+  assert.equal(JSON.stringify(ui.game.state), before)
+  for (const key of Object.keys(ui.game.state.passages)) ui.game.state.passages[key] = 'CLOSED'
+  ui.render('move'); ui.click('医療区')
+  assert.ok(ui.lines().includes('状態：CLOSED（現在移動不可）'))
+  ui.navigation.children[2]!.click()
+  assert.equal(ui.actions.children[0]!.disabled, true)
+})
+
+test('cancel records only キャンセル and leaves all world state untouched', () => {
+  const ui = fixture()
+  ui.click('ゲーム開始')
+  for (const label of ['移動', '監視', '設備', '持ち物']) {
+    ui.click(`${label} >`)
+    const before = JSON.stringify(ui.game.state)
+    ui.click('キャンセル')
+    assert.equal(JSON.stringify(ui.game.state), before)
+    assert.ok(ui.lines().includes('> キャンセル'))
+    assert.ok(ui.actions.children.some(e => e.children[0]?.textContent === '移動 >'))
+  }
+})
+
+test('HELP input is immediate, body types at 5ms and skip restores HELP ON', () => {
+  const ui = fixture(false)
+  ui.log.click(); ui.click('ゲーム開始'); ui.log.click()
+  ui.click('移動 >'); const help = ui.navigation.children[2]!
+  help.click()
+  const before = JSON.stringify(ui.game.state)
+  ui.click('医療区')
+  assert.deepEqual(ui.lines().slice(-2), ['> HELP 移動 医療区', ''])
+  assert.equal(help.disabled, true)
+  help.click(); ui.tick()
+  assert.equal(ui.lines().at(-1), '医')
+  ui.log.click()
+  assert.equal(help.disabled, false)
+  assert.equal(help.attributes['aria-pressed'], 'true')
+  assert.equal(JSON.stringify(ui.game.state), before)
+  assert.equal(ui.timers.size, 0)
   ui.assertPrompt()
 })
