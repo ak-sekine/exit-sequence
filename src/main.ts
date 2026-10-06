@@ -7,7 +7,7 @@ const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('App element was not found')
 const game = new Game()
 type Menu = 'start' | 'main' | 'move' | 'camera' | 'equipment' | 'inventory' | 'encounter' | 'flee' | 'end'
-type Option = { label: string; inputLabel?: string; submenu?: Menu; run?: () => void; disabled?: boolean; help?: () => string[]; helpInput?: string; cancel?: boolean }
+type Option = { label: string; inputLabel?: string; submenu?: Menu; run?: () => void; disabled?: boolean; help?: () => string[]; helpInput?: string }
 let menu: Menu = 'start', page = 0
 let helpMode = false
 const pendingInput: string[] = []
@@ -119,6 +119,7 @@ function act(action: Action) {
   open(s.status !== 'playing' ? 'end' : s.encounter ? 'encounter' : 'main')
 }
 function restart() {
+  helpMode = false
   if (typingTimer !== null) clearTimeout(typingTimer)
   typingTimer = null
   logQueue.length = 0
@@ -146,11 +147,6 @@ function taskHelp(task: Task): string[] {
     effects[task], ...(task === 'launch' ? Object.entries(conditionNames).filter(([key]) => !s.conditions[key as keyof typeof s.conditions]).map(([, name]) => `不足：${name}`) : [])]
 }
 function options(): Option[] {
-  const list = menuOptions()
-  if (parent()) list.push({ label: 'キャンセル', cancel: true, run: () => { pendingInput.pop(); open(parent()!) } })
-  return list
-}
-function menuOptions(): Option[] {
   const s = game.state
   if (menu === 'start') return [{ label: 'ゲーム開始', run: restart }]
   if (menu === 'end') return [{ label: '最初から', run: restart }, { label: '最終状態確認', run: () => appendLog(...game.statusLines()) }]
@@ -237,11 +233,13 @@ function render() {
         if (helpMode && option.help) {
           confirmInput(`HELP ${option.helpInput ?? inputLabel}`, [])
           appendLog(...option.help())
+          helpMode = false
+          render()
         } else if (option.submenu) {
           pendingInput.push(inputLabel)
           open(option.submenu)
         } else {
-          confirmInput(inputLabel, option.cancel ? [] : pendingInput)
+          confirmInput(inputLabel)
           option.run?.()
         }
         const nextOptions = options()

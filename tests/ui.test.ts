@@ -79,6 +79,7 @@ function fixture(reduce = true) {
   }
   const flush = () => { let limit = 10000; while (timers.size && limit--) tick(); assert.ok(limit > 0) }
   return { game, actions: actions!, navigation: navigation!, log: log!, lines, click, render, assertPrompt, tick, flush, timers,
+    helpMode: () => vm.runInContext('helpMode', context) as boolean,
     enqueue: (...lines: string[]) => vm.runInContext(`appendLog(...${JSON.stringify(lines)})`, context) }
 }
 
@@ -184,7 +185,7 @@ test('start, confirmations, submenu inputs and navigation preserve a single prom
   ui.click('持ち物 >')
   const before = ui.lines()
   ui.navigation.children[1]!.children[2]!.click()
-  assert.equal(ui.actions.children.filter(child => child.tag === 'button').length, 3)
+  assert.equal(ui.actions.children.filter(child => child.tag === 'button').length, 2)
   ui.navigation.children[1]!.children[0]!.click()
   assert.deepEqual(ui.lines(), before)
   ui.navigation.children[1]!.children[2]!.click()
@@ -298,23 +299,34 @@ test('fatal movement and launch output end with a prompt for restart', () => {
   ui.assertPrompt()
 })
 
-test('HELP toggle is silent, persistent, accessible and always labelled HELP', () => {
+test('HELP waiting survives navigation and unrelated actions; manual toggle is silent', () => {
   const ui = fixture(), help = ui.navigation.children[2]!
-  const before = ui.lines()
   assert.equal(help.textContent, 'HELP')
   assert.equal(help.attributes['aria-pressed'], 'false')
+  ui.click('ゲーム開始')
+  const started = ui.lines()
   help.click()
   assert.equal(help.attributes['aria-pressed'], 'true')
   assert.ok(help.className.includes('help-active'))
-  assert.deepEqual(ui.lines(), before)
-  ui.click('ゲーム開始')
+  assert.deepEqual(ui.lines(), started)
+  ui.click('周囲を見る')
+  assert.equal(ui.helpMode(), true)
+  for (const label of ['移動', '監視', '設備', '持ち物']) {
+    const state = JSON.stringify(ui.game.state), logs = ui.lines()
+    ui.click(`${label} >`)
+    assert.equal(ui.helpMode(), true)
+    ui.navigation.children[0]!.click()
+    assert.equal(ui.helpMode(), true)
+    assert.deepEqual(ui.lines(), logs)
+    assert.equal(JSON.stringify(ui.game.state), state)
+  }
   ui.game.state.items = Array(8).fill('食糧')
   ui.click('持ち物 >')
   ui.navigation.children[1]!.children[2]!.click()
-  ui.click('食糧')
-  ui.click('キャンセル')
-  assert.equal(help.attributes['aria-pressed'], 'true')
-  ui.game.state.status = 'over'; ui.render('end'); ui.click('最初から')
+  assert.equal(ui.helpMode(), true)
+  ui.navigation.children[1]!.children[0]!.click()
+  assert.equal(ui.helpMode(), true)
+  ui.navigation.children[0]!.click()
   assert.equal(help.attributes['aria-pressed'], 'true')
   const logs = ui.lines()
   help.click()
@@ -346,7 +358,9 @@ test('all HELP targets read state without actions or random calls and retain the
     assert.equal(JSON.stringify(ui.game.state), before)
     assert.ok(ui.lines().includes(`> HELP ${operation ? operation + ' ' : ''}${label}`))
     assert.ok(ui.actions.children.some(e => e.children[0]?.textContent === label))
-    assert.equal(ui.navigation.children[2]!.attributes['aria-pressed'], 'true')
+    assert.equal(ui.helpMode(), false)
+    assert.equal(ui.navigation.children[2]!.attributes['aria-pressed'], 'false')
+    assert.ok(!ui.navigation.children[2]!.className.includes('help-active'))
   }
 })
 
@@ -360,32 +374,44 @@ test('route HELP reveals only known information, keeps freshness and allows CLOS
   ui.game.state.feeds['居住:医療'] = { destination: '医療', passage: 'BLOCKED', enemy: true, turn: 0 }
   ui.game.state.turn = 1
   const before = JSON.stringify(ui.game.state)
+  ui.navigation.children[2]!.click()
   ui.click('医療区')
   assert.ok(ui.lines().includes('情報の鮮度：古い'))
   assert.ok(ui.lines().includes('状態：BLOCKED'))
   assert.ok(ui.lines().includes('推定ENERGY：3'))
   assert.equal(JSON.stringify(ui.game.state), before)
   for (const key of Object.keys(ui.game.state.passages)) ui.game.state.passages[key] = 'CLOSED'
-  ui.render('move'); ui.click('医療区')
+  ui.render('move'); ui.navigation.children[2]!.click(); ui.click('医療区')
   assert.ok(ui.lines().includes('状態：CLOSED（現在移動不可）'))
-  ui.navigation.children[2]!.click()
   assert.equal(ui.actions.children[0]!.disabled, true)
 })
 
-test('cancel records only キャンセル and leaves all world state untouched', () => {
+test('target menus have no cancel; back alone returns silently without world changes', () => {
   const ui = fixture()
   ui.click('ゲーム開始')
   for (const label of ['移動', '監視', '設備', '持ち物']) {
     ui.click(`${label} >`)
     const before = JSON.stringify(ui.game.state)
-    ui.click('キャンセル')
+    const logs = ui.lines()
+    assert.ok(!ui.actions.children.some(e => e.textContent === 'キャンセル'))
+    ui.navigation.children[0]!.click()
     assert.equal(JSON.stringify(ui.game.state), before)
-    assert.ok(ui.lines().includes('> キャンセル'))
+    assert.deepEqual(ui.lines(), logs)
     assert.ok(ui.actions.children.some(e => e.children[0]?.textContent === '移動 >'))
   }
+  ui.game.state.encounter = true; ui.render('encounter'); ui.click('逃げる >')
+  assert.ok(!ui.actions.children.some(e => e.textContent === 'キャンセル'))
+  const state = JSON.stringify(ui.game.state), logs = ui.lines()
+  ui.navigation.children[0]!.click()
+  assert.equal(JSON.stringify(ui.game.state), state)
+  assert.deepEqual(ui.lines(), logs)
+  ui.game.state.items = Array(6).fill('食糧'); ui.render('inventory')
+  assert.equal(ui.navigation.children[1]!.children[1]!.textContent, '1 / 1')
+  assert.equal(ui.navigation.children[1]!.children[2]!.disabled, true)
+  assert.ok(!ui.lines().includes('> キャンセル'))
 })
 
-test('HELP input is immediate, body types at 5ms and skip restores HELP ON', () => {
+test('HELP input is immediate, body types at 5ms and skip restores controls with HELP OFF', () => {
   const ui = fixture(false)
   ui.log.click(); ui.click('ゲーム開始'); ui.log.click()
   ui.click('移動 >'); const help = ui.navigation.children[2]!
@@ -394,12 +420,52 @@ test('HELP input is immediate, body types at 5ms and skip restores HELP ON', () 
   ui.click('医療区')
   assert.deepEqual(ui.lines().slice(-2), ['> HELP 移動 医療区', ''])
   assert.equal(help.disabled, true)
+  assert.equal(ui.helpMode(), false)
+  assert.equal(help.attributes['aria-pressed'], 'false')
+  assert.ok(ui.actions.children.filter(e => e.tag === 'button').every(e => e.disabled))
+  assert.ok(ui.navigation.children[0]!.disabled)
+  assert.ok(ui.navigation.children[1]!.children[0]!.disabled)
+  assert.ok(ui.navigation.children[1]!.children[2]!.disabled)
   help.click(); ui.tick()
   assert.equal(ui.lines().at(-1), '医')
   ui.log.click()
   assert.equal(help.disabled, false)
-  assert.equal(help.attributes['aria-pressed'], 'true')
+  assert.equal(help.attributes['aria-pressed'], 'false')
   assert.equal(JSON.stringify(ui.game.state), before)
   assert.equal(ui.timers.size, 0)
   ui.assertPrompt()
+})
+
+test('one HELP reference retains selection path and the next click executes normal movement', () => {
+  const ui = fixture()
+  ui.click('ゲーム開始')
+  ui.game.state.location = '医療'; ui.game.state.enemy = '研究'
+  for (const key of Object.keys(ui.game.state.passages)) ui.game.state.passages[key] = 'NORMAL'
+  ui.game.state.feeds['医療:居住'] = { destination: '居住', passage: 'NORMAL', enemy: false, turn: 0 }
+  ui.render('main'); ui.click('移動 >'); ui.navigation.children[2]!.click()
+  const state = JSON.stringify(ui.game.state)
+  ui.click('居住区')
+  assert.equal(JSON.stringify(ui.game.state), state)
+  assert.ok(ui.lines().includes('> HELP 移動 居住区'))
+  assert.equal(ui.helpMode(), false)
+  ui.click('居住区')
+  assert.ok(ui.lines().includes('> 移動 居住区'))
+  assert.equal(ui.game.state.location, '居住')
+  assert.equal(ui.game.state.energy, 19)
+  assert.equal(ui.game.state.turn, 1)
+})
+
+test('restart clears pending HELP in both end states', () => {
+  for (const status of ['over', 'clear'] as const) {
+    const ui = fixture()
+    ui.click('ゲーム開始'); ui.game.state.status = status; ui.render('end')
+    const help = ui.navigation.children[2]!
+    help.click(); ui.click('最終状態確認')
+    assert.equal(ui.helpMode(), true)
+    ui.click('最初から')
+    assert.equal(ui.helpMode(), false)
+    assert.equal(help.attributes['aria-pressed'], 'false')
+    assert.ok(!help.className.includes('help-active'))
+    assert.equal(ui.game.state.status, 'playing')
+  }
 })
