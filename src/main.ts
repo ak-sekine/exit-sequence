@@ -6,11 +6,26 @@ import { costs, descriptions, neighbors, rooms } from './map'
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('App element was not found')
 const game = new Game()
-type Menu = 'start' | 'main' | 'move' | 'camera' | 'investigate' | 'detail' | 'ai' | 'inventory' | 'encounter' | 'flee' | 'end'
-type Option = { label: string; inputLabel?: string; submenu?: Menu; enter?: () => void; run?: () => void; disabled?: boolean; help?: () => string[]; helpInput?: string }
+type Menu = 'start' | 'main' | 'move' | 'camera' | 'investigate' | 'detail' | 'confirmation' | 'ai' | 'inventory' | 'encounter' | 'flee' | 'end'
+type Option = { label: string; inputLabel?: string; inputPath?: string[]; submenu?: Menu; enter?: () => void; run?: () => void; disabled?: boolean; help?: () => string[]; helpInput?: string }
 let menu: Menu = 'start', page = 0
 let selectedTask: Task = 'power'
 const targetNames: Record<Task, string> = { power: '配電盤', control: '管制端末', repair: '整備設備', parts: '部品保管箱', food: '食糧保管庫', medical: '予備バッテリー', observe: '観測装置', launch: '帰還船' }
+const taskConfirmations: Partial<Record<Task, { explanation: string; question: string; done: string; declined: string }>> = {
+  medical: { explanation: '回収すると ENERGY が6回復する（上限20）。1回のみ。', question: '回収しますか？', done: '予備バッテリーはすでに回収済みだ。', declined: '回収しなかった。' },
+}
+function investigateTask(task: Task) {
+  selectedTask = task
+  const confirmation = taskConfirmations[task]
+  if (confirmation && game.taskDone(task)) {
+    appendLog(confirmation.done)
+    return
+  }
+  open(confirmation ? 'confirmation' : 'detail')
+  appendLog(`${targetNames[task]}を確認した。`, ...(confirmation
+    ? [confirmation.explanation, confirmation.question]
+    : [descriptions[game.state.location], ...taskHelp(task)]))
+}
 function mapLines(): string[] {
   const location = game.state.location
   return ['基地マップ（* 現在地 / 接続一覧）', `現在地：${location}区`,
@@ -181,14 +196,18 @@ function options(): Option[] {
   if (menu === 'investigate') {
     const tasks = (Object.keys(taskInfo) as Task[]).filter(task => taskInfo[task].room === s.location)
     return [{ label: '周囲', helpInput: '調べる 周囲', help: () => ['現在地の説明を読む。消費・進行なし。'], run: () => appendLog(`${s.location}区`, descriptions[s.location]) },
-      ...tasks.map(task => ({ label: `${targetNames[task]} >`, submenu: 'detail' as const, helpInput: `調べる ${targetNames[task]}`, help: () => taskHelp(task), enter: () => {
-        selectedTask = task
-        appendLog(`${targetNames[task]}を確認した。`, descriptions[s.location], ...taskHelp(task))
-      } }))]
+      ...tasks.map(task => ({ label: targetNames[task], inputPath: ['調べる'], helpInput: `調べる ${targetNames[task]}`, help: () => taskHelp(task), run: () => investigateTask(task) }))]
+  }
+  if (menu === 'confirmation') {
+    const task = selectedTask, confirmation = taskConfirmations[task]!
+    return [
+      { label: 'はい', inputPath: [], disabled: game.taskDone(task), run: () => act({ type: 'task', task }) },
+      { label: 'いいえ', inputPath: [], run: () => { open('investigate'); appendLog(confirmation.declined) } },
+    ]
   }
   if (menu === 'detail') {
     const task = selectedTask
-    return [{ label: taskInfo[task].label, helpInput: `調べる ${targetNames[task]} ${taskInfo[task].label}`, help: () => taskHelp(task), disabled: game.taskDone(task) || (task === 'launch' && !game.ready()), run: () => act({ type: 'task', task }) }]
+    return [{ label: taskInfo[task].label, inputPath: [], helpInput: `調べる ${targetNames[task]} ${taskInfo[task].label}`, help: () => taskHelp(task), disabled: game.taskDone(task) || (task === 'launch' && !game.ready()), run: () => act({ type: 'task', task }) }]
   }
   return neighbors(s.location).map(target => {
     if (menu === 'camera') return { label: `${target}区`, helpInput: `AI 監視カメラ ${target}区`, help: () => ['ENERGY：1', '選択した1ルートだけを確認する。', '通路状態・敵情報・推定ENERGYを世界更新後に取得する。', '情報は次の有効な世界行動で古くなる。', 'このHELPでは監視を実行しない。'], run: () => act({ type: 'camera', target }) }
@@ -209,7 +228,7 @@ function options(): Option[] {
 function parent(): Menu | null {
   if (menu === 'flee') return 'encounter'
   if (menu === 'camera') return 'ai'
-  if (menu === 'detail') return 'investigate'
+  if (menu === 'detail' || menu === 'confirmation') return 'investigate'
   return ['move', 'investigate', 'inventory', 'ai'].includes(menu) ? 'main' : null
 }
 const navigation = document.createElement('nav')
@@ -218,7 +237,7 @@ navigation.setAttribute('aria-label', '選択肢のページ操作')
 const back = button('戻る', () => {
   const nextMenu = parent(), previousMenu = menu
   if (!nextMenu) return
-  pendingInput.pop()
+  if (previousMenu !== 'detail' && previousMenu !== 'confirmation') pendingInput.pop()
   open(nextMenu)
   const index = options().findIndex(option => option.submenu === previousMenu)
   actions.querySelectorAll<HTMLButtonElement>('button')[Math.max(0, index)]?.focus({ preventScroll: true })
@@ -242,7 +261,7 @@ function render() {
   const list = options(), count = Math.max(1, Math.ceil(list.length / 6))
   page = Math.min(page, count - 1)
   actions.replaceChildren()
-  const names: Record<Menu, string> = { start: 'ゲーム開始', main: '行動を選択', move: '移動先', camera: '監視ルート', investigate: '調べる', detail: '調査結果', ai: 'AI', inventory: '持ち物', encounter: '遭遇対処', flee: '逃走先', end: '終了' }
+  const names: Record<Menu, string> = { start: 'ゲーム開始', main: '行動を選択', move: '移動先', camera: '監視ルート', investigate: '調べる', detail: '調査結果', confirmation: '確認', ai: 'AI', inventory: '持ち物', encounter: '遭遇対処', flee: '逃走先', end: '終了' }
   actions.setAttribute('aria-label', `${names[menu]}：${page + 1} / ${count}ページ`)
   for (let slot = 0; slot < 6; slot++) {
     const option = list[page * 6 + slot]
@@ -259,7 +278,7 @@ function render() {
           option.enter?.()
           open(option.submenu)
         } else {
-          confirmInput(inputLabel)
+          confirmInput(inputLabel, option.inputPath ?? pendingInput)
           option.run?.()
         }
         const nextOptions = options()
