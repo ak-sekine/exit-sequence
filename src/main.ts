@@ -18,7 +18,7 @@ function changeLanguage(nextLanguage: Language) {
   language = nextLanguage
   saveLanguage(language)
   pendingInput.length = 0
-  render()
+  open(languageParent === 'settings' ? 'main' : 'start')
 }
 let selectedTask: Task = 'power'
 function targetNames(): Record<Task, string> { return { power: t('powerPanel', language), control: t('controlTerminal', language), repair: t('repairSystem', language), parts: t('partsStorage', language), food: t('foodStorage', language), medical: t('spareBattery', language), observe: t('observationSystem', language), launch: t('returnShip', language) } }

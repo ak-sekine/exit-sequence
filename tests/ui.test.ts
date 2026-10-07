@@ -758,11 +758,10 @@ test('start language detection and shared selector redraw instantly, silently an
       assert.equal(environment.values.get(i18n.LANGUAGE_STORAGE_KEY), language)
       assert.deepEqual(ui.game.state, before)
       assert.deepEqual(ui.lines(), logs)
-      assert.deepEqual(optionLabels(ui), ['日本語', 'English'])
+      assert.deepEqual(optionLabels(ui), [language === 'ja' ? 'ゲーム開始' : 'START', 'LANGUAGE >'])
+      assert.equal(ui.navigation.children[0]!.disabled, true)
+      if (language !== 'en') ui.click('LANGUAGE >')
     }
-    ui.navigation.children[0]!.click()
-    assert.deepEqual(optionLabels(ui), ['START', 'LANGUAGE >'])
-    assert.equal(ui.navigation.children[0]!.disabled, true)
     const restored = fixture(true, environment)
     assert.deepEqual(optionLabels(restored), ['START', 'LANGUAGE >'])
   }
@@ -783,6 +782,7 @@ test('settings hierarchy preserves all state, RNG and past logs; new actions use
   ui.click('English')
   assert.deepEqual(ui.lines(), oldLogs)
   assert.deepEqual(ui.game.state, before)
+  assert.deepEqual(optionLabels(ui), englishMain)
   assert.equal(ui.log.attributes['aria-label'], 'Game log')
   assert.equal(ui.navigation.attributes['aria-label'], 'Choice page navigation')
   assert.equal(ui.navigation.children[0]!.textContent, 'BACK')
@@ -790,8 +790,6 @@ test('settings hierarchy preserves all state, RNG and past logs; new actions use
   assert.equal(ui.navigation.children[1]!.children[0]!.attributes['aria-label'], 'Previous page')
   assert.equal(ui.navigation.children[1]!.children[2]!.attributes['aria-label'], 'Next page')
   assert.equal(ui.navigation.children[2]!.attributes['aria-label'], 'HELP mode')
-  ui.navigation.children[0]!.click(); assert.deepEqual(optionLabels(ui), ['LANGUAGE >'])
-  ui.navigation.children[0]!.click(); assert.deepEqual(optionLabels(ui), englishMain)
   assert.equal(ui.actions.attributes['aria-label'], 'Choose an action: Page 1 / 1')
   ui.click('AI >'); ui.click('STATUS')
   assert.ok(ui.lines().includes('> AI STATUS'))
@@ -805,9 +803,8 @@ test('settings hierarchy preserves all state, RNG and past logs; new actions use
   assert.deepEqual(ui.lines().slice(0, oldLogs.length - 1), oldLogs.slice(0, -1))
   assert.ok(!ui.lines().slice(oldLogs.length).some(line => /[\u3040-\u30ff\u3400-\u9fff]/u.test(line)))
   ui.render('main'); ui.click('SETTINGS >'); ui.click('LANGUAGE >'); ui.click('日本語')
-  ui.navigation.children[0]!.click(); assert.deepEqual(optionLabels(ui), ['言語 >'])
-  ui.navigation.children[0]!.click()
   assert.deepEqual(optionLabels(ui), ['調べる >', '移動 >', '持ち物 >', 'AI >', '設定 >'])
+  assert.equal(ui.navigation.children[0]!.disabled, true)
 })
 
 test('English inventory and HELP preserve state, menu, history, paging and typewriter behavior', () => {
