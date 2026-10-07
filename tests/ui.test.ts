@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { Game, taskInfo, conditionNames } from '../src/game.ts'
-import { costs, descriptions, neighbors, rooms, baseMapLines } from '../src/map.ts'
+import { costs, descriptions, neighbors, rooms, baseMapLines, facilities, facilityGuideLines } from '../src/map.ts'
 
 // Exercise the real UI handlers with a small DOM adapter, without adding a test framework.
 class Element {
@@ -43,7 +43,7 @@ function fixture(reduce = true) {
   let timerId = 0
   const timers = new Map<number, () => void>()
   const context = vm.createContext({
-    Game, taskInfo, conditionNames, costs, descriptions, neighbors, rooms, baseMapLines,
+    Game, taskInfo, conditionNames, costs, descriptions, neighbors, rooms, baseMapLines, facilities, facilityGuideLines,
     window: { matchMedia: () => ({ matches: reduce, addEventListener() {} }) },
     setTimeout: (callback: () => void, delay: number) => {
       assert.equal(delay, 5)
@@ -83,6 +83,68 @@ function fixture(reduce = true) {
     enqueue: (...lines: string[]) => vm.runInContext(`appendLog(...${JSON.stringify(lines)})`, context) }
 }
 
+const expectedFacilities = [
+  '施設案内', '居住：居室、食堂、共用室', '医療：診療室、薬品庫', '観測：観測室、機器室',
+  '倉庫：資材庫、食糧庫', '管制：管制室、通信室', '電力：配電室、電源設備室',
+  '研究：研究室、保管室', '整備：整備室、工具庫', '発着：格納庫、発着管制室',
+]
+
+test('facility data covers exactly the nine current districts with prototype placements', () => {
+  assert.deepEqual(Object.keys(facilities), [...rooms])
+  assert.equal(Object.keys(facilities).length, 9)
+  assert.ok(!Object.keys(facilities).some(room => ['生命維持', '通信'].includes(room)))
+  assert.deepEqual(facilityGuideLines(), expectedFacilities)
+})
+
+test('facility guide and HELP are immediate inputs with typed, skippable, read-only bodies', () => {
+  for (const useHelp of [false, true]) for (const skip of [false, true]) {
+    const ui = fixture(false)
+    ui.flush(); ui.click('ゲーム開始'); ui.flush(); ui.click('持ち物 >')
+    assert.deepEqual(ui.actions.children.filter(e => e.tag === 'button').map(e => e.textContent), ['基地マップ', '施設案内'])
+    ui.game.state.items = ['修理部品', '食糧']
+    ui.game.state.turn = 3; ui.game.state.energy = 12; ui.game.state.enemyPrevious = '研究'
+    ui.game.state.feeds['居住:医療'] = { destination: '医療', passage: 'DARK', enemy: true, turn: 3 }
+    const before = structuredClone(ui.game.state)
+    ui.game.act = () => { throw new Error('Guide must not act') }
+    ;(ui.game as unknown as { random: () => number }).random = () => { throw new Error('Guide must not draw randomness') }
+    if (useHelp) ui.navigation.children[2]!.click()
+    const start = ui.lines().length - 1
+    ui.click('施設案内')
+    const input = `> ${useHelp ? 'HELP ' : ''}持ち物 施設案内`
+    assert.deepEqual(ui.lines().slice(start), [input, ''])
+    assert.equal(ui.helpMode(), false)
+    assert.equal(ui.navigation.children[2]!.attributes['aria-pressed'], 'false')
+    assert.ok(ui.actions.children.filter(e => e.tag === 'button').every(e => e.disabled))
+    ui.tick(); assert.equal(ui.lines().at(-1), useHelp ? '各' : '施')
+    if (skip) ui.log.click(); else ui.flush()
+    const body = useHelp ? ['各区画にある主な施設を確認する。', '施設の所在地を調べるための参照情報。', 'ENERGY消費・進行なし。'] : expectedFacilities
+    assert.deepEqual(ui.lines().slice(start), [input, '', ...body, '>'])
+    assert.deepEqual(ui.game.state, before)
+    assert.equal(ui.game.freshness('居住', '医療'), '最新')
+    assert.equal(ui.actions.attributes['aria-label'], '持ち物：1 / 1ページ')
+    assert.equal(ui.timers.size, 0)
+    ui.assertPrompt()
+  }
+})
+
+test('two fixed inventory entries share existing paging with items at the six-entry boundary', () => {
+  const ui = fixture(); ui.click('ゲーム開始')
+  ui.game.state.items = Array(5).fill('食糧'); ui.click('持ち物 >')
+  const labels = () => ui.actions.children.filter(e => e.tag === 'button').map(e => e.textContent)
+  const before = structuredClone(ui.game.state), logs = ui.lines()
+  assert.deepEqual(labels(), ['基地マップ', '施設案内', ...Array(4).fill('食糧')])
+  assert.equal(ui.actions.attributes['aria-label'], '持ち物：1 / 2ページ')
+  ui.navigation.children[1]!.children[2]!.click()
+  assert.deepEqual(labels(), ['食糧'])
+  assert.equal(ui.navigation.children[1]!.children[2]!.disabled, true)
+  ui.navigation.children[1]!.children[0]!.click()
+  assert.deepEqual(ui.lines(), logs)
+  assert.deepEqual(labels().slice(0, 2), ['基地マップ', '施設案内'])
+  assert.deepEqual(ui.game.state, before)
+  ui.navigation.children[0]!.click()
+  assert.equal(ui.actions.attributes['aria-label'], '行動を選択：1 / 1ページ')
+})
+
 test('main has four intent entries and information reads never advance state or randomness', () => {
   const ui = fixture()
   ui.click('ゲーム開始')
@@ -100,7 +162,7 @@ test('main has four intent entries and information reads never advance state or 
   assert.ok(ui.lines().includes('> AI 状態確認'))
   ui.navigation.children[0]!.click()
   ui.click('持ち物 >')
-  assert.deepEqual(labels(), ['基地マップ', '修理部品', '食糧'])
+  assert.deepEqual(labels(), ['基地マップ', '施設案内', '修理部品', '食糧'])
   const first = ui.lines().length - 1
   ui.click('基地マップ'); ui.click('基地マップ')
   assert.ok(ui.lines().includes('> 持ち物 基地マップ'))
@@ -285,7 +347,7 @@ test('start, confirmations, submenu inputs and navigation preserve a single prom
   ui.click('持ち物 >')
   const before = ui.lines()
   ui.navigation.children[1]!.children[2]!.click()
-  assert.equal(ui.actions.children.filter(child => child.tag === 'button').length, 3)
+  assert.equal(ui.actions.children.filter(child => child.tag === 'button').length, 4)
   ui.navigation.children[1]!.children[0]!.click()
   assert.deepEqual(ui.lines(), before)
   ui.navigation.children[1]!.children[2]!.click()
@@ -513,7 +575,7 @@ test('target menus have no cancel; back alone returns silently without world cha
   ui.navigation.children[0]!.click()
   assert.equal(JSON.stringify(ui.game.state), state)
   assert.deepEqual(ui.lines(), logs)
-  ui.game.state.items = Array(5).fill('食糧'); ui.render('inventory')
+  ui.game.state.items = Array(4).fill('食糧'); ui.render('inventory')
   assert.equal(ui.navigation.children[1]!.children[1]!.textContent, '1 / 1')
   assert.equal(ui.navigation.children[1]!.children[2]!.disabled, true)
   assert.ok(!ui.lines().includes('> キャンセル'))

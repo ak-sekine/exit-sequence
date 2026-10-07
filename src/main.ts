@@ -1,7 +1,7 @@
 import './style.css'
 import { Game, taskInfo, conditionNames } from './game'
 import type { Action, Task } from './game'
-import { costs, descriptions, neighbors, baseMapLines } from './map'
+import { costs, descriptions, neighbors, baseMapLines, facilityGuideLines } from './map'
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('App element was not found')
@@ -185,6 +185,7 @@ function options(): Option[] {
   ]
   if (menu === 'inventory') return [
     { label: '基地マップ', helpInput: '持ち物 基地マップ', help: () => ['基地の配置・接続を参照する携行データ。消費・進行なし。敵・通路状態・コストは取得しない。'], run: () => appendLog(...mapLines()) },
+    { label: '施設案内', helpInput: '持ち物 施設案内', help: () => ['各区画にある主な施設を確認する。', '施設の所在地を調べるための参照情報。', 'ENERGY消費・進行なし。'], run: () => appendLog(...facilityGuideLines()) },
     ...s.items.map(item => ({ label: item, helpInput: `持ち物 ${item}`, help: () => itemHelp(item), run: () => appendLog(...itemHelp(item)) })),
   ]
   if (menu === 'investigate') {

@@ -1,5 +1,20 @@
 export const rooms = ['居住', '医療', '観測', '倉庫', '管制', '電力管理', '研究', '整備', '発着'] as const
 export type Room = typeof rooms[number]
+// Prototype placements only; keep internal facilities grouped by their district.
+export const facilities: Readonly<Record<Room, readonly string[]>> = {
+  居住: ['居室', '食堂', '共用室'],
+  医療: ['診療室', '薬品庫'],
+  観測: ['観測室', '機器室'],
+  倉庫: ['資材庫', '食糧庫'],
+  管制: ['管制室', '通信室'],
+  電力管理: ['配電室', '電源設備室'],
+  研究: ['研究室', '保管室'],
+  整備: ['整備室', '工具庫'],
+  発着: ['格納庫', '発着管制室'],
+}
+export function facilityGuideLines(): string[] {
+  return ['施設案内', ...rooms.map(room => `${room === '電力管理' ? '電力' : room}：${facilities[room].join('、')}`)]
+}
 export type Passage = 'NORMAL' | 'DARK' | 'BLOCKED' | 'CLOSED'
 export const edges: readonly (readonly [Room, Room])[] = [
   ['居住', '医療'], ['医療', '観測'],
