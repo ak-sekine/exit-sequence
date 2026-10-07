@@ -158,7 +158,7 @@ export class Game {
         s.feeds[`${s.location}:${action.target}`] = feed
         log.push('CAMERA FEED（最新・世界更新後）', `${action.target}区方面`, `敵：${feed.enemy ? '防災ロボットあり' : 'なし'}`, `通路：${feed.passage}`, `推定 ENERGY：${feed.passage === 'CLOSED' ? '移動不可' : costs[feed.passage]}`)
       }
-      if (s.location === '発着') log.push(this.ready() ? 'AI：帰還4条件達成。設備から発進できる。' : 'AI：帰還条件不足。設備から条件を確認できる。')
+      if (s.location === '発着') log.push(this.ready() ? 'AI：帰還4条件達成。調べる → 帰還船から発進できる。' : 'AI：帰還条件不足。AI → 状態確認で条件を確認できる。')
     }
     return log
   }

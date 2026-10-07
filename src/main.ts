@@ -1,14 +1,23 @@
 import './style.css'
 import { Game, taskInfo, conditionNames } from './game'
 import type { Action, Task } from './game'
-import { costs, descriptions, neighbors } from './map'
+import { costs, descriptions, neighbors, rooms } from './map'
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('App element was not found')
 const game = new Game()
-type Menu = 'start' | 'main' | 'move' | 'camera' | 'equipment' | 'inventory' | 'encounter' | 'flee' | 'end'
-type Option = { label: string; inputLabel?: string; submenu?: Menu; run?: () => void; disabled?: boolean; help?: () => string[]; helpInput?: string }
+type Menu = 'start' | 'main' | 'move' | 'camera' | 'investigate' | 'detail' | 'ai' | 'inventory' | 'encounter' | 'flee' | 'end'
+type Option = { label: string; inputLabel?: string; submenu?: Menu; enter?: () => void; run?: () => void; disabled?: boolean; help?: () => string[]; helpInput?: string }
 let menu: Menu = 'start', page = 0
+let selectedTask: Task = 'power'
+const targetNames: Record<Task, string> = { power: '配電盤', control: '管制端末', repair: '整備設備', parts: '部品保管箱', food: '食糧保管庫', medical: '予備バッテリー', observe: '観測装置', launch: '帰還船' }
+function mapLines(): string[] {
+  const location = game.state.location
+  return ['基地マップ（* 現在地 / 接続一覧）', `現在地：${location}区`,
+    '外周：居住・医療・観測・研究・整備・倉庫', '内周：生命維持・通信・管制・電力管理', '発着：外周／内周から接続',
+    ...rooms.flatMap(room => [`[${room}${room === location ? '*' : ''}]`, ...neighbors(room).map(target => `  - ${target}区`)]),
+    '配置と接続のみ。通路状態・敵・コストは監視カメラで確認。']
+}
 let helpMode = false
 const pendingInput: string[] = []
 const terminal = document.createElement('main')
@@ -151,30 +160,38 @@ function options(): Option[] {
   if (menu === 'start') return [{ label: 'ゲーム開始', run: restart }]
   if (menu === 'end') return [{ label: '最初から', run: restart }, { label: '最終状態確認', run: () => appendLog(...game.statusLines()) }]
   if (menu === 'main') return [
-    { label: '周囲を見る', run: () => appendLog(`${s.location}区`, descriptions[s.location]) },
+    { label: '調べる >', submenu: 'investigate' },
     { label: '移動 >', submenu: 'move' },
-    { label: '監視 >', submenu: 'camera' },
-    { label: '設備 >', submenu: 'equipment' },
     { label: '持ち物 >', submenu: 'inventory' },
-    { label: '状態確認', run: () => appendLog(...game.statusLines()) },
+    { label: 'AI >', submenu: 'ai' },
+  ]
+  if (menu === 'ai') return [
+    { label: '状態確認', helpInput: 'AI 状態確認', help: () => ['現在地・ENERGY・帰還条件を確認する。消費・進行なし。'], run: () => appendLog(...game.statusLines()) },
+    { label: '監視カメラ >', submenu: 'camera' },
   ]
   if (menu === 'encounter') return [
     { label: '隠れる', help: () => ['成功率：80%', 'ENERGY：1', '失敗時：追加ENERGY 1を消費して離脱する。'], run: () => act({ type: 'hide' }) },
     { label: '強行突破', help: () => ['成功率：60%', 'ENERGY：2', '失敗時：追加ENERGY 1を消費して離脱する。'], run: () => act({ type: 'force' }) },
     { label: '逃げる >', submenu: 'flee' },
   ]
-  if (menu === 'inventory') return s.items.length ? s.items.map(item => ({ label: item, helpInput: `持ち物 ${item}`, help: () => itemHelp(item), run: () => appendLog(...itemHelp(item)) })) : [{ label: '持ち物なし', run: () => {}, disabled: true }]
-  if (menu === 'equipment') {
+  if (menu === 'inventory') return [
+    { label: '基地マップ', helpInput: '持ち物 基地マップ', help: () => ['基地の配置・接続を参照する携行データ。消費・進行なし。敵・通路状態・コストは取得しない。'], run: () => appendLog(...mapLines()) },
+    ...s.items.map(item => ({ label: item, helpInput: `持ち物 ${item}`, help: () => itemHelp(item), run: () => appendLog(...itemHelp(item)) })),
+  ]
+  if (menu === 'investigate') {
     const tasks = (Object.keys(taskInfo) as Task[]).filter(task => taskInfo[task].room === s.location)
-    const result: Option[] = tasks.map(task => {
-      const info = taskInfo[task], done = game.taskDone(task)
-      return { label: info.label, helpInput: `設備 ${info.label}`, help: () => taskHelp(task), disabled: done || (task === 'launch' && !game.ready()), run: () => act({ type: 'task', task }) }
-    })
-    if (s.location === '発着') result.push({ label: '帰還条件を確認', run: () => appendLog(...game.statusLines()) })
-    return result.length ? result : [{ label: '操作できる設備なし', run: () => {}, disabled: true }]
+    return [{ label: '周囲', helpInput: '調べる 周囲', help: () => ['現在地の説明を読む。消費・進行なし。'], run: () => appendLog(`${s.location}区`, descriptions[s.location]) },
+      ...tasks.map(task => ({ label: `${targetNames[task]} >`, submenu: 'detail' as const, helpInput: `調べる ${targetNames[task]}`, help: () => taskHelp(task), enter: () => {
+        selectedTask = task
+        appendLog(`${targetNames[task]}を確認した。`, descriptions[s.location], ...taskHelp(task))
+      } }))]
+  }
+  if (menu === 'detail') {
+    const task = selectedTask
+    return [{ label: taskInfo[task].label, helpInput: `調べる ${targetNames[task]} ${taskInfo[task].label}`, help: () => taskHelp(task), disabled: game.taskDone(task) || (task === 'launch' && !game.ready()), run: () => act({ type: 'task', task }) }]
   }
   return neighbors(s.location).map(target => {
-    if (menu === 'camera') return { label: `${target}区`, helpInput: `監視 ${target}区`, help: () => ['ENERGY：1', '選択した1ルートだけを確認する。', '通路状態・敵情報・推定ENERGYを世界更新後に取得する。', '情報は次の有効な世界行動で古くなる。', 'このHELPでは監視を実行しない。'], run: () => act({ type: 'camera', target }) }
+    if (menu === 'camera') return { label: `${target}区`, helpInput: `AI 監視カメラ ${target}区`, help: () => ['ENERGY：1', '選択した1ルートだけを確認する。', '通路状態・敵情報・推定ENERGYを世界更新後に取得する。', '情報は次の有効な世界行動で古くなる。', 'このHELPでは監視を実行しない。'], run: () => act({ type: 'camera', target }) }
     const closed = game.passage(s.location, target) === 'CLOSED'
     const fleeing = menu === 'flee'
     return { label: `${target}区`, disabled: closed, helpInput: `${fleeing ? '逃げる' : '移動'} ${target}区`, help: () => {
@@ -191,7 +208,9 @@ function options(): Option[] {
 }
 function parent(): Menu | null {
   if (menu === 'flee') return 'encounter'
-  return ['move', 'camera', 'equipment', 'inventory'].includes(menu) ? 'main' : null
+  if (menu === 'camera') return 'ai'
+  if (menu === 'detail') return 'investigate'
+  return ['move', 'investigate', 'inventory', 'ai'].includes(menu) ? 'main' : null
 }
 const navigation = document.createElement('nav')
 navigation.className = 'action-navigation'
@@ -201,8 +220,8 @@ const back = button('戻る', () => {
   if (!nextMenu) return
   pendingInput.pop()
   open(nextMenu)
-  const index = { move: 1, camera: 2, equipment: 3, inventory: 4, flee: 2 }[previousMenu as 'move' | 'camera' | 'equipment' | 'inventory' | 'flee']
-  actions.querySelectorAll<HTMLButtonElement>('button')[index]?.focus({ preventScroll: true })
+  const index = options().findIndex(option => option.submenu === previousMenu)
+  actions.querySelectorAll<HTMLButtonElement>('button')[Math.max(0, index)]?.focus({ preventScroll: true })
 })
 back.className = 'back-button'
 back.setAttribute('aria-label', '親メニューへ戻る')
@@ -223,7 +242,7 @@ function render() {
   const list = options(), count = Math.max(1, Math.ceil(list.length / 6))
   page = Math.min(page, count - 1)
   actions.replaceChildren()
-  const names: Record<Menu, string> = { start: 'ゲーム開始', main: '行動を選択', move: '移動先', camera: '監視ルート', equipment: '設備', inventory: '持ち物', encounter: '遭遇対処', flee: '逃走先', end: '終了' }
+  const names: Record<Menu, string> = { start: 'ゲーム開始', main: '行動を選択', move: '移動先', camera: '監視ルート', investigate: '調べる', detail: '調査結果', ai: 'AI', inventory: '持ち物', encounter: '遭遇対処', flee: '逃走先', end: '終了' }
   actions.setAttribute('aria-label', `${names[menu]}：${page + 1} / ${count}ページ`)
   for (let slot = 0; slot < 6; slot++) {
     const option = list[page * 6 + slot]
@@ -237,6 +256,7 @@ function render() {
           render()
         } else if (option.submenu) {
           pendingInput.push(inputLabel)
+          option.enter?.()
           open(option.submenu)
         } else {
           confirmInput(inputLabel)

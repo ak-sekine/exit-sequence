@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { Game, taskInfo, conditionNames } from '../src/game.ts'
-import { costs, descriptions, neighbors } from '../src/map.ts'
+import { costs, descriptions, neighbors, rooms } from '../src/map.ts'
 
 // Exercise the real UI handlers with a small DOM adapter, without adding a test framework.
 class Element {
@@ -43,7 +43,7 @@ function fixture(reduce = true) {
   let timerId = 0
   const timers = new Map<number, () => void>()
   const context = vm.createContext({
-    Game, taskInfo, conditionNames, costs, descriptions, neighbors,
+    Game, taskInfo, conditionNames, costs, descriptions, neighbors, rooms,
     window: { matchMedia: () => ({ matches: reduce, addEventListener() {} }) },
     setTimeout: (callback: () => void, delay: number) => {
       assert.equal(delay, 5)
@@ -83,6 +83,108 @@ function fixture(reduce = true) {
     enqueue: (...lines: string[]) => vm.runInContext(`appendLog(...${JSON.stringify(lines)})`, context) }
 }
 
+test('main has four intent entries and information reads never advance state or randomness', () => {
+  const ui = fixture()
+  ui.click('ゲーム開始')
+  const labels = () => ui.actions.children.filter(e => e.tag === 'button').map(e => e.textContent)
+  assert.deepEqual(labels(), ['調べる >', '移動 >', '持ち物 >', 'AI >'])
+  ui.game.state.items = ['修理部品', '食糧']
+  ui.game.state.feeds['居住:医療'] = { destination: '医療', passage: 'DARK', enemy: true, turn: 0 }
+  const before = JSON.stringify(ui.game.state)
+  ui.game.act = () => { throw new Error('Reference must not call act') }
+  ;(ui.game as unknown as { random: () => number }).random = () => { throw new Error('Reference must not draw randomness') }
+  ui.click('調べる >'); ui.click('周囲')
+  assert.ok(ui.lines().includes('> 調べる 周囲'))
+  ui.navigation.children[0]!.click()
+  ui.click('AI >'); ui.click('状態確認')
+  assert.ok(ui.lines().includes('> AI 状態確認'))
+  ui.navigation.children[0]!.click()
+  ui.click('持ち物 >')
+  assert.deepEqual(labels(), ['基地マップ', '修理部品', '食糧'])
+  const first = ui.lines().length - 1
+  ui.click('基地マップ'); ui.click('基地マップ')
+  assert.ok(ui.lines().includes('> 持ち物 基地マップ'))
+  const map = ui.lines().slice(first)
+  assert.ok(map.includes('[居住*]'))
+  for (const room of rooms) {
+    const index = map.indexOf(`[${room}${room === '居住' ? '*' : ''}]`)
+    assert.ok(index >= 0)
+    assert.deepEqual(map.slice(index + 1, index + 1 + neighbors(room).length), neighbors(room).map(target => `  - ${target}区`))
+  }
+  assert.ok(!map.some(line => /DARK|防災ロボット|推定 ENERGY/.test(line)))
+  assert.equal(JSON.stringify(ui.game.state), before)
+  ui.navigation.children[2]!.click(); ui.click('基地マップ')
+  assert.ok(ui.lines().includes('> HELP 持ち物 基地マップ'))
+  assert.equal(ui.helpMode(), false)
+  assert.equal(JSON.stringify(ui.game.state), before)
+})
+
+test('investigation shows state before execution and back preserves one level and HELP', () => {
+  const ui = fixture()
+  ui.click('ゲーム開始')
+  ui.game.state.location = '電力管理'
+  const before = JSON.stringify(ui.game.state)
+  ui.click('調べる >')
+  const inputCount = ui.lines().filter(line => line.startsWith('> ')).length
+  ui.click('配電盤 >')
+  assert.ok(ui.lines().includes('配電盤を確認した。'))
+  assert.equal(ui.lines().filter(line => line.startsWith('> ')).length, inputCount)
+  assert.equal(JSON.stringify(ui.game.state), before)
+  const logs = ui.lines()
+  ui.navigation.children[2]!.click()
+  ui.navigation.children[0]!.click()
+  assert.ok(ui.actions.children.some(e => e.textContent === '配電盤 >'))
+  assert.equal(ui.helpMode(), true)
+  assert.deepEqual(ui.lines(), logs)
+  ui.click('配電盤 >')
+  assert.ok(ui.lines().includes('> HELP 調べる 配電盤'))
+  assert.equal(ui.helpMode(), false)
+  ui.click('配電盤 >'); ui.click('帰還船へ配電する')
+  assert.ok(ui.lines().includes('> 調べる 配電盤 帰還船へ配電する'))
+  assert.equal(ui.game.state.conditions.power, true)
+  assert.equal(ui.game.state.energy, 19)
+  assert.equal(ui.game.state.turn, 1)
+})
+
+test('each investigation detail uses the selected task even with reduced motion', () => {
+  const names = { power: '配電盤', control: '管制端末', repair: '整備設備', parts: '部品保管箱', food: '食糧保管庫', medical: '予備バッテリー', observe: '観測装置', launch: '帰還船' }
+  for (const task of Object.keys(taskInfo) as (keyof typeof taskInfo)[]) {
+    const ui = fixture()
+    ui.click('ゲーム開始'); ui.game.state.location = taskInfo[task].room
+    ui.game.state.items = ['修理部品']
+    ui.game.state.conditions = { power: true, control: true, repair: true, food: true }
+    if (task === 'power' || task === 'control' || task === 'repair' || task === 'food') ui.game.state.conditions[task] = false
+    if (task === 'parts') { ui.game.state.items = []; ui.game.state.conditions.repair = false }
+    const before = JSON.stringify(ui.game.state)
+    ui.click('調べる >'); ui.click(`${names[task]} >`)
+    assert.equal(JSON.stringify(ui.game.state), before)
+    assert.equal(ui.actions.children[0]!.textContent, taskInfo[task].label)
+    assert.equal(ui.actions.children[0]!.disabled, false)
+    ui.click(taskInfo[task].label)
+    assert.equal(ui.game.state.turn, 1)
+    assert.ok(ui.lines().includes(`> 調べる ${names[task]} ${taskInfo[task].label}`))
+    if (task === 'launch') assert.equal(ui.game.state.status, 'clear')
+  }
+})
+
+test('camera returns to AI and retains full HELP and normal history paths', () => {
+  const ui = fixture()
+  ui.click('ゲーム開始'); ui.click('AI >'); ui.click('監視カメラ >')
+  const before = JSON.stringify(ui.game.state), logs = ui.lines()
+  ui.navigation.children[2]!.click(); ui.navigation.children[0]!.click()
+  assert.ok(ui.actions.children.some(e => e.textContent === '状態確認'))
+  assert.equal(ui.helpMode(), true)
+  assert.deepEqual(ui.lines(), logs)
+  ui.click('監視カメラ >'); ui.click('医療区')
+  assert.ok(ui.lines().includes('> HELP AI 監視カメラ 医療区'))
+  assert.equal(JSON.stringify(ui.game.state), before)
+  ui.click('医療区')
+  assert.ok(ui.lines().includes('> AI 監視カメラ 医療区'))
+  assert.equal(ui.game.state.energy, 19)
+  assert.equal(ui.game.state.turn, 1)
+  assert.equal(ui.game.freshness('居住', '医療'), '最新')
+})
+
 test('typing queues characters and lines, blocks actions, and finishes with one prompt', () => {
   const ui = fixture(false)
   assert.deepEqual(ui.lines(), [])
@@ -96,15 +198,17 @@ test('typing queues characters and lines, blocks actions, and finishes with one 
   ui.click('ゲーム開始')
   assert.deepEqual(ui.lines().slice(-2), ['> ゲーム開始', ''])
   ui.flush()
+  ui.click('AI >')
   const before = ui.lines().slice(0, -1)
   ui.click('状態確認')
-  assert.deepEqual(ui.lines().slice(-2), ['> 状態確認', ''])
+  assert.deepEqual(ui.lines().slice(-2), ['> AI 状態確認', ''])
   ui.click('状態確認')
   ui.tick(); assert.equal(ui.lines().at(-1), 'L')
   ui.flush()
-  assert.deepEqual(ui.lines(), [...before, '> 状態確認', '', ...ui.game.statusLines(), '>'])
+  assert.deepEqual(ui.lines(), [...before, '> AI 状態確認', '', ...ui.game.statusLines(), '>'])
   ui.assertPrompt()
   ui.game.state.items = Array(8).fill('食糧')
+  ui.navigation.children[0]!.click()
   ui.click('持ち物 >')
   ui.enqueue('A😀', 'B'); ui.enqueue('C')
   ui.navigation.children[0]!.click()
@@ -125,7 +229,7 @@ test('skip drains the queue once, cancels timers and restores original disabled 
   ui.assertPrompt()
   ui.click('ゲーム開始'); ui.log.click()
   ui.game.state.location = '発着'
-  ui.render('equipment')
+  ui.click('調べる >'); ui.click('帰還船 >'); ui.log.click()
   ui.enqueue('first', '', 'last')
   ui.tick(); ui.log.click()
   const result = ui.lines()
@@ -133,7 +237,7 @@ test('skip drains the queue once, cancels timers and restores original disabled 
   assert.deepEqual(ui.lines(), result)
   assert.deepEqual(result.slice(-4), ['first', '', 'last', '>'])
   assert.equal(ui.actions.children[0]!.disabled, true)
-  assert.equal(ui.actions.children[1]!.disabled, false)
+  assert.equal(ui.navigation.children[0]!.disabled, false)
   assert.equal(ui.timers.size, 0)
   ui.assertPrompt()
 })
@@ -154,7 +258,7 @@ test('end outputs lock restart; restart and reduced motion preserve identical ou
   animated.flush()
   assert.deepEqual(animated.lines(), immediate.lines())
   animated.click('ゲーム開始'); immediate.click('ゲーム開始'); animated.flush()
-  animated.click('状態確認'); immediate.click('状態確認'); animated.flush()
+  animated.click('AI >'); immediate.click('AI >'); animated.click('状態確認'); immediate.click('状態確認'); animated.flush()
   assert.deepEqual(animated.lines(), immediate.lines())
   assert.equal(immediate.timers.size, 0)
 })
@@ -166,7 +270,7 @@ test('start, confirmations, submenu inputs and navigation preserve a single prom
   assert.deepEqual(ui.lines().slice(3, 7), ['> ゲーム開始', '', 'EXIT SEQUENCE', 'SYSTEM ONLINE'])
   assert.equal(ui.actions.children.length, 6)
   const state = JSON.stringify(ui.game.state)
-  for (const label of ['移動', '監視', '設備', '持ち物']) {
+  for (const label of ['調べる', '移動', '持ち物', 'AI']) {
     const before = ui.lines()
     ui.click(`${label} >`)
     assert.deepEqual(ui.lines(), before)
@@ -175,17 +279,18 @@ test('start, confirmations, submenu inputs and navigation preserve a single prom
     assert.deepEqual(ui.lines(), before)
     ui.assertPrompt()
   }
-  ui.click('状態確認')
-  assert.ok(ui.lines().includes('> 状態確認'))
+  ui.click('AI >'); ui.click('状態確認')
+  assert.ok(ui.lines().includes('> AI 状態確認'))
   assert.equal(JSON.stringify(ui.game.state), state)
   ui.assertPrompt()
 
+  ui.navigation.children[0]!.click()
   // Supply extra display-only items to verify both paging handlers.
   ui.game.state.items = Array(8).fill('食糧')
   ui.click('持ち物 >')
   const before = ui.lines()
   ui.navigation.children[1]!.children[2]!.click()
-  assert.equal(ui.actions.children.filter(child => child.tag === 'button').length, 2)
+  assert.equal(ui.actions.children.filter(child => child.tag === 'button').length, 3)
   ui.navigation.children[1]!.children[0]!.click()
   assert.deepEqual(ui.lines(), before)
   ui.navigation.children[1]!.children[2]!.click()
@@ -194,8 +299,8 @@ test('start, confirmations, submenu inputs and navigation preserve a single prom
   ui.click('食糧')
   assert.equal(ui.lines().filter(line => line === '> 持ち物 食糧').length, 2)
   ui.navigation.children[0]!.click()
-  ui.click('周囲を見る')
-  assert.equal(ui.lines().filter(line => line === '> 周囲を見る').length, 1)
+  ui.click('調べる >'); ui.click('周囲'); ui.navigation.children[0]!.click()
+  assert.equal(ui.lines().filter(line => line === '> 調べる 周囲').length, 1)
   assert.equal(JSON.stringify(ui.game.state), JSON.stringify({ ...JSON.parse(state), items: Array(8).fill('食糧') }))
   ui.assertPrompt()
 })
@@ -244,15 +349,19 @@ test('camera, equipment and flee confirm one concise selection path', () => {
     if (kind === 'flee') { ui.game.state.encounter = true; ui.render('encounter') }
     const label = { camera: '監視', equipment: '設備', flee: '逃げる' }[kind]
     const before = ui.lines(), state = JSON.stringify(ui.game.state)
-    ui.click(`${label} >`)
+    if (kind === 'camera') { ui.click('AI >'); ui.click('監視カメラ >') }
+    else if (kind === 'equipment') ui.click('調べる >')
+    else ui.click('逃げる >')
     assert.deepEqual(ui.lines(), before)
     assert.equal(JSON.stringify(ui.game.state), state)
     ui.assertPrompt()
     const target = kind === 'equipment' ? '帰還船へ配電する' : '医療区'
+    if (kind === 'equipment') ui.click('配電盤 >')
+    const selectionStart = ui.lines().length
     ui.click(target)
-    const added = ui.lines().slice(before.length - 1)
+    const added = ui.lines().slice(selectionStart - 1)
     assert.equal(added.filter(line => line.startsWith('> ')).length, 1)
-    assert.equal(added[0], `> ${label} ${target}`)
+    assert.equal(added[0], `> ${kind === 'camera' ? 'AI 監視カメラ' : kind === 'equipment' ? '調べる 配電盤' : label} ${target}`)
     assert.equal(added[1], '')
     assert.equal(ui.game.state.turn, 1)
     ui.assertPrompt()
@@ -288,7 +397,7 @@ test('fatal movement and launch output end with a prompt for restart', () => {
   ui.click('最初から'); ui.log.click()
   ui.game.state.location = '発着'
   ui.game.state.conditions = { power: true, control: true, repair: true, food: true }
-  ui.click('設備 >'); ui.click('帰還船を発進する')
+  ui.click('調べる >'); ui.click('帰還船 >'); ui.log.click(); ui.click('帰還船を発進する')
   assert.equal(ui.actions.children[0]!.disabled, true)
   ui.log.click()
   assert.ok(ui.lines().includes('GAME CLEAR'))
@@ -309,9 +418,10 @@ test('HELP waiting survives navigation and unrelated actions; manual toggle is s
   assert.equal(help.attributes['aria-pressed'], 'true')
   assert.ok(help.className.includes('help-active'))
   assert.deepEqual(ui.lines(), started)
-  ui.click('周囲を見る')
-  assert.equal(ui.helpMode(), true)
-  for (const label of ['移動', '監視', '設備', '持ち物']) {
+  ui.click('調べる >'); ui.click('周囲'); ui.navigation.children[0]!.click()
+  assert.equal(ui.helpMode(), false)
+  help.click()
+  for (const label of ['調べる', '移動', '持ち物', 'AI']) {
     const state = JSON.stringify(ui.game.state), logs = ui.lines()
     ui.click(`${label} >`)
     assert.equal(ui.helpMode(), true)
@@ -347,17 +457,19 @@ test('all HELP targets read state without actions or random calls and retain the
     if (kind === 'inventory') ui.game.state.items = ['修理部品']
     if (['hide', 'force', 'flee'].includes(kind)) ui.game.state.encounter = true
     const menu = ['hide', 'force'].includes(kind) ? 'encounter' : ['launch', 'supply', 'done'].includes(kind) ? 'equipment' : kind
-    ui.render(menu)
+    ui.render(menu === 'equipment' ? 'investigate' : menu)
     const label = { move: '医療区', camera: '医療区', equipment: '帰還船へ配電する', inventory: '修理部品', hide: '隠れる', force: '強行突破', flee: '医療区', launch: '帰還船を発進する', supply: '予備バッテリーを回収', done: '帰還船へ配電する' }[kind]
     const operation = { move: '移動', camera: '監視', equipment: '設備', inventory: '持ち物', hide: '', force: '', flee: '逃げる', launch: '設備', supply: '設備', done: '設備' }[kind]
     const before = JSON.stringify(ui.game.state)
     ui.game.act = () => { throw new Error('HELP must not call act') }
     ;(ui.game as unknown as { random: () => number }).random = () => { throw new Error('HELP must not draw random numbers') }
     ui.navigation.children[2]!.click()
-    ui.click(label)
+    const targetLabel = ['equipment', 'done'].includes(kind) ? '配電盤 >' : kind === 'launch' ? '帰還船 >' : kind === 'supply' ? '予備バッテリー >' : label
+    ui.click(targetLabel)
     assert.equal(JSON.stringify(ui.game.state), before)
-    assert.ok(ui.lines().includes(`> HELP ${operation ? operation + ' ' : ''}${label}`))
-    assert.ok(ui.actions.children.some(e => e.children[0]?.textContent === label))
+    const path = ['equipment', 'done'].includes(kind) ? '調べる 配電盤' : kind === 'launch' ? '調べる 帰還船' : kind === 'supply' ? '調べる 予備バッテリー' : `${kind === 'camera' ? 'AI 監視カメラ' : operation}${operation ? ' ' : ''}${label}`
+    assert.ok(ui.lines().includes(`> HELP ${path}`))
+    assert.ok(ui.actions.children.some(e => e.children[0]?.textContent === targetLabel))
     assert.equal(ui.helpMode(), false)
     assert.equal(ui.navigation.children[2]!.attributes['aria-pressed'], 'false')
     assert.ok(!ui.navigation.children[2]!.className.includes('help-active'))
@@ -389,7 +501,7 @@ test('route HELP reveals only known information, keeps freshness and allows CLOS
 test('target menus have no cancel; back alone returns silently without world changes', () => {
   const ui = fixture()
   ui.click('ゲーム開始')
-  for (const label of ['移動', '監視', '設備', '持ち物']) {
+  for (const label of ['調べる', '移動', '持ち物', 'AI']) {
     ui.click(`${label} >`)
     const before = JSON.stringify(ui.game.state)
     const logs = ui.lines()
@@ -405,7 +517,7 @@ test('target menus have no cancel; back alone returns silently without world cha
   ui.navigation.children[0]!.click()
   assert.equal(JSON.stringify(ui.game.state), state)
   assert.deepEqual(ui.lines(), logs)
-  ui.game.state.items = Array(6).fill('食糧'); ui.render('inventory')
+  ui.game.state.items = Array(5).fill('食糧'); ui.render('inventory')
   assert.equal(ui.navigation.children[1]!.children[1]!.textContent, '1 / 1')
   assert.equal(ui.navigation.children[1]!.children[2]!.disabled, true)
   assert.ok(!ui.lines().includes('> キャンセル'))
