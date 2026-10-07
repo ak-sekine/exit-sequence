@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { Game, taskInfo, conditionNames } from '../src/game.ts'
-import { costs, descriptions, neighbors, rooms } from '../src/map.ts'
+import { costs, descriptions, neighbors, rooms, baseMapLines } from '../src/map.ts'
 
 // Exercise the real UI handlers with a small DOM adapter, without adding a test framework.
 class Element {
@@ -43,7 +43,7 @@ function fixture(reduce = true) {
   let timerId = 0
   const timers = new Map<number, () => void>()
   const context = vm.createContext({
-    Game, taskInfo, conditionNames, costs, descriptions, neighbors, rooms,
+    Game, taskInfo, conditionNames, costs, descriptions, neighbors, rooms, baseMapLines,
     window: { matchMedia: () => ({ matches: reduce, addEventListener() {} }) },
     setTimeout: (callback: () => void, delay: number) => {
       assert.equal(delay, 5)
@@ -105,12 +105,7 @@ test('main has four intent entries and information reads never advance state or 
   ui.click('基地マップ'); ui.click('基地マップ')
   assert.ok(ui.lines().includes('> 持ち物 基地マップ'))
   const map = ui.lines().slice(first)
-  assert.ok(map.includes('[居住*]'))
-  for (const room of rooms) {
-    const index = map.indexOf(`[${room}${room === '居住' ? '*' : ''}]`)
-    assert.ok(index >= 0)
-    assert.deepEqual(map.slice(index + 1, index + 1 + neighbors(room).length), neighbors(room).map(target => `  - ${target}区`))
-  }
+  for (const line of baseMapLines('居住')) assert.ok(map.includes(line))
   assert.ok(!map.some(line => /DARK|防災ロボット|推定 ENERGY/.test(line)))
   assert.equal(JSON.stringify(ui.game.state), before)
   ui.navigation.children[2]!.click(); ui.click('基地マップ')
@@ -647,4 +642,22 @@ test('battery yes reuses medical action, caps at 20 and completed investigation 
     assert.equal(ui.helpMode(), false)
     assert.equal(JSON.stringify(ui.game.state), before)
   }
+})
+
+test('map marker follows movement; move and camera menus use grid neighbors', () => {
+  const ui = fixture(); ui.click('ゲーム開始')
+  for (const room of rooms) {
+    ui.game.state.location = room
+    for (const menu of ['move','camera']) {
+      ui.render(menu)
+      assert.deepEqual(ui.actions.children.filter(e => e.tag === 'button').map(e => e.textContent), neighbors(room).map(r => r + '区'))
+    }
+  }
+  ui.game.state.location = '居住'; ui.game.state.enemy = '研究'
+  for (const key of Object.keys(ui.game.state.passages)) ui.game.state.passages[key] = 'NORMAL'
+  ui.render('move'); ui.click('医療区')
+  ui.render('inventory'); const before = JSON.stringify(ui.game.state)
+  ui.click('基地マップ')
+  assert.ok(ui.lines().includes('[ 居住]─[*医療]─[ 観測]'))
+  assert.equal(JSON.stringify(ui.game.state), before)
 })

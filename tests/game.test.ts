@@ -1,19 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Game } from '../src/game.ts'
-import { costs, edgeKey, edges, neighbors, rooms } from '../src/map.ts'
+import { Game, taskInfo } from '../src/game.ts'
+import { costs, edgeKey, edges, neighbors, rooms, baseMapLines } from '../src/map.ts'
 
 function fixture(random = () => 0.99) {
   const game = new Game(random)
   for (const key of Object.keys(game.state.passages)) game.state.passages[key] = 'NORMAL'
-  game.state.enemy = '通信'
+  game.state.enemy = '研究'
   return game
 }
-test('map has exactly 11 rooms and 18 bidirectional passages', () => {
-  assert.equal(rooms.length, 11); assert.equal(edges.length, 18)
-  assert.deepEqual(neighbors('居住'), ['医療', '倉庫', '生命維持'])
-  for (const [a, b] of edges) assert.ok(neighbors(a).includes(b) && neighbors(b).includes(a))
-})
 test('passage costs, CLOSED rejection and fatal cost before task results', () => {
   for (const passage of ['NORMAL', 'DARK', 'BLOCKED', 'CLOSED'] as const) {
     const game = fixture()
@@ -40,7 +35,7 @@ test('camera captures after world, costs one, and becomes stale on next action',
   assert.equal(game.freshness('居住', '医療'), '古い')
 })
 test('repair requires parts; full return loop consumes parts and retains food', () => {
-  const game = fixture()
+  const game = fixture(() => 0.79)
   game.state.location = '整備'
   game.act({ type: 'task', task: 'repair' })
   assert.equal(game.state.turn, 0); assert.equal(game.state.energy, 20)
@@ -54,9 +49,8 @@ test('repair requires parts; full return loop consumes parts and retains food', 
     game.act({ type: 'task', task })
   }
   move('医療'); task('medical'); move('観測'); task('observe')
-  move('管制'); task('control'); move('研究'); task('parts')
-  move('整備'); task('repair'); move('倉庫'); task('food')
-  move('電力管理'); task('power'); move('発着'); task('launch')
+  move('電力管理'); task('power'); move('管制'); task('control'); move('倉庫'); task('food'); move('研究'); task('parts')
+  move('整備'); task('repair'); move('発着'); task('launch')
   assert.equal(game.state.status, 'clear'); assert.equal(game.ready(), true)
   assert.deepEqual(game.state.items, ['食糧'])
   game.restart()
@@ -96,12 +90,14 @@ test('random restarts and 10,000 world updates preserve all-room reachability', 
   for (let i = 0; i < 100; i++) {
     const game = new Game()
     assert.equal(game.connected(), true)
+    assert.ok(['研究', '整備', '管制'].includes(game.state.enemy))
     for (let turn = 0; turn < 100; turn++) {
       const old = JSON.stringify(game.state.passages), enemy = game.state.enemy
       // Restore budget only in this stress fixture, never in production UI.
       game.state.energy = 20
       game.act(game.state.encounter ? { type: 'hide' } : { type: 'camera', target: neighbors(game.state.location)[0]! })
       assert.equal(game.connected(), true)
+      assert.ok(Object.values(game.state.passages).filter(p => p !== 'NORMAL').length <= 6)
       if (old !== JSON.stringify(game.state.passages)) changes++
       if (enemy !== game.state.enemy) {
         assert.ok(neighbors(enemy).includes(game.state.enemy))
@@ -118,4 +114,39 @@ test('GAME OVER restart restores all gameplay state', () => {
   game.restart()
   assert.equal(game.state.status, 'playing'); assert.equal(game.state.encounter, false)
   assert.equal(game.state.enemyPrevious, null); assert.equal(game.state.energy, 20)
+})
+
+test('nine rooms, twelve orthogonal edges and fixed map agree', () => {
+  assert.deepEqual(rooms, ['居住','医療','観測','倉庫','管制','電力管理','研究','整備','発着'])
+  const expected = rooms.flatMap((room,i) => [
+    ...(i % 3 < 2 ? [[room, rooms[i+1]!]] : []),
+    ...(i < 6 ? [[room, rooms[i+3]!]] : []),
+  ])
+  assert.equal(edges.length, 12)
+  assert.deepEqual(edges.map(([a,b]) => edgeKey(a,b)).sort(), expected.map(([a,b]) => edgeKey(a!,b!)).sort())
+  for (const room of rooms) {
+    assert.deepEqual(neighbors(room).sort(), expected.flatMap(([a,b]) => a === room ? [b] : b === room ? [a] : []).sort())
+    const lines = baseMapLines(room), diagram = lines.slice(1).join('')
+    assert.equal(diagram.split('*').length, 2)
+    assert.ok(diagram.includes('[*' + (room === '電力管理' ? '電力' : room) + ']'))
+    assert.equal(diagram.match(/─/g)?.length, 6)
+    assert.equal(diagram.match(/│/g)?.length, 6)
+    const names = [lines[1]!, lines[3]!, lines[5]!].flatMap(line => [...line.matchAll(/\[([ *])([^\]]+)\]/g)].map(m => m[2] === '電力' ? '電力管理' : m[2]))
+    assert.deepEqual(names, rooms)
+    assert.ok(!/NORMAL|DARK|BLOCKED|CLOSED|ENERGY|防災/.test(diagram))
+  }
+  assert.deepEqual(Object.fromEntries(Object.entries(taskInfo).map(([task,info]) => [task,info.room])), {power:'電力管理',control:'管制',repair:'整備',parts:'研究',food:'倉庫',medical:'医療',observe:'観測',launch:'発着'})
+})
+test('four initial candidates and diagonal rejection preserve existing rules', () => {
+  let draws = 0
+  const game = new Game(() => { draws++; return 0.5 })
+  assert.equal(draws, 9)
+  assert.equal(Object.values(game.state.passages).filter(p => p !== 'NORMAL').length, 4)
+  assert.ok(['研究','整備','管制'].includes(game.state.enemy))
+  for (const type of ['move','camera','flee'] as const) {
+    game.state.encounter = type === 'flee'
+    const before = JSON.stringify(game.state)
+    game.act({type, target:'管制'})
+    assert.equal(JSON.stringify(game.state), before)
+  }
 })

@@ -1,7 +1,7 @@
 import './style.css'
 import { Game, taskInfo, conditionNames } from './game'
 import type { Action, Task } from './game'
-import { costs, descriptions, neighbors, rooms } from './map'
+import { costs, descriptions, neighbors, baseMapLines } from './map'
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('App element was not found')
@@ -26,13 +26,7 @@ function investigateTask(task: Task) {
     ? [confirmation.explanation, confirmation.question]
     : [descriptions[game.state.location], ...taskHelp(task)]))
 }
-function mapLines(): string[] {
-  const location = game.state.location
-  return ['基地マップ（* 現在地 / 接続一覧）', `現在地：${location}区`,
-    '外周：居住・医療・観測・研究・整備・倉庫', '内周：生命維持・通信・管制・電力管理', '発着：外周／内周から接続',
-    ...rooms.flatMap(room => [`[${room}${room === location ? '*' : ''}]`, ...neighbors(room).map(target => `  - ${target}区`)]),
-    '配置と接続のみ。通路状態・敵・コストは監視カメラで確認。']
-}
+function mapLines(): string[] { return baseMapLines(game.state.location) }
 let helpMode = false
 const pendingInput: string[] = []
 const terminal = document.createElement('main')
