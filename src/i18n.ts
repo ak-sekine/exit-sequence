@@ -15,10 +15,8 @@ export const messages = {
   spareBattery: {"ja":"予備バッテリー","en":"SPARE BATTERY"},
   observationSystem: {"ja":"観測装置","en":"OBSERVATION SYSTEM"},
   returnShip: {"ja":"帰還船","en":"RETURN SHIP"},
-  batteryExplanation: {"ja":"回収すると ENERGY が6回復する（上限20）。1回のみ。","en":"Collect it to restore 6 ENERGY (maximum 20). Once only."},
-  batteryQuestion: {"ja":"回収しますか？","en":"Collect it?"},
-  batteryCollected: {"ja":"予備バッテリーはすでに回収済みだ。","en":"The spare battery has already been collected."},
-  batteryDeclined: {"ja":"回収しなかった。","en":"Left it behind."},
+  repairInvestigationMissing: {"ja":"帰還船の修理には修理部品が必要だ。","en":"Repair parts are needed to repair the return ship."},
+  launchInvestigationMissing: {"ja":"発進条件がまだ揃っていない。","en":"Launch requirements are not yet met."},
   gameLog: {"ja":"ゲームログ","en":"Game log"},
   introDamage: {"ja":"AI：基地は致命的損傷を受けた。恒久復旧は不可能。帰還船で地球へ帰還する。","en":"AI: The base has suffered critical damage. Permanent repairs are impossible. Use the return ship to reach Earth."},
   introRequirements: {"ja":"電力管理区で給電、管制区でロック解除、研究区の部品を整備区で使用、倉庫区で食糧確保。4条件を満たして発着区へ。","en":"Supply power in POWER, unlock launch control in CONTROL, use parts from RESEARCH in MAINTENANCE, and collect food in STORAGE. Meet all four requirements, then head to LAUNCH."},
@@ -96,7 +94,6 @@ export const messages = {
   chooseAnAction: {"ja":"行動を選択","en":"Choose an action"},
   destination: {"ja":"移動先","en":"Destination"},
   cameraRoute: {"ja":"監視ルート","en":"Camera route"},
-  investigationResults: {"ja":"調査結果","en":"Investigation results"},
   confirmation: {"ja":"確認","en":"Confirmation"},
   inventory: {"ja":"持ち物","en":"INVENTORY"},
   encounterResponse: {"ja":"遭遇対処","en":"Encounter response"},
@@ -188,7 +185,6 @@ export const messages = {
   inventoryInput: {"ja":"持ち物 {0}","en":"INVENTORY {0}"},
   districtLabel: {"ja":"{0}区","en":"{0}"},
   exploreInput: {"ja":"調べる {0}","en":"EXPLORE {0}"},
-  taskInput: {"ja":"調べる {0} {1}","en":"EXPLORE {0} {1}"},
   cameraInput: {"ja":"AI 監視カメラ {0}区","en":"AI CAMERA {0}"},
   routeInput: {"ja":"{0} {1}区","en":"{0} {1}"},
   routeHeading: {"ja":"{0}区へのルート","en":"Route to {0}"},
@@ -338,4 +334,43 @@ export function facilityNames(language: Language): Record<FacilityId, string> {
     hangar: t('hangar', language),
     launchControl: t('launchControl', language),
   }
+}
+
+export type TaskConfirmation = { explanation: string; question: string; done: string; declined: string }
+const confirmationText: Record<Task, Record<Language, TaskConfirmation>> = {
+  power: {
+    ja: {"explanation": "残存電力を帰還船へ供給できる。", "question": "帰還船へ電力を供給しますか？", "done": "帰還船への電力供給はすでに完了している。", "declined": "電力を供給しなかった。"},
+    en: {"explanation": "Remaining power can be supplied to the return ship.", "question": "Supply power to the return ship?", "done": "Power has already been supplied to the return ship.", "declined": "Did not supply power."},
+  },
+  control: {
+    ja: {"explanation": "発進管制の安全ロックを解除できる。", "question": "発進管制を解除しますか？", "done": "発進管制のロックはすでに解除されている。", "declined": "解除しなかった。"},
+    en: {"explanation": "The launch safety lock can be released.", "question": "Release launch control?", "done": "The launch safety lock has already been released.", "declined": "Did not release the lock."},
+  },
+  repair: {
+    ja: {"explanation": "修理部品を使って帰還船を修理できる。", "question": "帰還船を修理しますか？", "done": "帰還船はすでに修理済みだ。", "declined": "修理しなかった。"},
+    en: {"explanation": "Repair parts can be used to repair the return ship.", "question": "Repair the return ship?", "done": "The return ship has already been repaired.", "declined": "Did not repair the ship."},
+  },
+  parts: {
+    ja: {"explanation": "帰還船の修理に使う部品を回収できる。", "question": "修理部品を回収しますか？", "done": "修理部品はすでに回収済みだ。", "declined": "修理部品を回収しなかった。"},
+    en: {"explanation": "Parts for repairing the return ship can be collected.", "question": "Collect repair parts?", "done": "The repair parts have already been collected.", "declined": "Did not collect repair parts."},
+  },
+  food: {
+    ja: {"explanation": "帰還に必要な食糧を回収できる。", "question": "食糧を回収しますか？", "done": "食糧はすでに回収済みだ。", "declined": "食糧を回収しなかった。"},
+    en: {"explanation": "Food for the return journey can be collected.", "question": "Collect food?", "done": "The food has already been collected.", "declined": "Did not collect food."},
+  },
+  medical: {
+    ja: {"explanation": "回収すると ENERGY が6回復する（上限20）。1回のみ。", "question": "回収しますか？", "done": "予備バッテリーはすでに回収済みだ。", "declined": "回収しなかった。"},
+    en: {"explanation": "Collect it to restore 6 ENERGY (maximum 20). Once only.", "question": "Collect it?", "done": "The spare battery has already been collected.", "declined": "Left it behind."},
+  },
+  observe: {
+    ja: {"explanation": "不要設備を停止すると ENERGY が6回復する（上限20）。1回のみ。", "question": "不要設備を停止しますか？", "done": "不要設備はすでに停止済みだ。", "declined": "停止しなかった。"},
+    en: {"explanation": "Shut down unused systems to restore 6 ENERGY (maximum 20). Once only.", "question": "Shut down unused systems?", "done": "The unused systems have already been shut down.", "declined": "Did not shut down the systems."},
+  },
+  launch: {
+    ja: {"explanation": "帰還船を発進して地球へ帰還できる。", "question": "帰還船を発進しますか？", "done": "帰還船はすでに発進済みだ。", "declined": "発進しなかった。"},
+    en: {"explanation": "The return ship can launch for Earth.", "question": "Launch the return ship?", "done": "The return ship has already launched.", "declined": "Did not launch the ship."},
+  },
+}
+export function taskConfirmations(language: Language): Record<Task, TaskConfirmation> {
+  return Object.fromEntries(Object.entries(confirmationText).map(([task, text]) => [task, text[language]])) as Record<Task, TaskConfirmation>
 }

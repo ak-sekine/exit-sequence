@@ -202,3 +202,18 @@ test('all task results, supply caps, repair, clear and fatal costs are language 
     assert.ok(!lines.some(line => /[\u3040-\u30ff\u3400-\u9fff]/u.test(line)))
   }
 })
+
+test('shared task prerequisites are read only and retain existing rejected-action output and RNG', () => {
+  for (const language of ['ja', 'en'] as const) for (const task of ['repair', 'launch'] as const) {
+    const game = fixture(); game.state.location = taskInfo[task].room
+    const before = structuredClone(game.state)
+    ;(game as unknown as { random: () => number }).random = () => { throw new Error('Prerequisites must not use RNG') }
+    assert.equal(game.taskPrerequisite(task), task === 'repair' ? 'repairPartsMissing' : 'requirementsMissing')
+    const lines = game.act({ type: 'task', task }, language)
+    assert.deepEqual(game.state, before)
+    assert.equal(lines.length, task === 'repair' ? 1 : 8)
+    if (task === 'repair') game.state.items.push('修理部品')
+    else game.state.conditions = { power: true, control: true, repair: true, food: true }
+    assert.equal(game.taskPrerequisite(task), null)
+  }
+})

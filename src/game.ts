@@ -77,6 +77,11 @@ export class Game {
     if (task === 'launch') return false
     return s.conditions[task]
   }
+  taskPrerequisite(task: Task): 'repairPartsMissing' | 'requirementsMissing' | null {
+    if (task === 'repair' && !this.state.items.includes('修理部品')) return 'repairPartsMissing'
+    if (task === 'launch' && !this.ready()) return 'requirementsMissing'
+    return null
+  }
   private spend(cost: number, log: string[], language: Language) {
     if (cost) { this.state.energy = Math.max(0, this.state.energy - cost); log.push(t('energySpent', language, cost, this.state.energy)) }
     if (this.state.energy <= 0) {
@@ -126,8 +131,8 @@ export class Game {
     } else if (action.type === 'task') {
       const task = action.task, info = taskInfo[task]
       if (info.room !== s.location || this.taskDone(task)) return [t('taskUnavailable', language)]
-      if (task === 'repair' && !s.items.includes('修理部品')) return [t('repairPartsMissing', language)]
-      if (task === 'launch' && !this.ready()) return [t('requirementsMissing', language), ...this.statusLines(language)]
+      const prerequisite = this.taskPrerequisite(task)
+      if (prerequisite) return [t(prerequisite, language), ...(prerequisite === 'requirementsMissing' ? this.statusLines(language) : [])]
       log.push(taskLabels(language)[task] + t('punctuation', language))
       if (!this.spend(info.cost, log, language)) return log
       if (task === 'medical' || task === 'observe') {

@@ -180,7 +180,7 @@ test('main has five intent entries and information reads never advance state or 
   assert.equal(JSON.stringify(ui.game.state), before)
 })
 
-test('investigation shows state before execution and back preserves one level and HELP', () => {
+test('investigation shows state before execution, locks back and preserves pending HELP on decline', () => {
   const ui = fixture()
   ui.click('ゲーム開始')
   ui.game.state.location = '電力管理'
@@ -194,20 +194,22 @@ test('investigation shows state before execution and back preserves one level an
   const logs = ui.lines()
   ui.navigation.children[2]!.click()
   ui.navigation.children[0]!.click()
-  assert.ok(ui.actions.children.some(e => e.textContent === '配電盤'))
+  assert.equal(ui.navigation.children[0]!.disabled, true)
+  assert.deepEqual(ui.actions.children.filter(e => e.tag === 'button').map(e => e.textContent), ['はい', 'いいえ'])
   assert.equal(ui.helpMode(), true)
   assert.deepEqual(ui.lines(), logs)
+  ui.click('いいえ')
   ui.click('配電盤')
   assert.ok(ui.lines().includes('> HELP 調べる 配電盤'))
   assert.equal(ui.helpMode(), false)
-  ui.click('配電盤'); ui.click('帰還船へ配電する')
-  assert.ok(ui.lines().includes('> 帰還船へ配電する'))
+  ui.click('配電盤'); ui.click('はい')
+  assert.ok(ui.lines().includes('> はい'))
   assert.equal(ui.game.state.conditions.power, true)
   assert.equal(ui.game.state.energy, 19)
   assert.equal(ui.game.state.turn, 1)
 })
 
-test('each investigation detail uses the selected task even with reduced motion', () => {
+test('each investigation confirmation uses the selected task even with reduced motion', () => {
   const names = { power: '配電盤', control: '管制端末', repair: '整備設備', parts: '部品保管箱', food: '食糧保管庫', medical: '予備バッテリー', observe: '観測装置', launch: '帰還船' }
   for (const task of Object.keys(taskInfo) as (keyof typeof taskInfo)[]) {
     const ui = fixture()
@@ -219,11 +221,11 @@ test('each investigation detail uses the selected task even with reduced motion'
     const before = JSON.stringify(ui.game.state)
     ui.click('調べる >'); ui.click(names[task])
     assert.equal(JSON.stringify(ui.game.state), before)
-    assert.equal(ui.actions.children[0]!.textContent, task === 'medical' ? 'はい' : taskInfo[task].label)
+    assert.equal(ui.actions.children[0]!.textContent, 'はい')
     assert.equal(ui.actions.children[0]!.disabled, false)
-    ui.click(task === 'medical' ? 'はい' : taskInfo[task].label)
+    ui.click('はい')
     assert.equal(ui.game.state.turn, 1)
-    assert.ok(ui.lines().includes(`> 調べる ${names[task]}`)); assert.ok(ui.lines().includes(`> ${task === 'medical' ? 'はい' : taskInfo[task].label}`))
+    assert.ok(ui.lines().includes(`> 調べる ${names[task]}`)); assert.ok(ui.lines().includes('> はい'))
     if (task === 'launch') assert.equal(ui.game.state.status, 'clear')
   }
 })
@@ -297,7 +299,7 @@ test('skip drains the queue once, cancels timers and restores original disabled 
   ui.tick(); ui.log.click()
   assert.deepEqual(ui.lines(), result)
   assert.deepEqual(result.slice(-4), ['first', '', 'last', '>'])
-  assert.equal(ui.actions.children[0]!.disabled, true)
+  assert.ok(!ui.actions.children.some(e => ['はい', 'いいえ'].includes(e.textContent)))
   assert.equal(ui.navigation.children[0]!.disabled, false)
   assert.equal(ui.timers.size, 0)
   ui.assertPrompt()
@@ -416,7 +418,7 @@ test('camera, equipment and flee confirm one concise selection path', () => {
     assert.deepEqual(ui.lines(), before)
     assert.equal(JSON.stringify(ui.game.state), state)
     ui.assertPrompt()
-    const target = kind === 'equipment' ? '帰還船へ配電する' : '医療区'
+    const target = kind === 'equipment' ? 'はい' : '医療区'
     if (kind === 'equipment') ui.click('配電盤')
     const selectionStart = ui.lines().length
     ui.click(target)
@@ -458,7 +460,7 @@ test('fatal movement and launch output end with a prompt for restart', () => {
   ui.click('最初から'); ui.log.click()
   ui.game.state.location = '発着'
   ui.game.state.conditions = { power: true, control: true, repair: true, food: true }
-  ui.click('調べる >'); ui.click('帰還船'); ui.log.click(); ui.click('帰還船を発進する')
+  ui.click('調べる >'); ui.click('帰還船'); ui.log.click(); ui.click('はい')
   assert.equal(ui.actions.children[0]!.disabled, true)
   ui.log.click()
   assert.ok(ui.lines().includes('GAME CLEAR'))
@@ -666,6 +668,8 @@ test('battery investigation and answers are separate immediate inputs; decline a
   const logs = ui.lines()
   ui.navigation.children[0]!.click()
   assert.deepEqual(ui.lines(), logs)
+  assert.equal(ui.navigation.children[0]!.disabled, true)
+  ui.click('いいえ'); ui.log.click()
   ui.click('周囲'); ui.log.click()
   assert.ok(ui.lines().includes('> 調べる 周囲'))
   ui.click('予備バッテリー'); ui.log.click(); ui.click('いいえ')
@@ -760,7 +764,7 @@ test('start language detection and shared selector redraw instantly, silently an
       assert.deepEqual(ui.lines(), logs)
       assert.deepEqual(optionLabels(ui), [language === 'ja' ? 'ゲーム開始' : 'START', 'LANGUAGE >'])
       assert.equal(ui.navigation.children[0]!.disabled, true)
-      if (language !== 'en') ui.click('LANGUAGE >')
+      ui.click('LANGUAGE >')
     }
     const restored = fixture(true, environment)
     assert.deepEqual(optionLabels(restored), ['START', 'LANGUAGE >'])
@@ -869,4 +873,92 @@ test('English exploration, confirmation and encounter HELP use translated input 
   assert.ok(ui.lines().includes('SUCCESS: 80%'))
   assert.ok(ui.lines().includes('On failure, spend 1 extra ENERGY to escape.'))
   assert.deepEqual(ui.game.state, before)
+})
+
+const targets: Record<keyof typeof taskInfo, keyof typeof i18n.messages> = { power: 'powerPanel', control: 'controlTerminal', repair: 'repairSystem', parts: 'partsStorage', food: 'foodStorage', medical: 'spareBattery', observe: 'observationSystem', launch: 'returnShip' }
+function taskFixture(task: keyof typeof taskInfo, language: i18n.Language, reduce = true) {
+  const ui = fixture(reduce, languageEnvironment(language)); ui.flush()
+  ui.click(i18n.t('start', language)); ui.flush()
+  ui.game.state.location = taskInfo[task].room
+  ui.game.state.energy = 12
+  ui.game.state.enemyPrevious = '管制'
+  ui.game.state.feeds['居住:医療'] = { destination: '医療', passage: 'DARK', enemy: true, turn: 0 }
+  if (task === 'repair') ui.game.state.items = ['修理部品']
+  if (task === 'launch') ui.game.state.conditions = { power: true, control: true, repair: true, food: true }
+  return ui
+}
+const targetLabel = (task: keyof typeof taskInfo, language: i18n.Language) => i18n.t(targets[task], language)
+
+test('every task confirms in ja/en, locks BACK, declines without act or RNG, and retains exploration path', () => {
+  for (const language of ['ja', 'en'] as const) for (const task of Object.keys(taskInfo) as (keyof typeof taskInfo)[]) {
+    const ui = taskFixture(task, language, false), before = structuredClone(ui.game.state)
+    ui.game.act = () => { throw new Error('Investigation and decline must not act') }
+    ;(ui.game as unknown as { random: () => number }).random = () => { throw new Error('Investigation and decline must not use RNG') }
+    const target = targetLabel(task, language), text = i18n.taskConfirmations(language)[task]
+    ui.click(i18n.t('exploreMenu', language)); ui.click(target)
+    assert.deepEqual(ui.lines().slice(-2), [`> ${i18n.t('explore', language)} ${target}`, ''])
+    assert.ok(ui.actions.children.filter(e => e.tag === 'button').every(e => e.disabled))
+    ui.flush()
+    assert.deepEqual(ui.lines().slice(-4), [i18n.t('checkedTarget', language, target), text.explanation, text.question, '>'])
+    assert.deepEqual(optionLabels(ui), [i18n.t('yes', language), i18n.t('no', language)])
+    assert.ok(!optionLabels(ui).includes(i18n.taskLabels(language)[task]))
+    const logs = ui.lines(), back = ui.navigation.children[0]!
+    assert.equal(back.textContent, i18n.t('back', language)); assert.equal(back.disabled, true)
+    back.click(); assert.deepEqual(ui.lines(), logs); assert.deepEqual(ui.game.state, before)
+    for (const index of [0, 2]) assert.equal(ui.navigation.children[1]!.children[index]!.disabled, true)
+    ui.click(i18n.t('no', language))
+    assert.deepEqual(ui.lines().slice(-2), [`> ${i18n.t('no', language)}`, ''])
+    ui.flush(); assert.ok(ui.lines().includes(text.declined))
+    assert.ok(optionLabels(ui).includes(target)); assert.equal(back.disabled, false)
+    assert.deepEqual(ui.game.state, before)
+    ui.click(target); ui.flush()
+    assert.equal(ui.lines().filter(line => line === `> ${i18n.t('explore', language)} ${target}`).length, 2)
+  }
+})
+
+test('YES for every task preserves direct Game action full state and random stream in both languages', () => {
+  for (const language of ['ja', 'en'] as const) for (const task of Object.keys(taskInfo) as (keyof typeof taskInfo)[]) for (const seed of [1, 42, 99]) {
+    const ui = taskFixture(task, language), expected = new Game(() => 0.9)
+    expected.state = structuredClone(ui.game.state)
+    const stream = () => { let value = seed; const draws: number[] = []; return { draws, random: () => { value = (Math.imul(value, 1664525) + 1013904223) >>> 0; const result = value / 2 ** 32; draws.push(result); return result } } }
+    const actualRng = stream(), expectedRng = stream()
+    ;(ui.game as unknown as { random: () => number }).random = actualRng.random
+    ;(expected as unknown as { random: () => number }).random = expectedRng.random
+    const result = expected.act({ type: 'task', task }, language)
+    ui.click(i18n.t('exploreMenu', language)); ui.click(targetLabel(task, language))
+    assert.equal(actualRng.draws.length, 0)
+    ui.click(i18n.t('yes', language))
+    assert.ok(ui.lines().includes(`> ${i18n.t('yes', language)}`))
+    assert.ok(!ui.lines().some(line => line.endsWith(`${targetLabel(task, language)} ${i18n.t('yes', language)}`)))
+    assert.deepEqual(ui.game.state, expected.state); assert.deepEqual(actualRng.draws, expectedRng.draws)
+    assert.deepEqual(ui.lines().slice(-result.length - 1, -1), result)
+  }
+})
+
+test('completed tasks and missing prerequisites explain without confirmations, act or RNG; all task HELP stays in explore', () => {
+  for (const language of ['ja', 'en'] as const) for (const task of Object.keys(taskInfo) as (keyof typeof taskInfo)[]) {
+    for (const mode of ['done', 'help', ...(['repair', 'launch'].includes(task) ? ['missing'] : [])]) {
+      const ui = taskFixture(task, language)
+      if (mode === 'done') {
+        if (task === 'parts') ui.game.state.conditions.repair = true
+        else if (task === 'medical' || task === 'observe') ui.game.state.supplies[task] = true
+        else if (task === 'launch') ui.game.state.status = 'clear'
+        else ui.game.state.conditions[task] = true
+      }
+      if (mode === 'missing') { ui.game.state.items = []; ui.game.state.conditions.power = false }
+      const before = structuredClone(ui.game.state)
+      ui.game.act = () => { throw new Error('Read only operation must not act') }
+      ;(ui.game as unknown as { random: () => number }).random = () => { throw new Error('Read only operation must not use RNG') }
+      ui.click(i18n.t('exploreMenu', language))
+      if (mode === 'help') ui.navigation.children[2]!.click()
+      ui.click(targetLabel(task, language))
+      assert.ok(optionLabels(ui).includes(targetLabel(task, language)))
+      assert.ok(!optionLabels(ui).some(label => [i18n.t('yes', language), i18n.t('no', language)].includes(label)))
+      assert.ok(!ui.lines().includes(i18n.taskConfirmations(language)[task].question))
+      if (mode === 'done') assert.ok(ui.lines().includes(i18n.taskConfirmations(language)[task].done))
+      if (mode === 'missing') assert.ok(ui.lines().includes(i18n.t(task === 'repair' ? 'repairInvestigationMissing' : 'launchInvestigationMissing', language)))
+      if (mode === 'help') { assert.ok(ui.lines().includes(`> HELP ${i18n.t('explore', language)} ${targetLabel(task, language)}`)); assert.equal(ui.helpMode(), false) }
+      assert.deepEqual(ui.game.state, before)
+    }
+  }
 })

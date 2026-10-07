@@ -1,4 +1,4 @@
-import { t, roomName, initialLanguage, saveLanguage, languageNames, itemName, freshnessName, roomDescriptions, taskLabels, conditionLabels } from './i18n.ts'
+import { t, roomName, initialLanguage, saveLanguage, languageNames, itemName, freshnessName, roomDescriptions, taskLabels, conditionLabels, taskConfirmations } from './i18n.ts'
 import type { Language } from './i18n.ts'
 import './style.css'
 import { Game, taskInfo } from './game'
@@ -9,7 +9,7 @@ const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('App element was not found')
 const game = new Game()
 let language: Language = initialLanguage()
-type Menu = 'start' | 'main' | 'move' | 'camera' | 'investigate' | 'detail' | 'confirmation' | 'ai' | 'inventory' | 'encounter' | 'flee' | 'end' | 'settings' | 'language'
+type Menu = 'start' | 'main' | 'move' | 'camera' | 'investigate' | 'confirmation' | 'ai' | 'inventory' | 'encounter' | 'flee' | 'end' | 'settings' | 'language'
 type Option = { label: string; setting?: boolean; inputLabel?: string; inputPath?: string[]; submenu?: Menu; enter?: () => void; run?: () => void; disabled?: boolean; help?: () => string[]; helpInput?: string }
 let menu: Menu = 'start', page = 0
 let languageParent: 'start' | 'settings' = 'start'
@@ -22,20 +22,22 @@ function changeLanguage(nextLanguage: Language) {
 }
 let selectedTask: Task = 'power'
 function targetNames(): Record<Task, string> { return { power: t('powerPanel', language), control: t('controlTerminal', language), repair: t('repairSystem', language), parts: t('partsStorage', language), food: t('foodStorage', language), medical: t('spareBattery', language), observe: t('observationSystem', language), launch: t('returnShip', language) } }
-function taskConfirmations(): Partial<Record<Task, { explanation: string; question: string; done: string; declined: string }>> { return {
-  medical: { explanation: t('batteryExplanation', language), question: t('batteryQuestion', language), done: t('batteryCollected', language), declined: t('batteryDeclined', language) },
-} }
 function investigateTask(task: Task) {
   selectedTask = task
-  const confirmation = taskConfirmations()[task]
-  if (confirmation && game.taskDone(task)) {
-    appendLog(confirmation.done)
+  const confirmation = taskConfirmations(language)[task]
+  const checked = t('checkedTarget', language, targetNames()[task])
+  if (game.taskDone(task) || (task === 'launch' && game.state.status === 'clear')) {
+    appendLog(checked, confirmation.done)
     return
   }
-  open(confirmation ? 'confirmation' : 'detail')
-  appendLog(t('checkedTarget', language, targetNames()[task]), ...(confirmation
-    ? [confirmation.explanation, confirmation.question]
-    : [roomDescriptions(language)[game.state.location], ...taskHelp(task)]))
+  const prerequisite = game.taskPrerequisite(task)
+  if (prerequisite) {
+    appendLog(checked, t(prerequisite === 'repairPartsMissing' ? 'repairInvestigationMissing' : 'launchInvestigationMissing', language),
+      ...(prerequisite === 'requirementsMissing' ? Object.entries(conditionLabels(language)).filter(([key]) => !game.state.conditions[key as keyof typeof game.state.conditions]).map(([, name]) => t('missingCondition', language, name)) : []))
+    return
+  }
+  open('confirmation')
+  appendLog(checked, confirmation.explanation, confirmation.question)
 }
 function mapLines(): string[] { return baseMapLines(game.state.location, language) }
 let helpMode = false
@@ -211,15 +213,11 @@ function options(): Option[] {
       ...tasks.map(task => ({ label: targetNames()[task], inputPath: [t('explore', language)], helpInput: t('exploreInput', language, targetNames()[task]), help: () => taskHelp(task), run: () => investigateTask(task) }))]
   }
   if (menu === 'confirmation') {
-    const task = selectedTask, confirmation = taskConfirmations()[task]!
+    const task = selectedTask, confirmation = taskConfirmations(language)[task]
     return [
       { label: t('yes', language), inputPath: [], disabled: game.taskDone(task), run: () => act({ type: 'task', task }) },
       { label: t('no', language), inputPath: [], run: () => { open('investigate'); appendLog(confirmation.declined) } },
     ]
-  }
-  if (menu === 'detail') {
-    const task = selectedTask
-    return [{ label: taskLabels(language)[task], inputPath: [], helpInput: t('taskInput', language, targetNames()[task], taskLabels(language)[task]), help: () => taskHelp(task), disabled: game.taskDone(task) || (task === 'launch' && !game.ready()), run: () => act({ type: 'task', task }) }]
   }
   return neighbors(s.location).map(target => {
     if (menu === 'camera') return { label: t('districtLabel', language, roomName(target, language)), helpInput: t('cameraInput', language, roomName(target, language)), help: () => [t('energy1', language), t('checkOnlyTheSelectedRoute', language), t('capturePassageConditionsEnemyPresenceAndEstimated', language), t('informationBecomesStaleAfterTheNextValid', language), t('thisHelpDoesNotActivateTheCamera', language)], run: () => act({ type: 'camera', target }) }
@@ -242,7 +240,7 @@ function parent(): Menu | null {
   if (menu === 'settings') return 'main'
   if (menu === 'flee') return 'encounter'
   if (menu === 'camera') return 'ai'
-  if (menu === 'detail' || menu === 'confirmation') return 'investigate'
+  if (menu === 'confirmation') return 'investigate'
   return ['move', 'investigate', 'inventory', 'ai'].includes(menu) ? 'main' : null
 }
 const navigation = document.createElement('nav')
@@ -251,7 +249,7 @@ navigation.setAttribute('aria-label', t('choicePageNavigation', language))
 const back = button(t('back', language), () => {
   const nextMenu = parent(), previousMenu = menu
   if (!nextMenu) return
-  if (previousMenu !== 'detail' && previousMenu !== 'confirmation') pendingInput.pop()
+  if (previousMenu !== 'confirmation') pendingInput.pop()
   open(nextMenu)
   const index = options().findIndex(option => option.submenu === previousMenu)
   actions.querySelectorAll<HTMLButtonElement>('button')[Math.max(0, index)]?.focus({ preventScroll: true })
@@ -283,7 +281,7 @@ function render() {
   const list = options(), count = Math.max(1, Math.ceil(list.length / 6))
   page = Math.min(page, count - 1)
   actions.replaceChildren()
-  const names: Record<Menu, string> = { start: t('start', language), main: t('chooseAnAction', language), move: t('destination', language), camera: t('cameraRoute', language), investigate: t('explore', language), detail: t('investigationResults', language), confirmation: t('confirmation', language), ai: t('ai', language), inventory: t('inventory', language), encounter: t('encounterResponse', language), flee: t('escapeRoute', language), end: t('end', language), settings: t('settings', language), language: t('language', language) }
+  const names: Record<Menu, string> = { start: t('start', language), main: t('chooseAnAction', language), move: t('destination', language), camera: t('cameraRoute', language), investigate: t('explore', language), confirmation: t('confirmation', language), ai: t('ai', language), inventory: t('inventory', language), encounter: t('encounterResponse', language), flee: t('escapeRoute', language), end: t('end', language), settings: t('settings', language), language: t('language', language) }
   actions.setAttribute('aria-label', t('menuPage', language, names[menu], page + 1, count))
   for (let slot = 0; slot < 6; slot++) {
     const option = list[page * 6 + slot]
@@ -330,7 +328,7 @@ function render() {
   help.disabled = isTyping
   help.className = helpMode ? 'help-button help-active' : 'help-button'
   help.setAttribute('aria-pressed', String(helpMode))
-  back.disabled = isTyping || !parent(); previous.disabled = isTyping || page === 0; next.disabled = isTyping || page === count - 1
+  back.disabled = isTyping || menu === 'confirmation' || !parent(); previous.disabled = isTyping || page === 0; next.disabled = isTyping || page === count - 1
   showPrompt(list.some(option => !option.disabled) || !!parent() || count > 1)
 }
 terminal.append(log, actions, navigation)
