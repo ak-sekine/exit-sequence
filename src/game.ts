@@ -1,3 +1,5 @@
+import { t, roomName, taskLabels, conditionLabels } from './i18n.ts'
+import type { Language } from './i18n.ts'
 import { costs, edgeKey, edges, neighbors, rooms } from './map.ts'
 import type { Passage, Room } from './map.ts'
 
@@ -12,16 +14,16 @@ export interface State {
   supplies: Record<'medical' | 'observe', boolean>; feeds: Record<string, Feed>
   status: 'playing' | 'over' | 'clear'; encounter: boolean
 }
-export const conditionNames = { power: '帰還船用電力（電力管理区）', control: '発進管制解除（管制区）', repair: '帰還船修理（研究区の部品 → 整備区）', food: '食糧確保（倉庫区）' }
+export const conditionNames = conditionLabels('ja')
 export const taskInfo: Record<Task, { room: Room; label: string; cost: number }> = {
-  power: { room: '電力管理', label: '帰還船へ配電する', cost: 1 },
-  control: { room: '管制', label: '発進管制を解除する', cost: 1 },
-  repair: { room: '整備', label: '帰還船を修理する', cost: 2 },
-  parts: { room: '研究', label: '修理部品を回収する', cost: 1 },
-  food: { room: '倉庫', label: '食糧を回収する', cost: 1 },
-  medical: { room: '医療', label: '予備バッテリーを回収', cost: 0 },
-  observe: { room: '観測', label: '不要設備を停止する', cost: 0 },
-  launch: { room: '発着', label: '帰還船を発進する', cost: 0 },
+  power: { room: '電力管理', label: t('supplyPower', 'ja'), cost: 1 },
+  control: { room: '管制', label: t('unlockControl', 'ja'), cost: 1 },
+  repair: { room: '整備', label: t('repairShip', 'ja'), cost: 2 },
+  parts: { room: '研究', label: t('collectParts', 'ja'), cost: 1 },
+  food: { room: '倉庫', label: t('collectFood', 'ja'), cost: 1 },
+  medical: { room: '医療', label: t('collectBattery', 'ja'), cost: 0 },
+  observe: { room: '観測', label: t('shutDownSystem', 'ja'), cost: 0 },
+  launch: { room: '発着', label: t('launchShip', 'ja'), cost: 0 },
 }
 export class Game {
   state!: State
@@ -64,9 +66,9 @@ export class Game {
     return !feed ? '未確認' : feed.turn === this.state.turn ? '最新' : '古い'
   }
   ready() { return Object.values(this.state.conditions).every(Boolean) }
-  statusLines() {
-    return [`LOCATION : ${this.state.location}区`, `ENERGY : ${this.state.energy} / ${this.state.maxEnergy}`, 'RETURN STATUS',
-      ...Object.entries(conditionNames).map(([key, name]) => `${this.state.conditions[key as keyof State['conditions']] ? 'READY' : 'NOT READY'} : ${name}`)]
+  statusLines(language: Language = 'ja') {
+    return [t('locationStatus', language, roomName(this.state.location, language)), t('energyStatus', language, this.state.energy, this.state.maxEnergy), t('returnStatus', language),
+      ...Object.entries(conditionLabels(language)).map(([key, name]) => t('conditionStatus', language, t(this.state.conditions[key as keyof State['conditions']] ? 'ready' : 'notReady', language), name))]
   }
   taskDone(task: Task) {
     const s = this.state
@@ -75,16 +77,16 @@ export class Game {
     if (task === 'launch') return false
     return s.conditions[task]
   }
-  private spend(cost: number, log: string[]) {
-    if (cost) { this.state.energy = Math.max(0, this.state.energy - cost); log.push(`ENERGY -${cost} → ${this.state.energy} / 20`) }
+  private spend(cost: number, log: string[], language: Language) {
+    if (cost) { this.state.energy = Math.max(0, this.state.energy - cost); log.push(t('energySpent', language, cost, this.state.energy)) }
     if (this.state.energy <= 0) {
       this.state.status = 'over'; this.state.encounter = false
-      log.push('GAME OVER', 'AI：スーツ電力が尽きた。最初から再試行できる。')
+      log.push(t('gameOver', language), t('suitPowerDepleted', language))
       return false
     }
     return true
   }
-  private world(log: string[], suppressEncounter: boolean) {
+  private world(log: string[], suppressEncounter: boolean, language: Language) {
     const s = this.state
     if (this.random() < 0.3) {
       const [a, b] = this.pick(edges), key = edgeKey(a, b), old = s.passages[key]!
@@ -92,7 +94,7 @@ export class Game {
       const value = this.pick(transitions[old])
       // Limit simultaneous damage for the small ENERGY budget.
       if ((old !== 'NORMAL' || Object.values(s.passages).filter(p => p !== 'NORMAL').length < 6) && this.changePassage(key, value)) {
-        log.push(`AI：通路更新 ${a}区 ↔ ${b}区：${old} → ${value}`)
+        log.push(t('passageUpdate', language, roomName(a, language), roomName(b, language), old, value))
       }
     }
     const options = neighbors(s.enemy).filter(room => this.passage(s.enemy, room) !== 'CLOSED')
@@ -104,61 +106,61 @@ export class Game {
       s.enemyPrevious = old
     }
     s.encounter = !suppressEncounter && s.enemy === s.location
-    if (s.encounter) log.push('防災ロボットを発見。人間認証に失敗している。', 'AI：対処を選択。隠れる80%／ENERGY 1、強行突破60%／ENERGY 2。失敗時は追加ENERGY 1。逃走は通路コスト。')
+    if (s.encounter) log.push(t('robotEncounter', language), t('encounterInstructions', language))
   }
-  act(action: Action): string[] {
+  act(action: Action, language: Language = 'ja'): string[] {
     const s = this.state, log: string[] = []
     if (s.status !== 'playing') return log
     const response = action.type === 'hide' || action.type === 'force' || action.type === 'flee'
-    if (s.encounter !== response) return ['AI：現在の状況で選べない行動。']
+    if (s.encounter !== response) return [t('actionUnavailable', language)]
     if (action.type === 'move' || action.type === 'flee' || action.type === 'camera') {
-      if (!neighbors(s.location).includes(action.target)) return ['AI：直接接続していない区画。']
+      if (!neighbors(s.location).includes(action.target)) return [t('districtDisconnected', language)]
       if (action.type !== 'camera') {
         const passage = this.passage(s.location, action.target)
-        if (passage === 'CLOSED') return ['隔壁が閉鎖されている。CLOSED：移動不可。ENERGY消費なし。']
-        log.push(`${action.target}区へ${action.type === 'flee' ? '逃走' : '移動'}。`,
-          { NORMAL: '非常灯の下を歩く。スーツの生命維持を使用した。', DARK: '通路照明が停止している。スーツ照明を使用した。', BLOCKED: '瓦礫で通行困難。パワーアシストで突破した。' }[passage])
-        if (!this.spend(costs[passage], log)) return log
+        if (passage === 'CLOSED') return [t('passageClosed', language)]
+        log.push(t('movementResult', language, roomName(action.target, language), action.type === 'flee' ? t('fleeAction', language) : t('move', language)),
+          { NORMAL: t('walkedUnderEmergencyLightsUsingSuitLife', language), DARK: t('passageLightsAreOffUsedSuitLighting', language), BLOCKED: t('debrisBlocksTheWayUsedPowerAssistance', language) }[passage])
+        if (!this.spend(costs[passage], log, language)) return log
         s.location = action.target
-      } else if (!this.spend(1, log)) return log
+      } else if (!this.spend(1, log, language)) return log
     } else if (action.type === 'task') {
       const task = action.task, info = taskInfo[task]
-      if (info.room !== s.location || this.taskDone(task)) return ['AI：この設備操作は実行できない。']
-      if (task === 'repair' && !s.items.includes('修理部品')) return ['AI：修理部品がない。研究区で回収してほしい。ENERGY消費なし。']
-      if (task === 'launch' && !this.ready()) return ['AI：帰還条件が不足している。', ...this.statusLines()]
-      log.push(info.label + '。')
-      if (!this.spend(info.cost, log)) return log
+      if (info.room !== s.location || this.taskDone(task)) return [t('taskUnavailable', language)]
+      if (task === 'repair' && !s.items.includes('修理部品')) return [t('repairPartsMissing', language)]
+      if (task === 'launch' && !this.ready()) return [t('requirementsMissing', language), ...this.statusLines(language)]
+      log.push(taskLabels(language)[task] + t('punctuation', language))
+      if (!this.spend(info.cost, log, language)) return log
       if (task === 'medical' || task === 'observe') {
         s.supplies[task] = true
         const before = s.energy; s.energy = Math.min(s.maxEnergy, s.energy + 6)
-        log.push(`ENERGY +${s.energy - before}（補給 +6／上限20）→ ${s.energy} / 20。使用済み。`)
-      } else if (task === 'parts') { s.items.push('修理部品'); log.push('修理部品を取得。整備区で使用できる。') }
-      else if (task === 'launch') { s.status = 'clear'; log.push('GAME CLEAR', '帰還船が月面を離れた。地球への航路を確保。', 'AI：帰還準備完了。基地の修理請求書は後回しにする。') }
+        log.push(t('supplyResult', language, s.energy - before, s.energy))
+      } else if (task === 'parts') { s.items.push('修理部品'); log.push(t('repairPartsCollectedUseThemInMaintenance', language)) }
+      else if (task === 'launch') { s.status = 'clear'; log.push(t('gameClear', language), t('theReturnShipHasLeftTheMoon', language), t('aiDeparturePreparationsCompleteWeCanDeal', language)) }
       else {
         s.conditions[task] = true
-        if (task === 'food') { s.items.push('食糧'); log.push('食糧を取得。帰還まで保持する。') }
-        if (task === 'repair') { s.items = s.items.filter(item => item !== '修理部品'); log.push('修理部品を使用。船体修理完了。') }
-        log.push('帰還条件達成：' + conditionNames[task])
+        if (task === 'food') { s.items.push('食糧'); log.push(t('foodCollectedKeepItUntilDeparture', language)) }
+        if (task === 'repair') { s.items = s.items.filter(item => item !== '修理部品'); log.push(t('repairPartsUsedHullRepairsComplete', language)) }
+        log.push(t('returnRequirementMet', language) + conditionLabels(language)[task])
       }
     } else {
       const hide = action.type === 'hide'
-      log.push(hide ? '遮蔽物に隠れる。' : '防災ロボットの妨害を突破する。')
-      if (!this.spend(hide ? 1 : 2, log)) return log
-      if (this.random() < (hide ? 0.8 : 0.6)) log.push('対処成功。防災ロボットをやり過ごした。')
-      else { log.push('対処失敗。スーツ防護を使用し、離脱した。'); if (!this.spend(1, log)) return log }
+      log.push(hide ? t('hidingBehindCover', language) : t('forcingPastTheSafetyRobot', language))
+      if (!this.spend(hide ? 1 : 2, log, language)) return log
+      if (this.random() < (hide ? 0.8 : 0.6)) log.push(t('successAvoidedTheSafetyRobot', language))
+      else { log.push(t('failureUsedSuitProtectionToEscape', language)); if (!this.spend(1, log, language)) return log }
     }
     // Exactly one turn per accepted world action. Fatal costs stop before results/world.
     // Camera captures AFTER world update; response actions suppress this update's encounter.
     s.turn++
     s.encounter = false
     if (s.status === 'playing') {
-      this.world(log, response)
+      this.world(log, response, language)
       if (action.type === 'camera') {
         const feed: Feed = { destination: action.target, passage: this.passage(s.location, action.target), enemy: s.enemy === action.target, turn: s.turn }
         s.feeds[`${s.location}:${action.target}`] = feed
-        log.push('CAMERA FEED（最新・世界更新後）', `${action.target}区方面`, `敵：${feed.enemy ? '防災ロボットあり' : 'なし'}`, `通路：${feed.passage}`, `推定 ENERGY：${feed.passage === 'CLOSED' ? '移動不可' : costs[feed.passage]}`)
+        log.push(t('cameraFeedFreshAfterWorldUpdate', language), t('cameraDirection', language, roomName(action.target, language)), t('cameraEnemy', language, feed.enemy ? t('safetyRobotPresent', language) : t('none', language)), t('cameraPassage', language, feed.passage), t('cameraCost', language, feed.passage === 'CLOSED' ? t('impassable', language) : costs[feed.passage]))
       }
-      if (s.location === '発着') log.push(this.ready() ? 'AI：帰還4条件達成。調べる → 帰還船から発進できる。' : 'AI：帰還条件不足。AI → 状態確認で条件を確認できる。')
+      if (s.location === '発着') log.push(this.ready() ? t('launchReady', language) : t('launchNotReady', language))
     }
     return log
   }

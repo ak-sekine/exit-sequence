@@ -150,3 +150,55 @@ test('four initial candidates and diagonal rejection preserve existing rules', (
     assert.equal(JSON.stringify(game.state), before)
   }
 })
+
+test('identical random streams and action sequences produce identical full states in ja/en', () => {
+  for (let seed = 1; seed <= 100; seed++) {
+    const stream = () => {
+      let value = seed, draws = 0
+      return { random: () => { draws++; value = (Math.imul(value, 1664525) + 1013904223) >>> 0; return value / 2 ** 32 }, draws: () => draws }
+    }
+    const jaRng = stream(), enRng = stream(), ja = new Game(jaRng.random), en = new Game(enRng.random)
+    assert.deepEqual(ja.state, en.state)
+    for (let step = 0; step < 80; step++) {
+      const s = ja.state, targets = neighbors(s.location)
+      const task = (Object.keys(taskInfo) as (keyof typeof taskInfo)[]).find(task => taskInfo[task].room === s.location && !ja.taskDone(task))
+      const action = s.encounter
+        ? step % 3 === 0 ? { type: 'flee' as const, target: targets[step % targets.length]! } : { type: step % 2 === 0 ? 'hide' as const : 'force' as const }
+        : task && step % 2 === 0 ? { type: 'task' as const, task } : { type: step % 5 === 0 ? 'camera' as const : 'move' as const, target: targets[(step + seed) % targets.length]! }
+      ja.act(action, 'ja')
+      const englishLog = en.act(action, 'en')
+      assert.deepEqual(en.state, ja.state, `seed ${seed}, step ${step}`)
+      assert.equal(enRng.draws(), jaRng.draws())
+      assert.ok(!englishLog.some(line => /[\u3040-\u30ff\u3400-\u9fff]/u.test(line)), englishLog.join('\n'))
+      const before = structuredClone(en.state), draws = enRng.draws()
+      en.statusLines('en'); en.statusLines('ja')
+      assert.deepEqual(en.state, before)
+      assert.equal(enRng.draws(), draws)
+    }
+  }
+})
+
+test('all task results, supply caps, repair, clear and fatal costs are language independent', () => {
+  for (const task of Object.keys(taskInfo) as (keyof typeof taskInfo)[]) for (const energy of [1, 17, 20]) {
+    const ja = fixture(), en = fixture()
+    for (const game of [ja, en]) {
+      game.state.location = taskInfo[task].room; game.state.energy = energy
+      if (task === 'repair') game.state.items = ['修理部品']
+      if (task === 'launch') game.state.conditions = { power: true, control: true, repair: true, food: true }
+    }
+    const action = { type: 'task' as const, task }
+    ja.act(action, 'ja'); const lines = en.act(action, 'en')
+    assert.deepEqual(en.state, ja.state)
+    assert.ok(lines.length > 0)
+    assert.ok(!lines.some(line => /[\u3040-\u30ff\u3400-\u9fff]/u.test(line)))
+    if (task === 'launch') assert.equal(en.state.status, 'clear')
+  }
+  for (const roll of [0.1, 0.99]) for (const type of ['hide', 'force', 'flee'] as const) {
+    const ja = fixture(() => roll), en = fixture(() => roll)
+    for (const game of [ja, en]) { game.state.encounter = true; game.state.enemy = game.state.location }
+    const action = type === 'flee' ? { type, target: '医療' as const } : { type }
+    ja.act(action, 'ja'); const lines = en.act(action, 'en')
+    assert.deepEqual(en.state, ja.state)
+    assert.ok(!lines.some(line => /[\u3040-\u30ff\u3400-\u9fff]/u.test(line)))
+  }
+})

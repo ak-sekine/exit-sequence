@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
+import * as i18n from '../src/i18n.ts'
 import { Game, taskInfo, conditionNames } from '../src/game.ts'
 import { costs, descriptions, neighbors, rooms, baseMapLines, facilities, facilityGuideLines } from '../src/map.ts'
 
@@ -38,12 +39,13 @@ class Element {
   querySelector(selector: string) { return this.querySelectorAll(selector)[0] }
 }
 
-function fixture(reduce = true) {
+function fixture(reduce = true, environment: i18n.LanguageEnvironment = {}) {
   const app = new Element('div')
   let timerId = 0
   const timers = new Map<number, () => void>()
   const context = vm.createContext({
     Game, taskInfo, conditionNames, costs, descriptions, neighbors, rooms, baseMapLines, facilities, facilityGuideLines,
+    ...i18n, initialLanguage: () => i18n.initialLanguage(environment), saveLanguage: (language: i18n.Language) => i18n.saveLanguage(language, environment),
     window: { matchMedia: () => ({ matches: reduce, addEventListener() {} }) },
     setTimeout: (callback: () => void, delay: number) => {
       assert.equal(delay, 5)
@@ -51,7 +53,7 @@ function fixture(reduce = true) {
       return timerId
     },
     clearTimeout: (id: number) => timers.delete(id),
-    document: { querySelector: () => app, createElement: (tag: string) => new Element(tag) },
+    document: { documentElement: { lang: '' }, querySelector: () => app, createElement: (tag: string) => new Element(tag) },
   })
   const source = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8').replace(/^import .*$/gm, '')
   vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2023 } }).outputText, context)
@@ -78,7 +80,9 @@ function fixture(reduce = true) {
     if (entry) { timers.delete(entry[0]); entry[1]() }
   }
   const flush = () => { let limit = 10000; while (timers.size && limit--) tick(); assert.ok(limit > 0) }
-  return { game, actions: actions!, navigation: navigation!, log: log!, lines, click, render, assertPrompt, tick, flush, timers,
+  return { language: () => vm.runInContext('language', context), documentLanguage: () => vm.runInContext('document.documentElement.lang', context),
+    changeLanguage: (language: i18n.Language) => vm.runInContext(`changeLanguage('${language}')`, context),
+    game, actions: actions!, navigation: navigation!, log: log!, lines, click, render, assertPrompt, tick, flush, timers,
     helpMode: () => vm.runInContext('helpMode', context) as boolean,
     enqueue: (...lines: string[]) => vm.runInContext(`appendLog(...${JSON.stringify(lines)})`, context) }
 }
@@ -145,11 +149,11 @@ test('two fixed inventory entries share existing paging with items at the six-en
   assert.equal(ui.actions.attributes['aria-label'], '行動を選択：1 / 1ページ')
 })
 
-test('main has four intent entries and information reads never advance state or randomness', () => {
+test('main has five intent entries and information reads never advance state or randomness', () => {
   const ui = fixture()
   ui.click('ゲーム開始')
   const labels = () => ui.actions.children.filter(e => e.tag === 'button').map(e => e.textContent)
-  assert.deepEqual(labels(), ['調べる >', '移動 >', '持ち物 >', 'AI >'])
+  assert.deepEqual(labels(), ['調べる >', '移動 >', '持ち物 >', 'AI >', '設定 >'])
   ui.game.state.items = ['修理部品', '食糧']
   ui.game.state.feeds['居住:医療'] = { destination: '医療', passage: 'DARK', enemy: true, turn: 0 }
   const before = JSON.stringify(ui.game.state)
@@ -722,4 +726,150 @@ test('map marker follows movement; move and camera menus use grid neighbors', ()
   ui.click('基地マップ')
   assert.ok(ui.lines().includes('[ 居住]─[*医療]─[ 観測]'))
   assert.equal(JSON.stringify(ui.game.state), before)
+})
+
+function languageEnvironment(saved: string | null = null, locale = 'ja-JP') {
+  const values = new Map<string, string>(saved === null ? [] : [[i18n.LANGUAGE_STORAGE_KEY, saved]])
+  return { values, navigator: { language: locale }, localStorage: {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value) },
+  } }
+}
+const optionLabels = (ui: ReturnType<typeof fixture>) => ui.actions.children.filter(e => e.tag === 'button').map(e => e.textContent)
+const englishMain = ['EXPLORE >', 'MOVE >', 'INVENTORY >', 'AI >', 'SETTINGS >']
+
+test('start language detection and shared selector redraw instantly, silently and persistently', () => {
+  for (const [saved, locale, expected] of [
+    ['ja', 'en-US', 'ja'], ['en', 'ja-JP', 'en'], [null, 'ja-JP', 'ja'], [null, 'en-US', 'en'], ['invalid', 'en-US', 'en'],
+  ] as const) {
+    const environment = languageEnvironment(saved, locale), ui = fixture(true, environment)
+    assert.equal(ui.language(), expected)
+    assert.equal(ui.documentLanguage(), expected)
+    assert.deepEqual(optionLabels(ui), [expected === 'ja' ? 'ゲーム開始' : 'START', 'LANGUAGE >'])
+    const before = structuredClone(ui.game.state), logs = ui.lines()
+    ui.game.act = () => { throw new Error('Language must not act') }
+    ;(ui.game as unknown as { random: () => number }).random = () => { throw new Error('Language must not use RNG') }
+    ui.click('LANGUAGE >')
+    assert.deepEqual(optionLabels(ui), ['日本語', 'English'])
+    for (const language of ['en', 'ja', 'en'] as const) {
+      ui.click(i18n.languageNames[language])
+      assert.equal(ui.language(), language)
+      assert.equal(ui.documentLanguage(), language)
+      assert.equal(environment.values.get(i18n.LANGUAGE_STORAGE_KEY), language)
+      assert.deepEqual(ui.game.state, before)
+      assert.deepEqual(ui.lines(), logs)
+      assert.deepEqual(optionLabels(ui), ['日本語', 'English'])
+    }
+    ui.navigation.children[0]!.click()
+    assert.deepEqual(optionLabels(ui), ['START', 'LANGUAGE >'])
+    assert.equal(ui.navigation.children[0]!.disabled, true)
+    const restored = fixture(true, environment)
+    assert.deepEqual(optionLabels(restored), ['START', 'LANGUAGE >'])
+  }
+  const denied = { get localStorage(): never { throw new Error('SecurityError') } }
+  const ui = fixture(true, denied)
+  ui.click('LANGUAGE >'); ui.click('English')
+  assert.equal(ui.language(), 'en')
+})
+
+test('settings hierarchy preserves all state, RNG and past logs; new actions use the new language', () => {
+  const ui = fixture(); ui.click('ゲーム開始')
+  const oldLogs = ui.lines(), before = structuredClone(ui.game.state)
+  ui.click('設定 >'); assert.deepEqual(optionLabels(ui), ['言語 >'])
+  ui.click('言語 >'); assert.deepEqual(optionLabels(ui), ['日本語', 'English'])
+  const originalAct = ui.game.act, originalRandom = (ui.game as unknown as { random: () => number }).random
+  ui.game.act = () => { throw new Error('Language must not act') }
+  ;(ui.game as unknown as { random: () => number }).random = () => { throw new Error('Language must not draw RNG') }
+  ui.click('English')
+  assert.deepEqual(ui.lines(), oldLogs)
+  assert.deepEqual(ui.game.state, before)
+  assert.equal(ui.log.attributes['aria-label'], 'Game log')
+  assert.equal(ui.navigation.attributes['aria-label'], 'Choice page navigation')
+  assert.equal(ui.navigation.children[0]!.textContent, 'BACK')
+  assert.equal(ui.navigation.children[0]!.attributes['aria-label'], 'Back to parent menu')
+  assert.equal(ui.navigation.children[1]!.children[0]!.attributes['aria-label'], 'Previous page')
+  assert.equal(ui.navigation.children[1]!.children[2]!.attributes['aria-label'], 'Next page')
+  assert.equal(ui.navigation.children[2]!.attributes['aria-label'], 'HELP mode')
+  ui.navigation.children[0]!.click(); assert.deepEqual(optionLabels(ui), ['LANGUAGE >'])
+  ui.navigation.children[0]!.click(); assert.deepEqual(optionLabels(ui), englishMain)
+  assert.equal(ui.actions.attributes['aria-label'], 'Choose an action: Page 1 / 1')
+  ui.click('AI >'); ui.click('STATUS')
+  assert.ok(ui.lines().includes('> AI STATUS'))
+  assert.ok(ui.lines().includes('LOCATION : HABITATION'))
+  ui.navigation.children[0]!.click()
+  ui.game.act = originalAct
+  ;(ui.game as unknown as { random: () => number }).random = originalRandom
+  ui.click('AI >'); ui.click('CAMERA >'); ui.click('MEDICAL')
+  assert.ok(ui.lines().includes('> AI CAMERA MEDICAL'))
+  assert.ok(ui.lines().includes('CAMERA FEED (FRESH / AFTER WORLD UPDATE)'))
+  assert.deepEqual(ui.lines().slice(0, oldLogs.length - 1), oldLogs.slice(0, -1))
+  assert.ok(!ui.lines().slice(oldLogs.length).some(line => /[\u3040-\u30ff\u3400-\u9fff]/u.test(line)))
+  ui.render('main'); ui.click('SETTINGS >'); ui.click('LANGUAGE >'); ui.click('日本語')
+  ui.navigation.children[0]!.click(); assert.deepEqual(optionLabels(ui), ['言語 >'])
+  ui.navigation.children[0]!.click()
+  assert.deepEqual(optionLabels(ui), ['調べる >', '移動 >', '持ち物 >', 'AI >', '設定 >'])
+})
+
+test('English inventory and HELP preserve state, menu, history, paging and typewriter behavior', () => {
+  for (const reduce of [true, false]) for (const skip of [true, false]) {
+    const ui = fixture(reduce, languageEnvironment('en')); ui.flush(); ui.click('START'); ui.flush()
+    ui.game.state.items = Array(5).fill('食糧')
+    ui.click('INVENTORY >')
+    const before = structuredClone(ui.game.state)
+    ui.game.act = () => { throw new Error('HELP must not act') }
+    ;(ui.game as unknown as { random: () => number }).random = () => { throw new Error('HELP must not draw RNG') }
+    assert.deepEqual(optionLabels(ui), ['BASE MAP', 'FACILITY GUIDE', ...Array(4).fill('FOOD')])
+    ui.navigation.children[1]!.children[2]!.click()
+    assert.deepEqual(optionLabels(ui), ['FOOD'])
+    ui.navigation.children[1]!.children[0]!.click()
+    ui.click('BASE MAP'); if (skip) ui.log.click(); else ui.flush()
+    for (const line of baseMapLines('居住', 'en')) assert.ok(ui.lines().includes(line))
+    ui.click('FACILITY GUIDE'); if (skip) ui.log.click(); else ui.flush()
+    for (const line of facilityGuideLines('en')) assert.ok(ui.lines().includes(line))
+    ui.navigation.children[2]!.click(); ui.click('FACILITY GUIDE')
+    assert.ok(ui.lines().includes('> HELP INVENTORY FACILITY GUIDE'))
+    assert.equal(ui.helpMode(), false)
+    if (!reduce) {
+      assert.ok(ui.actions.children.filter(e => e.tag === 'button').every(e => e.disabled))
+      ui.changeLanguage('ja'); assert.equal(ui.language(), 'en')
+      if (skip) ui.log.click(); else ui.flush()
+    }
+    assert.ok(ui.lines().includes('Shows the main facilities in each district.'))
+    assert.ok(ui.lines().includes('Use it to find which district contains a facility.'))
+    assert.ok(ui.lines().includes('No ENERGY cost or world progression.'))
+    assert.equal(ui.actions.attributes['aria-label'], 'INVENTORY: Page 1 / 2')
+    assert.deepEqual(ui.game.state, before)
+    assert.equal(ui.timers.size, 0)
+  }
+})
+
+test('language selector follows the same typing lock and tap skip as every other menu', () => {
+  const ui = fixture(false)
+  ui.click('LANGUAGE >') // Initial intro is still typing.
+  assert.equal(ui.navigation.children[0]!.disabled, true)
+  ui.changeLanguage('en'); assert.equal(ui.language(), 'ja')
+  ui.log.click(); ui.click('LANGUAGE >')
+  ui.enqueue('テスト')
+  ui.click('English'); assert.equal(ui.language(), 'ja')
+  ui.log.click(); ui.click('English'); assert.equal(ui.language(), 'en')
+})
+
+test('English exploration, confirmation and encounter HELP use translated input and text', () => {
+  const ui = fixture(true, languageEnvironment('en')); ui.click('START')
+  ui.game.state.location = '医療'; ui.render('main')
+  ui.click('EXPLORE >'); ui.click('SPARE BATTERY')
+  assert.ok(ui.lines().includes('> EXPLORE SPARE BATTERY'))
+  assert.ok(ui.lines().includes('Checked SPARE BATTERY.'))
+  assert.deepEqual(optionLabels(ui), ['YES', 'NO'])
+  ui.click('NO'); assert.ok(ui.lines().includes('> NO')); assert.ok(ui.lines().includes('Left it behind.'))
+  ui.click('SPARE BATTERY'); ui.click('YES')
+  assert.ok(ui.lines().includes('> YES'))
+  assert.ok(ui.lines().includes('COLLECT BATTERY.'))
+  ui.render('encounter'); assert.deepEqual(optionLabels(ui), ['HIDE', 'FORCE THROUGH', 'FLEE >'])
+  const before = structuredClone(ui.game.state)
+  ui.navigation.children[2]!.click(); ui.click('HIDE')
+  assert.ok(ui.lines().includes('> HELP HIDE'))
+  assert.ok(ui.lines().includes('SUCCESS: 80%'))
+  assert.ok(ui.lines().includes('On failure, spend 1 extra ENERGY to escape.'))
+  assert.deepEqual(ui.game.state, before)
 })

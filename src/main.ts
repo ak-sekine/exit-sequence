@@ -1,32 +1,43 @@
+import { t, roomName, initialLanguage, saveLanguage, languageNames, itemName, freshnessName, roomDescriptions, taskLabels, conditionLabels } from './i18n.ts'
+import type { Language } from './i18n.ts'
 import './style.css'
-import { Game, taskInfo, conditionNames } from './game'
+import { Game, taskInfo } from './game'
 import type { Action, Task } from './game'
-import { costs, descriptions, neighbors, baseMapLines, facilityGuideLines } from './map'
+import { costs, neighbors, baseMapLines, facilityGuideLines } from './map'
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('App element was not found')
 const game = new Game()
-type Menu = 'start' | 'main' | 'move' | 'camera' | 'investigate' | 'detail' | 'confirmation' | 'ai' | 'inventory' | 'encounter' | 'flee' | 'end'
-type Option = { label: string; inputLabel?: string; inputPath?: string[]; submenu?: Menu; enter?: () => void; run?: () => void; disabled?: boolean; help?: () => string[]; helpInput?: string }
+let language: Language = initialLanguage()
+type Menu = 'start' | 'main' | 'move' | 'camera' | 'investigate' | 'detail' | 'confirmation' | 'ai' | 'inventory' | 'encounter' | 'flee' | 'end' | 'settings' | 'language'
+type Option = { label: string; setting?: boolean; inputLabel?: string; inputPath?: string[]; submenu?: Menu; enter?: () => void; run?: () => void; disabled?: boolean; help?: () => string[]; helpInput?: string }
 let menu: Menu = 'start', page = 0
-let selectedTask: Task = 'power'
-const targetNames: Record<Task, string> = { power: '配電盤', control: '管制端末', repair: '整備設備', parts: '部品保管箱', food: '食糧保管庫', medical: '予備バッテリー', observe: '観測装置', launch: '帰還船' }
-const taskConfirmations: Partial<Record<Task, { explanation: string; question: string; done: string; declined: string }>> = {
-  medical: { explanation: '回収すると ENERGY が6回復する（上限20）。1回のみ。', question: '回収しますか？', done: '予備バッテリーはすでに回収済みだ。', declined: '回収しなかった。' },
+let languageParent: 'start' | 'settings' = 'start'
+function changeLanguage(nextLanguage: Language) {
+  if (isTyping) return
+  language = nextLanguage
+  saveLanguage(language)
+  pendingInput.length = 0
+  render()
 }
+let selectedTask: Task = 'power'
+function targetNames(): Record<Task, string> { return { power: t('powerPanel', language), control: t('controlTerminal', language), repair: t('repairSystem', language), parts: t('partsStorage', language), food: t('foodStorage', language), medical: t('spareBattery', language), observe: t('observationSystem', language), launch: t('returnShip', language) } }
+function taskConfirmations(): Partial<Record<Task, { explanation: string; question: string; done: string; declined: string }>> { return {
+  medical: { explanation: t('batteryExplanation', language), question: t('batteryQuestion', language), done: t('batteryCollected', language), declined: t('batteryDeclined', language) },
+} }
 function investigateTask(task: Task) {
   selectedTask = task
-  const confirmation = taskConfirmations[task]
+  const confirmation = taskConfirmations()[task]
   if (confirmation && game.taskDone(task)) {
     appendLog(confirmation.done)
     return
   }
   open(confirmation ? 'confirmation' : 'detail')
-  appendLog(`${targetNames[task]}を確認した。`, ...(confirmation
+  appendLog(t('checkedTarget', language, targetNames()[task]), ...(confirmation
     ? [confirmation.explanation, confirmation.question]
-    : [descriptions[game.state.location], ...taskHelp(task)]))
+    : [roomDescriptions(language)[game.state.location], ...taskHelp(task)]))
 }
-function mapLines(): string[] { return baseMapLines(game.state.location) }
+function mapLines(): string[] { return baseMapLines(game.state.location, language) }
 let helpMode = false
 const pendingInput: string[] = []
 const terminal = document.createElement('main')
@@ -34,7 +45,7 @@ terminal.className = 'terminal'
 const log = document.createElement('div')
 log.className = 'terminal-log'
 log.setAttribute('role', 'log')
-log.setAttribute('aria-label', 'ゲームログ')
+log.setAttribute('aria-label', t('gameLog', language))
 log.tabIndex = 0
 let prompt: HTMLDivElement | null = null
 // Prototype tuning value, not a fixed release specification.
@@ -132,7 +143,7 @@ function open(nextMenu: Menu) {
   focusTarget.focus({ preventScroll: true })
 }
 function act(action: Action) {
-  appendLog(...game.act(action))
+  appendLog(...game.act(action, language))
   const s = game.state
   open(s.status !== 'playing' ? 'end' : s.encounter ? 'encounter' : 'main')
 }
@@ -145,82 +156,90 @@ function restart() {
   characters = []; characterPosition = 0
   isTyping = false
   game.restart()
-  appendLog('EXIT SEQUENCE', 'SYSTEM ONLINE', 'AI：基地は致命的損傷を受けた。恒久復旧は不可能。帰還船で地球へ帰還する。',
-    '電力管理区で給電、管制区でロック解除、研究区の部品を整備区で使用、倉庫区で食糧確保。4条件を満たして発着区へ。',
-    '医療区と観測区で各1回、ENERGY +6。監視は1ルート／ENERGY 1。情報は次の行動で古くなる。', 'ENERGY 20 / 20。現在地：居住区。', descriptions.居住)
+  appendLog(t('title', language), t('systemOnline', language), t('introDamage', language),
+    t('introRequirements', language),
+    t('introSupplies', language), t('introStatus', language), roomDescriptions(language).居住)
   open('main')
 }
 function itemHelp(item: string): string[] {
-  return [item === '食糧' ? '食糧：帰還用物資。帰還まで保持する。' : '修理部品：整備区の設備で使用する。']
+  return [item === '食糧' ? t('foodHelp', language) : t('partsHelp', language)]
 }
 function taskHelp(task: Task): string[] {
   const s = game.state, info = taskInfo[task]
   const effects: Record<Task, string> = {
-    power: '帰還船用電力を確保する。', control: '発進管制ロックを解除する。',
-    repair: '修理部品を消費して帰還船を修理する。', parts: '修理部品を取得する。', food: '帰還まで保持する食糧を取得する。',
-    medical: 'ENERGY +6（上限20）。1回のみ。', observe: 'ENERGY +6（上限20）。1回のみ。', launch: '帰還船を発進し、GAME CLEARとなる。',
+    power: t('securePowerForTheReturnShip', language), control: t('releaseTheLaunchControlLock', language),
+    repair: t('useRepairPartsToRepairTheReturn', language), parts: t('collectRepairParts', language), food: t('collectFoodToKeepUntilDeparture', language),
+    medical: t('supplyHelp', language), observe: t('supplyHelp', language), launch: t('launchTheReturnShipToAchieveGame', language),
   }
-  return [info.label, `ENERGY：${info.cost}`, `実行済み：${game.taskDone(task) ? 'はい' : 'いいえ'}`,
-    task === 'repair' ? `前提条件：修理部品（${s.items.includes('修理部品') ? '所持' : '不足'}）` : task === 'launch' ? '前提条件：帰還4条件の達成' : `前提条件：${info.room}区の設備`,
-    effects[task], ...(task === 'launch' ? Object.entries(conditionNames).filter(([key]) => !s.conditions[key as keyof typeof s.conditions]).map(([, name]) => `不足：${name}`) : [])]
+  return [taskLabels(language)[task], t('energyCost', language, info.cost), t('taskDone', language, game.taskDone(task) ? t('yes', language) : t('no', language)),
+    task === 'repair' ? t('requiresParts', language, s.items.includes('修理部品') ? t('held', language) : t('missing', language)) : task === 'launch' ? t('requiresAllFourReturnRequirements', language) : t('requiresRoom', language, roomName(info.room, language)),
+    effects[task], ...(task === 'launch' ? Object.entries(conditionLabels(language)).filter(([key]) => !s.conditions[key as keyof typeof s.conditions]).map(([, name]) => t('missingCondition', language, name)) : [])]
 }
 function options(): Option[] {
   const s = game.state
-  if (menu === 'start') return [{ label: 'ゲーム開始', run: restart }]
-  if (menu === 'end') return [{ label: '最初から', run: restart }, { label: '最終状態確認', run: () => appendLog(...game.statusLines()) }]
+  if (menu === 'start') return [{ label: t('start', language), run: restart },
+    { label: t('startLanguageMenu', language), setting: true, submenu: 'language', enter: () => { languageParent = 'start' } }]
+  if (menu === 'settings') return [{ label: t('languageMenu', language), setting: true, submenu: 'language', enter: () => { languageParent = 'settings' } }]
+  if (menu === 'language') return (['ja', 'en'] as const).map(value => ({
+    label: languageNames[value], setting: true, run: () => changeLanguage(value),
+  }))
+  if (menu === 'end') return [{ label: t('restart', language), run: restart }, { label: t('finalStatus', language), run: () => appendLog(...game.statusLines(language)) }]
   if (menu === 'main') return [
-    { label: '調べる >', submenu: 'investigate' },
-    { label: '移動 >', submenu: 'move' },
-    { label: '持ち物 >', submenu: 'inventory' },
-    { label: 'AI >', submenu: 'ai' },
+    { label: t('exploreMenu', language), submenu: 'investigate' },
+    { label: t('moveMenu', language), submenu: 'move' },
+    { label: t('inventoryMenu', language), submenu: 'inventory' },
+    { label: t('aiMenu', language), submenu: 'ai' },
+    { label: t('settingsMenu', language), setting: true, submenu: 'settings' },
   ]
   if (menu === 'ai') return [
-    { label: '状態確認', helpInput: 'AI 状態確認', help: () => ['現在地・ENERGY・帰還条件を確認する。消費・進行なし。'], run: () => appendLog(...game.statusLines()) },
-    { label: '監視カメラ >', submenu: 'camera' },
+    { label: t('status', language), helpInput: t('aiStatus', language), help: () => [t('statusHelp', language)], run: () => appendLog(...game.statusLines(language)) },
+    { label: t('camera', language), submenu: 'camera' },
   ]
   if (menu === 'encounter') return [
-    { label: '隠れる', help: () => ['成功率：80%', 'ENERGY：1', '失敗時：追加ENERGY 1を消費して離脱する。'], run: () => act({ type: 'hide' }) },
-    { label: '強行突破', help: () => ['成功率：60%', 'ENERGY：2', '失敗時：追加ENERGY 1を消費して離脱する。'], run: () => act({ type: 'force' }) },
-    { label: '逃げる >', submenu: 'flee' },
+    { label: t('hide', language), help: () => [t('success80', language), t('energy1', language), t('encounterFailureHelp', language)], run: () => act({ type: 'hide' }) },
+    { label: t('forceThrough', language), help: () => [t('success60', language), t('energy2', language), t('encounterFailureHelp', language)], run: () => act({ type: 'force' }) },
+    { label: t('fleeMenu', language), submenu: 'flee' },
   ]
   if (menu === 'inventory') return [
-    { label: '基地マップ', helpInput: '持ち物 基地マップ', help: () => ['基地の配置・接続を参照する携行データ。消費・進行なし。敵・通路状態・コストは取得しない。'], run: () => appendLog(...mapLines()) },
-    { label: '施設案内', helpInput: '持ち物 施設案内', help: () => ['各区画にある主な施設を確認する。', '施設の所在地を調べるための参照情報。', 'ENERGY消費・進行なし。'], run: () => appendLog(...facilityGuideLines()) },
-    ...s.items.map(item => ({ label: item, helpInput: `持ち物 ${item}`, help: () => itemHelp(item), run: () => appendLog(...itemHelp(item)) })),
+    { label: t('baseMap', language), helpInput: t('inventoryBaseMap', language), help: () => [t('mapHelp', language)], run: () => appendLog(...mapLines()) },
+    { label: t('facilityGuide', language), helpInput: t('inventoryFacilityGuide', language), help: () => [t('guideHelpFacilities', language), t('guideHelpLocation', language), t('noEnergyCostOrWorldProgression', language)], run: () => appendLog(...facilityGuideLines(language)) },
+    ...s.items.map(item => ({ label: itemName(item, language), helpInput: t('inventoryInput', language, itemName(item, language)), help: () => itemHelp(item), run: () => appendLog(...itemHelp(item)) })),
   ]
   if (menu === 'investigate') {
     const tasks = (Object.keys(taskInfo) as Task[]).filter(task => taskInfo[task].room === s.location)
-    return [{ label: '周囲', helpInput: '調べる 周囲', help: () => ['現在地の説明を読む。消費・進行なし。'], run: () => appendLog(`${s.location}区`, descriptions[s.location]) },
-      ...tasks.map(task => ({ label: targetNames[task], inputPath: ['調べる'], helpInput: `調べる ${targetNames[task]}`, help: () => taskHelp(task), run: () => investigateTask(task) }))]
+    return [{ label: t('surroundings', language), helpInput: t('exploreSurroundings', language), help: () => [t('surroundingsHelp', language)], run: () => appendLog(t('districtLabel', language, roomName(s.location, language)), roomDescriptions(language)[s.location]) },
+      ...tasks.map(task => ({ label: targetNames()[task], inputPath: [t('explore', language)], helpInput: t('exploreInput', language, targetNames()[task]), help: () => taskHelp(task), run: () => investigateTask(task) }))]
   }
   if (menu === 'confirmation') {
-    const task = selectedTask, confirmation = taskConfirmations[task]!
+    const task = selectedTask, confirmation = taskConfirmations()[task]!
     return [
-      { label: 'はい', inputPath: [], disabled: game.taskDone(task), run: () => act({ type: 'task', task }) },
-      { label: 'いいえ', inputPath: [], run: () => { open('investigate'); appendLog(confirmation.declined) } },
+      { label: t('yes', language), inputPath: [], disabled: game.taskDone(task), run: () => act({ type: 'task', task }) },
+      { label: t('no', language), inputPath: [], run: () => { open('investigate'); appendLog(confirmation.declined) } },
     ]
   }
   if (menu === 'detail') {
     const task = selectedTask
-    return [{ label: taskInfo[task].label, inputPath: [], helpInput: `調べる ${targetNames[task]} ${taskInfo[task].label}`, help: () => taskHelp(task), disabled: game.taskDone(task) || (task === 'launch' && !game.ready()), run: () => act({ type: 'task', task }) }]
+    return [{ label: taskLabels(language)[task], inputPath: [], helpInput: t('taskInput', language, targetNames()[task], taskLabels(language)[task]), help: () => taskHelp(task), disabled: game.taskDone(task) || (task === 'launch' && !game.ready()), run: () => act({ type: 'task', task }) }]
   }
   return neighbors(s.location).map(target => {
-    if (menu === 'camera') return { label: `${target}区`, helpInput: `AI 監視カメラ ${target}区`, help: () => ['ENERGY：1', '選択した1ルートだけを確認する。', '通路状態・敵情報・推定ENERGYを世界更新後に取得する。', '情報は次の有効な世界行動で古くなる。', 'このHELPでは監視を実行しない。'], run: () => act({ type: 'camera', target }) }
+    if (menu === 'camera') return { label: t('districtLabel', language, roomName(target, language)), helpInput: t('cameraInput', language, roomName(target, language)), help: () => [t('energy1', language), t('checkOnlyTheSelectedRoute', language), t('capturePassageConditionsEnemyPresenceAndEstimated', language), t('informationBecomesStaleAfterTheNextValid', language), t('thisHelpDoesNotActivateTheCamera', language)], run: () => act({ type: 'camera', target }) }
     const closed = game.passage(s.location, target) === 'CLOSED'
     const fleeing = menu === 'flee'
-    return { label: `${target}区`, disabled: closed, helpInput: `${fleeing ? '逃げる' : '移動'} ${target}区`, help: () => {
+    return { label: t('districtLabel', language, roomName(target, language)), disabled: closed, helpInput: t('routeInput', language, fleeing ? t('flee', language) : t('move', language), roomName(target, language)), help: () => {
       const freshness = game.freshness(s.location, target)
       const feed = s.feeds[`${s.location}:${target}`]
       return [
-      `${target}区へのルート`, `情報の鮮度：${freshness}`, `状態：${closed ? 'CLOSED（現在移動不可）' : feed?.passage ?? 'UNKNOWN / 未確認'}`,
-      `推定ENERGY：${closed ? '移動不可' : feed ? feed.passage === 'CLOSED' ? '取得時点では移動不可' : costs[feed.passage] : 'UNKNOWN / 未確認（1〜3）'}`,
-      `敵情報：${feed ? feed.enemy ? 'あり（取得時点）' : 'なし（取得時点）' : 'UNKNOWN / 未確認'}`,
-      ...(freshness === '古い' ? ['古い情報は現在の安全性を保証しない。'] : []),
-      ...(fleeing ? ['逃走成功率：100%。選択した通路の移動コストを使用する。'] : []),
+      t('routeHeading', language, roomName(target, language)), t('feedFreshness', language, freshnessName(freshness, language)), t('passageStatus', language, closed ? t('closedCurrentlyImpassable', language) : feed?.passage ?? t('unknownUnchecked', language)),
+      t('estimatedCost', language, closed ? t('impassable', language) : feed ? feed.passage === 'CLOSED' ? t('impassableAtCapture', language) : costs[feed.passage] : t('unknownUnchecked13', language)),
+      t('enemyStatus', language, feed ? feed.enemy ? t('presentAtCapture', language) : t('noneAtCapture', language) : t('unknownUnchecked', language)),
+      ...(freshness === '古い' ? [t('staleInformationDoesNotGuaranteeCurrentSafety', language)] : []),
+      ...(fleeing ? [t('fleeHelp', language)] : []),
     ] }, run: () => act({ type: fleeing ? 'flee' : 'move', target }) }
   })
 }
 function parent(): Menu | null {
+  if (menu === 'language') return languageParent
+  if (menu === 'settings') return 'main'
   if (menu === 'flee') return 'encounter'
   if (menu === 'camera') return 'ai'
   if (menu === 'detail' || menu === 'confirmation') return 'investigate'
@@ -228,8 +247,8 @@ function parent(): Menu | null {
 }
 const navigation = document.createElement('nav')
 navigation.className = 'action-navigation'
-navigation.setAttribute('aria-label', '選択肢のページ操作')
-const back = button('戻る', () => {
+navigation.setAttribute('aria-label', t('choicePageNavigation', language))
+const back = button(t('back', language), () => {
   const nextMenu = parent(), previousMenu = menu
   if (!nextMenu) return
   if (previousMenu !== 'detail' && previousMenu !== 'confirmation') pendingInput.pop()
@@ -238,33 +257,45 @@ const back = button('戻る', () => {
   actions.querySelectorAll<HTMLButtonElement>('button')[Math.max(0, index)]?.focus({ preventScroll: true })
 })
 back.className = 'back-button'
-back.setAttribute('aria-label', '親メニューへ戻る')
+back.setAttribute('aria-label', t('backToParentMenu', language))
 const previous = button('＜', () => { if (page > 0) { page--; render() } })
-previous.setAttribute('aria-label', '前のページ')
+previous.setAttribute('aria-label', t('previousPage', language))
 const next = button('＞', () => { if (page + 1 < Math.ceil(options().length / 6)) { page++; render() } })
-next.setAttribute('aria-label', '次のページ')
+next.setAttribute('aria-label', t('nextPage', language))
 const indicator = document.createElement('span')
 indicator.className = 'action-page-indicator'
 indicator.setAttribute('aria-live', 'polite')
 const pageNavigation = document.createElement('div')
 pageNavigation.className = 'page-navigation'
 pageNavigation.append(previous, indicator, next)
-const help = button('HELP', () => { helpMode = !helpMode; render() })
-help.setAttribute('aria-label', 'HELPモード')
+const help = button(t('help', language), () => { helpMode = !helpMode; render() })
+help.setAttribute('aria-label', t('helpMode', language))
 navigation.append(back, pageNavigation, help)
 function render() {
+  document.documentElement.lang = language
+  log.setAttribute('aria-label', t('gameLog', language))
+  navigation.setAttribute('aria-label', t('choicePageNavigation', language))
+  back.textContent = t('back', language)
+  back.setAttribute('aria-label', t('backToParentMenu', language))
+  previous.setAttribute('aria-label', t('previousPage', language))
+  next.setAttribute('aria-label', t('nextPage', language))
+  help.setAttribute('aria-label', t('helpMode', language))
   const list = options(), count = Math.max(1, Math.ceil(list.length / 6))
   page = Math.min(page, count - 1)
   actions.replaceChildren()
-  const names: Record<Menu, string> = { start: 'ゲーム開始', main: '行動を選択', move: '移動先', camera: '監視ルート', investigate: '調べる', detail: '調査結果', confirmation: '確認', ai: 'AI', inventory: '持ち物', encounter: '遭遇対処', flee: '逃走先', end: '終了' }
-  actions.setAttribute('aria-label', `${names[menu]}：${page + 1} / ${count}ページ`)
+  const names: Record<Menu, string> = { start: t('start', language), main: t('chooseAnAction', language), move: t('destination', language), camera: t('cameraRoute', language), investigate: t('explore', language), detail: t('investigationResults', language), confirmation: t('confirmation', language), ai: t('ai', language), inventory: t('inventory', language), encounter: t('encounterResponse', language), flee: t('escapeRoute', language), end: t('end', language), settings: t('settings', language), language: t('language', language) }
+  actions.setAttribute('aria-label', t('menuPage', language, names[menu], page + 1, count))
   for (let slot = 0; slot < 6; slot++) {
     const option = list[page * 6 + slot]
     if (option) {
       const element = button(option.label, () => {
         const inputLabel = option.inputLabel ?? option.label.split('\n')[0].replace(/ >$/, '')
-        if (helpMode && option.help) {
-          confirmInput(`HELP ${option.helpInput ?? inputLabel}`, [])
+        if (option.setting) {
+          option.enter?.()
+          if (option.submenu) open(option.submenu)
+          else option.run?.()
+        } else if (helpMode && option.help) {
+          confirmInput(t('helpInput', language, option.helpInput ?? inputLabel), [])
           appendLog(...option.help())
           helpMode = false
           render()
@@ -304,5 +335,5 @@ function render() {
 }
 terminal.append(log, actions, navigation)
 app.append(terminal)
-appendLog('EXIT SEQUENCE', 'コアループ検証用プロトタイプ', 'ゲーム開始を選択してください。')
+appendLog(t('title', language), t('coreLoopPrototype', language), t('selectStartToBegin', language))
 render()
