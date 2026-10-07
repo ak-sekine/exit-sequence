@@ -25,7 +25,7 @@ function targetNames(): Record<Task, string> { return { power: t('powerPanel', l
 function investigateTask(task: Task) {
   selectedTask = task
   const confirmation = taskConfirmations(language)[task]
-  const checked = t('checkedTarget', language, targetNames()[task])
+  const checked = confirmation.inspected
   if (game.taskDone(task) || (task === 'launch' && game.state.status === 'clear')) {
     appendLog(checked, confirmation.done)
     return
@@ -158,9 +158,9 @@ function restart() {
   characters = []; characterPosition = 0
   isTyping = false
   game.restart()
-  appendLog(t('title', language), t('systemOnline', language), t('introDamage', language),
+  appendLog(t('title', language), t('systemOnline', language), roomDescriptions(language).居住, t('introDamage', language),
     t('introRequirements', language),
-    t('introSupplies', language), t('introStatus', language), roomDescriptions(language).居住)
+    t('introSupplies', language), t('introStatus', language))
   open('main')
 }
 function itemHelp(item: string): string[] {

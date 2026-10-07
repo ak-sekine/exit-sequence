@@ -42,7 +42,7 @@ test('every catalog entry has matching placeholders and no Japanese in English o
     assert.ok(!/[\u3040-\u30ff\u3400-\u9fff]/u.test(message.en), key)
   }
   // Replacement values stay literal, including dollar syntax and HTML characters.
-  assert.equal(t('checkedTarget', 'en', '<b>$&{0}</b>'), 'Checked <b>$&{0}</b>.')
+  assert.equal(t('cameraDirection', 'en', '<b>$&{0}</b>'), 'Toward <b>$&{0}</b>')
 })
 
 test('map markers, three-letter abbreviations and facility membership agree across languages', () => {

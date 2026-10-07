@@ -1,4 +1,4 @@
-import { t, roomName, taskLabels, conditionLabels } from './i18n.ts'
+import { t, roomName, taskConfirmations, conditionLabels } from './i18n.ts'
 import type { Language } from './i18n.ts'
 import { costs, edgeKey, edges, neighbors, rooms } from './map.ts'
 import type { Passage, Room } from './map.ts'
@@ -86,7 +86,7 @@ export class Game {
     if (cost) { this.state.energy = Math.max(0, this.state.energy - cost); log.push(t('energySpent', language, cost, this.state.energy)) }
     if (this.state.energy <= 0) {
       this.state.status = 'over'; this.state.encounter = false
-      log.push(t('gameOver', language), t('suitPowerDepleted', language))
+      log.push(t('suitPowerDepleted', language), t('gameOver', language))
       return false
     }
     return true
@@ -123,7 +123,7 @@ export class Game {
       if (action.type !== 'camera') {
         const passage = this.passage(s.location, action.target)
         if (passage === 'CLOSED') return [t('passageClosed', language)]
-        log.push(t('movementResult', language, roomName(action.target, language), action.type === 'flee' ? t('fleeAction', language) : t('move', language)),
+        log.push(t(action.type === 'flee' ? 'fleeResult' : 'movementResult', language, roomName(action.target, language)),
           { NORMAL: t('walkedUnderEmergencyLightsUsingSuitLife', language), DARK: t('passageLightsAreOffUsedSuitLighting', language), BLOCKED: t('debrisBlocksTheWayUsedPowerAssistance', language) }[passage])
         if (!this.spend(costs[passage], log, language)) return log
         s.location = action.target
@@ -133,16 +133,18 @@ export class Game {
       if (info.room !== s.location || this.taskDone(task)) return [t('taskUnavailable', language)]
       const prerequisite = this.taskPrerequisite(task)
       if (prerequisite) return [t(prerequisite, language), ...(prerequisite === 'requirementsMissing' ? this.statusLines(language) : [])]
-      log.push(taskLabels(language)[task] + t('punctuation', language))
+      log.push(taskConfirmations(language)[task].action)
       if (!this.spend(info.cost, log, language)) return log
       if (task === 'medical' || task === 'observe') {
         s.supplies[task] = true
         const before = s.energy; s.energy = Math.min(s.maxEnergy, s.energy + 6)
-        log.push(t('supplyResult', language, s.energy - before, s.energy))
+        log.push(t(task === 'medical' ? 'batteryConnectedResult' : 'observationShutdownResult', language), t('supplyResult', language, s.energy - before, s.energy))
       } else if (task === 'parts') { s.items.push('修理部品'); log.push(t('repairPartsCollectedUseThemInMaintenance', language)) }
-      else if (task === 'launch') { s.status = 'clear'; log.push(t('gameClear', language), t('theReturnShipHasLeftTheMoon', language), t('aiDeparturePreparationsCompleteWeCanDeal', language)) }
+      else if (task === 'launch') { s.status = 'clear'; log.push(t('theReturnShipHasLeftTheMoon', language), t('aiDeparturePreparationsCompleteWeCanDeal', language), t('gameClear', language)) }
       else {
         s.conditions[task] = true
+        if (task === 'power') log.push(t('powerSwitchResult', language))
+        if (task === 'control') log.push(t('controlUnlockResult', language))
         if (task === 'food') { s.items.push('食糧'); log.push(t('foodCollectedKeepItUntilDeparture', language)) }
         if (task === 'repair') { s.items = s.items.filter(item => item !== '修理部品'); log.push(t('repairPartsUsedHullRepairsComplete', language)) }
         log.push(t('returnRequirementMet', language) + conditionLabels(language)[task])
@@ -151,8 +153,8 @@ export class Game {
       const hide = action.type === 'hide'
       log.push(hide ? t('hidingBehindCover', language) : t('forcingPastTheSafetyRobot', language))
       if (!this.spend(hide ? 1 : 2, log, language)) return log
-      if (this.random() < (hide ? 0.8 : 0.6)) log.push(t('successAvoidedTheSafetyRobot', language))
-      else { log.push(t('failureUsedSuitProtectionToEscape', language)); if (!this.spend(1, log, language)) return log }
+      if (this.random() < (hide ? 0.8 : 0.6)) log.push(t(hide ? 'successAvoidedTheSafetyRobot' : 'forceSuccess', language))
+      else { log.push(t(hide ? 'failureUsedSuitProtectionToEscape' : 'forceFailure', language)); if (!this.spend(1, log, language)) return log }
     }
     // Exactly one turn per accepted world action. Fatal costs stop before results/world.
     // Camera captures AFTER world update; response actions suppress this update's encounter.
