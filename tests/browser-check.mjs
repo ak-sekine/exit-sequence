@@ -1,13 +1,8 @@
-// Real Chromium interaction checks. Test-only state controls are injected into Vite's
-// response in this browser session; they are never part of the shipped application.
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { t, itemName, roomName } from '../src/i18n.ts'
-import { rooms, edges, edgeKey, directionBetween } from '../src/map.ts'
-import { escapeRoute, escapeSeed } from './escape-route.ts'
-import { escapeItems } from '../src/items.ts'
-
+import { t } from '../src/i18n.ts'
+import { ordinary, informed, service, decoy, robotOver, oxygenOver, highAlert } from './routes.ts'
 const url = process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/'
 const artifactDir = process.env.EXIT_SEQUENCE_ARTIFACTS ?? '/tmp/exit-sequence-browser'
 await mkdir(artifactDir, { recursive: true })
@@ -18,192 +13,89 @@ try {
     const context = await browser.newContext({ viewport: { width: 320, height: 640 }, locale: language, reducedMotion: 'reduce' })
     const page = await context.newPage(), errors = []
     page.on('pageerror', error => errors.push(error.message))
-    await page.addInitScript(({ language }) => { localStorage.setItem('exit-sequence-language', language); Math.random = () => 0.05 }, { language })
+    await page.addInitScript(language => localStorage.setItem('exit-sequence-language', language), language)
+    // Read-only test access injected into the dev response, never shipped.
     await page.route(/\/src\/main\.ts(?:\?.*)?$/, async route => {
       const response = await route.fetch()
-      await route.fulfill({ response, body: await response.text() + '\nglobalThis.__exitTest = { game, open, render, appendLog };' })
+      await route.fulfill({ response, body: await response.text() + '\nglobalThis.__exitTest = { state: () => structuredClone(game.state) };' })
     })
-    await page.goto(url)
-    await page.waitForFunction(() => !!globalThis.__exitTest)
-    const labels = () => page.locator('.terminal-actions button').allTextContents()
-    const logText = () => page.locator('.terminal-log').innerText()
-    const state = () => page.evaluate(() => structuredClone(globalThis.__exitTest.game.state))
-    async function click(label) {
-      for (let i = 0; i < 10; i++) {
-        const choice = page.locator('.terminal-actions button').filter({ hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') })
-        if (await choice.count()) { await choice.click(); return }
-        const next = page.getByRole('button', { name: t('nextPage', language), exact: true })
-        if (!(await next.isEnabled())) throw Error(`Missing option ${label}; found ${await labels()}`)
-        await next.click()
-      }
-      throw Error(`Paging limit for ${label}`)
+    await page.goto(url); await page.waitForFunction(() => !!globalThis.__exitTest)
+    const state = () => page.evaluate(() => globalThis.__exitTest.state())
+    const prose = () => page.locator('.terminal-log').innerText()
+    const click = label => page.getByRole('button', { name: label, exact: true }).click()
+    const checked = name => report.push({ language, width: 320, check: name, result: 'pass' })
+    async function layout() {
+      const actual = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth,
+        buttons: [...document.querySelectorAll('button')].map(b => ({ width: b.scrollWidth, client: b.clientWidth, height: b.getBoundingClientRect().height })),
+        logHeight: document.querySelector('.terminal-log').getBoundingClientRect().height }))
+      assert.equal(actual.width, actual.viewport); assert.equal(actual.width, 320)
+      assert.ok(actual.buttons.every(b => b.width <= b.client && b.height >= 44), JSON.stringify(actual))
+      assert.ok(actual.logHeight >= 100, JSON.stringify(actual))
     }
-    const yes = () => click(t('yes', language))
-    const back = () => page.getByRole('button', { name: t('backToParentMenu', language), exact: true }).click()
-    const read = async (menuLabel, entry) => { await click(menuLabel); await click(entry) }
-    const main = () => page.evaluate(() => globalThis.__exitTest.open('main'))
-    const checked = (name) => { report.push({ language, viewport: 320, check: name, result: 'pass' }) }
-    async function fixture({ location = '居住', enemy = '通信', items = [], mapped = true, roll = 0.05 } = {}) {
-      await page.evaluate(({ location, enemy, items, mapped, roll, rooms, edgeKeys }) => {
-        const { game, open } = globalThis.__exitTest
-        game.random = () => roll; game.restart()
-        const s = game.state; s.location = location; s.enemy = enemy; s.robotNext = enemy
-        s.items.push(...items.filter(item => !s.items.includes(item)))
-        s.knowledge[location] = 'visited'
-        if (mapped) { for (const room of rooms) if (s.knowledge[room] !== 'visited') s.knowledge[room] = 'mapped'; s.knownEdges = edgeKeys }
-        open('main')
-      }, { location, enemy, items, mapped, roll, rooms, edgeKeys: edges.map(([a, b]) => edgeKey(a, b)) })
+    async function choice(id) {
+      const b = page.locator(`[data-choice="${id}"]`); assert.equal(await b.count(), 1, `Available: ${id}`)
+      await b.click(); await layout()
     }
-    async function useItem(item) { await click(t('inventoryMenu', language)); await click(itemName(item, language) + ' >'); await click(t('use', language)) }
-    async function lure(item, target) { await click(t('inventoryMenu', language)); await click(itemName(item, language) + ' >'); await click(t('use', language) + ' >'); await click(roomName(target, language)); await yes() }
-    async function bulk(item, edge, closed) {
-      await click(t('inventoryMenu', language)); await click(itemName(item, language) + ' >'); await click(t('use', language) + ' >')
-      const label = edge.split(':').map(room => { const i = rooms.indexOf(room); return `${'ABCD'[i % 4]}${Math.floor(i / 4) + 1}` }).join('–')
-      await click(label); await click(t(closed ? 'close' : 'open', language)); await yes()
+    async function restart() { await click(t('restart', language)); assert.equal((await state()).scene, 'wake') }
+    async function route(ids) { for (const id of ids) await choice(id) }
+    await click(t('start', language)); assert.equal((await state()).scene, 'wake'); assert.match(await prose(), language === 'ja' ? /二本の黒い擦過痕/ : /Two black scrapes/); checked('START and perceptual introduction')
+    await layout(); await page.screenshot({ path: `${artifactDir}/intro-${language}-320.png` })
+    const before = await state()
+    for (const panel of ['status', 'inventory', 'knowledge', 'help', 'settings']) {
+      await click(t(panel, language)); assert.deepEqual(await state(), before)
+      await click(t('back', language)); assert.deepEqual(await state(), before)
     }
-
-    await click(t('start', language)); assert.equal((await state()).location, '居住'); assert.equal((await state()).energy, 28); assert.equal((await state()).maxEnergy, 40); assert.deepEqual((await state()).items, ['short-decoy']); checked('1. game start 28/40, short decoy only')
-    await read(t('inventoryMenu', language), t('baseMap', language)); assert.match(await logText(), /\?/); checked('2. unknown map')
-    await back(); await click(t('moveMenu', language))
-    const directionLabels = ['north', 'south', 'west', 'east'].map(d => t(d, language))
-    assert.deepEqual(await labels(), directionLabels)
-    assert.deepEqual(await page.locator('.terminal-actions button').evaluateAll(bs => bs.map(b => b.disabled)), [true, false, true, false])
-    const helpButton = () => page.getByRole('button', { name: t('helpMode', language), exact: true }).click()
-    const beforeUnknownHelp = await state()
-    await helpButton(); await click(t('east', language))
-    assert.deepEqual(await state(), beforeUnknownHelp)
-    assert.ok((await logText()).includes(t('destinationUnknown', language, 'B1')))
-    assert.ok(!(await logText()).includes(language === 'ja' ? '医療' : 'MEDICAL'))
-    await page.screenshot({ path: `${artifactDir}/direction-unknown-${language}-320.png` })
-    await click(t('east', language)); checked('3. direction move into unexplored district')
-    assert.ok((await logText()).includes(`> ${t('move', language)} ${t('east', language)}`))
-    assert.equal((await state()).knowledge.医療, 'visited'); checked('4. district name discovered')
-    await fixture(); await click(t('moveMenu', language)); await helpButton(); await click(t('east', language))
-    assert.ok((await logText()).includes(t('destinationKnown', language, roomName('医療', language))))
-    await page.screenshot({ path: `${artifactDir}/direction-known-${language}-320.png` })
-    for (const passage of ['BLOCKED', 'CLOSED']) {
-      await page.evaluate(({ passage, key }) => { globalThis.__exitTest.game.state.passages[key] = passage; globalThis.__exitTest.render() }, { passage, key: edgeKey('居住', '医療') })
-      assert.deepEqual(await labels(), directionLabels)
-      assert.equal(await page.getByRole('button', { name: t('east', language), exact: true }).isDisabled(), true)
-      await helpButton(); await click(t('east', language)); assert.ok((await logText()).includes(`PASSAGE: ${passage}`) || (await logText()).includes(`通路：${passage}`))
-    }
-    await back(); await fixture({ location: '管制' }); await click(t('moveMenu', language))
-    assert.deepEqual(await labels(), directionLabels)
-    assert.deepEqual(await page.locator('.terminal-actions button').evaluateAll(bs => bs.map(b => b.disabled)), [true, false, false, false])
-    const directionLayout = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, slots: document.querySelector('.terminal-actions').children.length, rows: getComputedStyle(document.querySelector('.terminal-actions')).gridTemplateRows }))
-    assert.deepEqual(directionLayout, { width: 320, slots: 6, rows: '44px 44px 44px' })
-    await page.screenshot({ path: `${artifactDir}/direction-center-${language}-320.png` })
-    checked('fixed A1/central directions, unknown/known HELP, BLOCKED/CLOSED, no overflow')
-    await fixture({ enemy: '観測' }); await read(t('aiMenu', language), t('sensor', language)); assert.match(await logText(), language === 'ja' ? /東.*距離2/s : /EAST.*Distance 2/s); checked('5. distance 2 warning')
-    await fixture({ enemy: '医療' }); await read(t('aiMenu', language), t('sensor', language)); assert.match(await logText(), language === 'ja' ? /危険.*距離1/s : /DANGER.*distance 1/s); checked('6. distance 1 warning'); await back(); await click(t('moveMenu', language)); assert.equal((await labels())[3], t('east', language))
-    await fixture(); await click(t('aiMenu', language)); await click(t('camera', language)); await yes()
-    assert.equal((await state()).feed.enemy, '通信'); assert.match(await logText(), /B4/); checked('7. camera exact position')
-    await fixture({ items: ['predictor'] }); await useItem('predictor'); await yes(); const prediction = (await state()).prediction
-    await click(t('aiMenu', language)); await click(t('wait', language)); await yes(); assert.equal((await state()).enemy, prediction.next); checked('8. prediction matches next action')
-    await fixture({ enemy: '観測' }); await lure('short-decoy', '管制'); assert.equal((await state()).enemy, '電力管理'); checked('9. short lure')
-    await fixture({ enemy: '発着', items: ['long-decoy'] }); await lure('long-decoy', '観測'); assert.equal((await state()).enemy, '資材'); checked('10. long lure one step')
-    await fixture({ location: '観測', enemy: '資材', items: ['remote-decoy'] })
-    await click(t('inventoryMenu', language)); await click(itemName('remote-decoy', language) + ' >'); await click(t('install', language)); await yes()
-    await click(t('moveMenu', language)); await click(t('west', language)); await click(t('inventoryMenu', language))
-    await click(t('installedLabel', language, itemName('remote-decoy', language), 'C1')); await click(t('activate', language)); await yes()
-    assert.equal((await state()).lure.target, '観測'); assert.equal((await state()).installations[0].room, '観測'); checked('11. installed lure remote activation')
-    await fixture({ enemy: '観測' }); await click(t('aiMenu', language)); await click(t('selfLure', language)); await yes(); assert.equal((await state()).enemy, '医療'); checked('12. lure to player')
-    await fixture({ enemy: '管制', items: ['local-key'] }); await bulk('local-key', edgeKey('居住', '医療'), true); assert.equal((await state()).passages[edgeKey('居住', '医療')], 'CLOSED'); checked('13. bulkhead closure')
-    await fixture({ enemy: '管制', items: ['remote-key'] })
-    await page.evaluate(() => { const s = globalThis.__exitTest.game.state; s.lure = { target: '居住', remaining: 5 }; s.robotNext = '倉庫' })
-    await bulk('remote-key', edgeKey('管制', '倉庫'), true); assert.equal((await state()).enemy, '電力管理'); checked('14. robot rerouted by closed passage')
-    await fixture({ location: '整備' }); await read(t('exploreMenu', language), itemName('override', language)); await yes(); assert.ok((await state()).items.includes('override')); checked('15. portable item collected')
-    await fixture({ location: '観測' }); await read(t('exploreMenu', language), t('cameraTerminal', language)); await yes(); assert.equal((await state()).energy, 26); checked('16. fixed camera facility')
-    await fixture({ location: '電力管理', mapped: false }); await read(t('exploreMenu', language), itemName('map', language)); await yes(); assert.ok((await state()).items.includes('map')); checked('17. layout map collected')
-    assert.ok(Object.values((await state()).knowledge).every(value => value === 'mapped' || value === 'visited'))
-    await read(t('inventoryMenu', language), t('baseMap', language)); checked('18. all districts shown')
-    await page.screenshot({ path: `${artifactDir}/map-${language}-320.png` })
-    const mapLayout = await page.locator('.terminal-line').evaluateAll(lines => lines.filter(line => /^\[/.test(line.textContent)).map(line => ({ text: line.textContent, width: line.scrollWidth, client: line.clientWidth, height: line.getBoundingClientRect().height })))
-    assert.ok(mapLayout.every(line => line.width <= line.client && line.height <= 24), JSON.stringify(mapLayout))
-    await fixture({ location: '倉庫' }); await read(t('exploreMenu', language), itemName('food', language)); await yes(); assert.ok((await state()).items.includes('food')); checked('19. escape supply collected')
-    await fixture({ enemy: '医療', roll: 0.1 }); await click(t('moveMenu', language)); await click(t('east', language)); assert.equal((await state()).encounter, true); checked('20. robot encounter')
-    await click(t('emergency', language)); assert.deepEqual(await labels(), directionLabels); await page.screenshot({ path: `${artifactDir}/retreat-${language}-320.png` }); await click(t('west', language)); assert.ok((await logText()).includes(`> ${t('emergency', language).replace(/ >$/, '')} ${t('west', language)}`)); await yes(); assert.equal((await state()).status, 'playing'); assert.equal((await state()).retreatUsed, true); checked('21. low-probability emergency success fixture')
-    await fixture({ enemy: '医療', roll: 0.999 }); await click(t('moveMenu', language)); await click(t('east', language)); await click(t('emergency', language)); await click(t('west', language)); await yes()
-    assert.equal((await state()).status, 'over'); checked('22. emergency failure GAME OVER')
-    await page.screenshot({ path: `${artifactDir}/over-${language}-320.png` })
-
-    // Restart through the real UI with a seeded normal patrol. No State fields are rewritten.
-    await page.evaluate(seed => {
-      let value = seed
-      globalThis.__exitTest.game.random = () => { value = (Math.imul(value, 1664525) + 1013904223) >>> 0; return value / 2 ** 32 }
-    }, escapeSeed)
-    await click(t('restart', language))
-    assert.equal((await state()).energy, 28); assert.deepEqual((await state()).items, ['short-decoy'])
-    const routeTrace = []
-    for (const action of escapeRoute) {
-      const before = await state()
-      if (action.type === 'move') {
-        await click(t('moveMenu', language)); await click(t(directionBetween(before.location, action.target), language))
-      } else if (action.type === 'collect') {
-        await read(t('exploreMenu', language), itemName(action.item, language)); await yes()
-      } else if (action.type === 'use') {
-        await useItem(action.item); await yes()
-      } else if (action.type === 'camera') {
-        if (action.fixed) await read(t('exploreMenu', language), t('cameraTerminal', language))
-        else { await click(t('aiMenu', language)); await click(t('camera', language)) }
-        await yes()
-      } else if (action.type === 'facility') {
-        await read(t('exploreMenu', language), t(action.facility === 'ship' ? 'returnShip' : 'charger', language)); await yes()
-      } else throw Error('Unsupported route action')
-      const after = await state()
-      assert.equal(after.encounter, false); assert.notEqual(after.status, 'over')
-      if (before.prediction?.turn === before.turn) assert.equal(after.enemy, before.prediction.next)
-      if (action.type === 'camera') assert.equal(after.energy, before.energy - (action.fixed ? 2 : 4))
-      if (action.type === 'use' && action.item === 'predictor') assert.equal(after.energy, before.energy - 3)
-      if (action.type === 'use' && action.item === 'battery' || action.type === 'facility' && action.facility === 'charger') assert.equal(after.energy, Math.min(40, before.energy + 8))
-      if (action.type === 'move' && action.target === '医療' && after.turn === 1) {
-        assert.deepEqual(after.ground.医療, ['battery', 'local-key'])
-        assert.equal(after.passages[edgeKey('医療', '管制')], 'BLOCKED')
-        await click(t('moveMenu', language))
-        assert.equal(await page.getByRole('button', { name: t('south', language), exact: true }).isDisabled(), true)
-        await helpButton(); await click(t('south', language)); assert.match(await logText(), /BLOCKED/)
-        await page.screenshot({ path: `${artifactDir}/medical-blocked-${language}-320.png` }); await back()
-      }
-      if (action.type === 'collect' && action.item === 'food') {
-        assert.equal(after.items.includes('map'), false); assert.ok(Object.values(after.knowledge).includes('unexplored'))
-      }
-      if (action.type === 'collect' && action.item === 'map') assert.ok(Object.values(after.knowledge).every(k => k === 'visited' || k === 'mapped'))
-      routeTrace.push({ action, turn: after.turn, location: after.location, energy: after.energy, enemy: after.enemy, status: after.status })
-    }
-    const cleared = await state(); assert.ok(escapeItems.every(item => cleared.items.includes(item)))
-    assert.equal(cleared.status, 'clear'); assert.equal(cleared.location, '発着'); assert.equal(cleared.energy, 17); assert.equal(cleared.turn, 39)
-    await writeFile(`${artifactDir}/escape-route-${language}.json`, JSON.stringify(routeTrace, null, 2) + '\n')
-    checked('23. untouched start, B1 battery/local key and BLOCKED HELP, exploration without map, C2 map, D1 predictor -3, AI camera -4, fixed camera -2, supplies +8, four escape supplies, detours, normal-operation GAME CLEAR')
+    assert.equal(await page.getByRole('button', { name: t('back', language), exact: true }).count(), 0)
+    checked('STATUS / INVENTORY / KNOWLEDGE / HELP / SETTINGS / BACK never advance or undo')
+    const past = await prose(); await click(t('settings', language)); await click(language === 'ja' ? 'English' : '日本語')
+    const other = language === 'ja' ? 'en' : 'ja'; assert.deepEqual(await state(), before)
+    assert.equal(await page.evaluate(() => document.documentElement.lang), other)
+    await click(t('back', other)); assert.notEqual(await prose(), past)
+    await click(t('settings', other)); await click(language === 'ja' ? '日本語' : 'English'); await click(t('back', language))
+    assert.deepEqual(await state(), before); assert.equal(await prose(), past); checked('LANGUAGE preserves state and history; both languages render naturally')
+    await route(informed.slice(0, 6)); assert.ok((await state()).knowledge.includes('arm-traces'))
+    assert.equal(await page.locator('[data-choice="trace-shadow"]').count(), 1)
+    assert.match(await prose(), language === 'ja' ? /あの映像と同じ痕/ : /marks match the footage/)
+    await click(t('knowledge', language)); assert.match(await prose(), language === 'ja' ? /二本の黒い擦過痕/ : /Paired black scrapes/); await click(t('back', language))
+    await page.screenshot({ path: `${artifactDir}/knowledge-${language}-320.png` })
+    checked('Knowledge acquisition, changed recognition and new Choice')
+    await route(informed.slice(6)); assert.equal((await state()).status, 'clear'); checked('full record and launch knowledge CLEAR')
     await page.screenshot({ path: `${artifactDir}/clear-${language}-320.png` })
-
-    // Additional regressions: HELP/BACK/paging, settings/storage, typewriter/tap skip, A11y/layout.
-    await fixture({ items: ['controller', 'sensor', 'long-decoy', 'remote-key', 'override', 'battery'] })
-    await click(t('inventoryMenu', language)); await click(itemName('controller', language) + ' >'); await click(t('install', language) + ' >'); await click('B1–A1')
-    await yes(); await click(t('moveMenu', language)); await click(t('east', language)); await click(t('inventoryMenu', language))
-    await click(t('installedLabel', language, itemName('controller', language), 'A1')); await click(t('close', language)); await yes()
-    assert.equal((await state()).passages[edgeKey('居住', '医療')], 'CLOSED'); checked('installed controller remote closure')
-    await fixture({ location: '計測', enemy: '資材', items: ['sensor'] }); await click(t('inventoryMenu', language)); await click(itemName('sensor', language) + ' >'); await click(t('install', language)); await yes()
-    await click(t('inventoryMenu', language)); await click(t('installedLabel', language, itemName('sensor', language), 'C3')); await click(t('activate', language)); await yes(); assert.match(await logText(), /D3/); checked('installed sensor')
-    await fixture({ items: ['override'] }); await bulk('override', edgeKey('居住', '医療'), true); assert.ok(!(await state()).items.includes('override')); checked('single-use override')
-    await fixture({ location: '隔壁' }); await click(t('exploreMenu', language)); await click(t('bulkPanel', language)); await click('A3–A4'); await click(t('close', language)); await yes(); assert.equal((await state()).passages[edgeKey('研究', '隔壁')], 'CLOSED'); checked('fixed bulkhead panel')
-    await fixture({ location: '管制', enemy: '発着' }); await click(t('exploreMenu', language)); await click(t('alarm', language)); await click(roomName('観測', language)); await yes(); assert.equal((await state()).lure.target, '観測'); checked('fixed alarm')
-    await fixture({ items: ['battery'] }); await page.evaluate(() => { globalThis.__exitTest.game.state.energy = 35 }); await useItem('battery'); await yes(); assert.equal((await state()).energy, 40); checked('portable battery')
-    await fixture({ location: '電力管理' }); await page.evaluate(() => { globalThis.__exitTest.game.state.energy = 35 }); await read(t('exploreMenu', language), t('charger', language)); await yes(); assert.equal((await state()).energy, 40); checked('fixed charger')
-    await fixture(); const beforeHelp = await state(); await click(t('inventoryMenu', language))
-    await page.getByRole('button', { name: t('helpMode', language), exact: true }).click(); await click(t('baseMap', language))
-    assert.deepEqual(await state(), beforeHelp); assert.equal(await page.getByRole('button', { name: t('helpMode', language), exact: true }).getAttribute('aria-pressed'), 'false')
-    await back(); checked('read-only HELP and BACK')
-    const beforeLanguage = await state(); const past = await logText(); await click(t('settingsMenu', language)); await click(t('languageMenu', language)); await click(language === 'ja' ? 'English' : '日本語')
-    assert.deepEqual(await state(), beforeLanguage); assert.equal(await logText(), past); assert.equal(await page.evaluate(() => document.documentElement.lang), language === 'ja' ? 'en' : 'ja'); checked('language switch preserves state and log')
-    const layout = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: innerWidth, slots: document.querySelector('.terminal-actions').children.length, rows: getComputedStyle(document.querySelector('.terminal-actions')).gridTemplateRows }))
-    assert.equal(layout.document, 320); assert.equal(layout.slots, 6); assert.equal(layout.rows, '44px 44px 44px'); checked('320px no horizontal scrolling and 2x3 layout')
-    await page.emulateMedia({ reducedMotion: 'no-preference' })
-    await main(); const changed = language === 'ja' ? 'en' : 'ja'; await click(t('inventoryMenu', changed)); await click(t('baseMap', changed))
+    await restart(); await route(ordinary); assert.equal((await state()).status, 'clear'); checked('ordinary summary route and final procedure-card CLEAR')
+    await restart(); await route(service); assert.equal((await state()).status, 'clear'); checked('second branch: tools, independent power, manual valve, quick card reading CLEAR')
+    await restart(); await route(decoy.slice(0, 5)); assert.equal((await state()).scene, 'encounter'); assert.ok((await state()).items.includes('decoy'))
+    await click(t('inventory', language)); assert.match(await prose(), language === 'ja' ? /簡易デコイ/ : /Simple decoy/); await click(t('back', language))
+    await page.screenshot({ path: `${artifactDir}/encounter-${language}-320.png` })
+    await choice('use-decoy'); assert.ok(!(await state()).items.includes('decoy')); assert.equal((await state()).threat, 0)
+    await route(decoy.slice(6)); assert.equal((await state()).status, 'clear'); checked('risky action, encounter, acquired item use and consumption, CLEAR')
+    await restart(); await route(robotOver); assert.equal((await state()).scene, 'robot-over'); checked('danger warning, robot encounter and GAME OVER')
+    await page.screenshot({ path: `${artifactDir}/over-${language}-320.png` })
+    await restart(); await route(oxygenOver); assert.equal((await state()).scene, 'oxygen-over'); checked('resource exhaustion GAME OVER')
+    await restart(); await route(highAlert); assert.equal((await state()).threat, 2)
+    assert.match(await prose(), language === 'ja' ? /駆動音が止まった/ : /motor stops beyond/)
+    await page.screenshot({ path: `${artifactDir}/high-${language}-320.png` })
+    await choice('wait-relay'); assert.equal((await state()).threat, 1)
+    assert.match(await prose(), language === 'ja' ? /金属音が何度も近づいて/ : /Metal sounds draw closer/)
+    await choice('alarm-power'); await choice('equalise'); await choice('read-card'); assert.equal((await state()).status, 'over'); checked('HIGH / MEDIUM threat prose and waiting-air trade-off')
+    await restart(); await route(['leave-case', 'service-hatch', 'inspect-bench', 'leave-bench', 'hand-seal', 'step-plate', 'wait-relay'])
+    assert.equal((await state()).threat, 0); assert.match(await prose(), language === 'ja' ? /遠くで何かが動いている/ : /Something moves far away/)
+    await route(['blue-power', 'equalise', 'read-card']); assert.equal((await state()).status, 'over'); checked('LOW threat prose; extra waiting leaves no oxygen for the unread card')
+    await restart(); await route(['check-kit', 'take-both', 'service-hatch', 'inspect-bench', 'unscrew-tools', 'hand-seal', 'flood-scan', 'blue-power'])
+    assert.equal((await state()).oxygen, 2); await choice('airlock-refill'); assert.equal((await state()).oxygen, 0); assert.ok(!(await state()).items.includes('flask'))
+    await route(['manual-valve', 'read-card', 'card-launch']); checked('critical oxygen, refill consumption and CLEAR')
+    await restart(); await route(['leave-case', 'service-hatch', 'inspect-bench', 'unscrew-tools', 'hand-seal', 'step-plate', 'alarm-power', 'manual-valve', 'emergency-light', 'crawl-out', 'manual-valve', 'read-card', 'card-launch'])
+    assert.equal((await state()).status, 'clear'); checked('tool + Knowledge emergency-light encounter escape CLEAR')
+    // The real animation path, tap skip, locked actions and reduced-motion completion.
+    await page.emulateMedia({ reducedMotion: 'no-preference' }); await restart()
     assert.equal(await page.locator('.terminal-log').getAttribute('aria-busy'), 'true')
-    assert.ok(await page.locator('.terminal-actions button').evaluateAll(buttons => buttons.every(button => button.disabled)))
-    await page.locator('.terminal-log').click(); assert.equal(await page.locator('.terminal-log').getAttribute('aria-busy'), 'false'); checked('typewriter action lock and tap skip')
-    assert.deepEqual(errors, []); await context.close()
+    assert.ok(await page.locator('button').evaluateAll(bs => bs.every(b => b.disabled)))
+    const animationState = await state(); await page.locator('.terminal-log').click(); assert.deepEqual(await state(), animationState)
+    assert.equal(await page.locator('.terminal-log').getAttribute('aria-busy'), 'false')
+    await choice('check-kit'); await page.emulateMedia({ reducedMotion: 'reduce' }); await page.waitForFunction(() => document.querySelector('.terminal-log').getAttribute('aria-busy') === 'false')
+    assert.equal(await page.locator('.terminal-log').getAttribute('aria-busy'), 'false'); checked('typewriter lock, tap skip and reduced motion')
+    assert.deepEqual(errors, []); checked('320px no horizontal overflow, readable full-width choices, no browser exceptions')
+    await context.close()
   }
   await writeFile(`${artifactDir}/report.json`, JSON.stringify(report, null, 2) + '\n')
-  console.log(`PASS: ${report.length} Chromium checks, ja/en, 320px. Artifacts: ${artifactDir}`)
+  console.log(`PASS: ${report.length} Chromium checks; real choices only, ja/en, 320px. Artifacts: ${artifactDir}`)
 } finally { await browser.close() }

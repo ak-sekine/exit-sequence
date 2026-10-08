@@ -1,33 +1,8 @@
-import type { Room } from './map.ts'
-export type ItemId = 'map' | 'parts' | 'key' | 'power' | 'food' | 'battery' | 'predictor' | 'short-decoy' | 'long-decoy' | 'remote-decoy' | 'local-key' | 'remote-key' | 'override' | 'controller' | 'sensor'
-export type Facility = 'camera' | 'alarm' | 'bulkhead' | 'charger' | 'ship'
-export type ItemKind = 'portable' | 'deployable'
-export type ItemSpec = { kind: ItemKind; effect: 'map' | 'escape' | 'battery' | 'predict' | 'lure' | 'bulkhead' | 'sensor'; cost: number; range: number; duration: number; consumable: boolean }
-// All balance values and placements are prototype values, not release specifications.
-export const itemSpecs: Record<ItemId, ItemSpec> = {
-  map: { kind: 'portable', effect: 'map', cost: 0, range: 0, duration: 0, consumable: false },
-  parts: { kind: 'portable', effect: 'escape', cost: 0, range: 0, duration: 0, consumable: false },
-  key: { kind: 'portable', effect: 'escape', cost: 0, range: 0, duration: 0, consumable: false },
-  power: { kind: 'portable', effect: 'escape', cost: 0, range: 0, duration: 0, consumable: false },
-  food: { kind: 'portable', effect: 'escape', cost: 0, range: 0, duration: 0, consumable: false },
-  battery: { kind: 'portable', effect: 'battery', cost: 0, range: 0, duration: 0, consumable: true },
-  predictor: { kind: 'portable', effect: 'predict', cost: 3, range: 6, duration: 1, consumable: false },
-  'short-decoy': { kind: 'portable', effect: 'lure', cost: 1, range: 2, duration: 2, consumable: true },
-  'long-decoy': { kind: 'portable', effect: 'lure', cost: 4, range: 6, duration: 4, consumable: true },
-  'remote-decoy': { kind: 'deployable', effect: 'lure', cost: 2, range: 6, duration: 5, consumable: false },
-  'local-key': { kind: 'portable', effect: 'bulkhead', cost: 1, range: 1, duration: 3, consumable: false },
-  'remote-key': { kind: 'portable', effect: 'bulkhead', cost: 4, range: 6, duration: 3, consumable: false },
-  override: { kind: 'portable', effect: 'bulkhead', cost: 0, range: 6, duration: 3, consumable: true },
-  controller: { kind: 'deployable', effect: 'bulkhead', cost: 1, range: 6, duration: 3, consumable: false },
-  sensor: { kind: 'deployable', effect: 'sensor', cost: 1, range: 1, duration: 1, consumable: false },
+import { text } from './i18n.ts'
+export const items = {
+  light: text('携帯ライト — 強い照射と通常照明を切り替えられる。', 'Portable light — switches between a flood beam and ordinary lighting.'),
+  tools: text('工具 — ネジと手動弁を静かに扱える。', 'Tools — let me work screws and manual valves quietly.'),
+  decoy: text('簡易デコイ — 一度だけ金属音を繰り返す。', 'Simple decoy — repeats metallic sounds once, then burns out.'),
+  flask: text('予備酸素 — 一回分。使えば酸素を十分まで戻せる。', 'Reserve oxygen — one refill. Restores oxygen to sufficient.'),
 }
-export const escapeItems = ['parts', 'key', 'power', 'food'] as const satisfies readonly ItemId[]
-export const placements: Partial<Record<Room, readonly ItemId[]>> = {
-  医療: ['battery', 'local-key'], 観測: ['remote-decoy'], 中継: ['predictor'], 倉庫: ['food'], 管制: ['key', 'long-decoy'],
-  電力管理: ['map', 'remote-key'], 蓄電: ['power', 'battery'], 研究: ['parts'], 整備: ['override'],
-  計測: ['sensor'], 隔壁: ['controller'], 資材: ['short-decoy'],
-}
-export const facilities: Partial<Record<Room, readonly Facility[]>> = {
-  観測: ['camera'], 管制: ['camera', 'alarm'], 電力管理: ['charger'], 隔壁: ['bulkhead'], 発着: ['ship'],
-}
-export type Installation = { id: number; item: 'remote-decoy' | 'controller' | 'sensor'; room: Room; edge?: string }
+export type ItemId = keyof typeof items
