@@ -1,3 +1,4 @@
+import { initialEnergy, maxEnergy, supplyEnergy, aiCameraCost, fixedCameraCost, robotWaitRate } from './balance.ts'
 import { t, roomName, itemName, facilityName } from './i18n.ts'
 import type { Language } from './i18n.ts'
 import { costs, edgeKey, edges, neighbors, rooms, initialKnowledge, passable, distance, direction, knownRoom, cellCode, baseMapLines, coordinates } from './map.ts'
@@ -37,17 +38,20 @@ export class Game {
   private pick<T>(values: readonly T[]): T { return values[Math.min(values.length - 1, Math.floor(this.random() * values.length))]! }
   restart() {
     this.state = {
-      location: '居住', energy: 40, maxEnergy: 40, turn: 0,
+      location: '居住', energy: initialEnergy, maxEnergy, turn: 0,
       passages: Object.fromEntries(edges.map(([a, b]) => [edgeKey(a, b), 'NORMAL'])),
       enemy: this.pick(['研究', '資材', '通信'] as const), robotNext: '研究',
       knowledge: initialKnowledge(), knownEdges: neighbors('居住').map(room => edgeKey('居住', room)),
-      items: ['predictor', 'short-decoy', 'local-key'], ground: structuredClone(placements) as State['ground'], installations: [],
+      items: ['short-decoy'], ground: structuredClone(placements) as State['ground'], installations: [],
       feed: null, prediction: null, lure: null, bulkheads: {}, chargerUsed: false, retreatUsed: false,
       status: 'playing', encounter: false,
     }
     // Fixed dark passages add cost choices without random topology failures.
     this.state.passages[edgeKey('観測', '中継')] = 'DARK'
     this.state.passages[edgeKey('計測', '資材')] = 'DARK'
+    for (const [a, b] of [['医療', '管制'], ['電力管理', '蓄電'], ['研究', '整備'], ['計測', '前室']] as const) {
+      this.state.passages[edgeKey(a, b)] = 'BLOCKED'
+    }
     this.state.robotNext = this.nextRobot()
   }
   passage(a: Room, b: Room) { return this.state.passages[edgeKey(a, b)] }
@@ -74,8 +78,13 @@ export class Game {
       // Stable N/E/S/W order is the prototype tie-break, never a teleport.
       return options.find(room => this.pathDistance(room, s.lure!.target) < remaining) ?? s.enemy
     }
-    // Uniform among open neighbors AND one wait candidate. No tracking or previous-cell bias.
-    return this.pick([...options, s.enemy])
+    // One draw: wait 10%, then divide the remaining 90% evenly among open neighbors.
+    // No tracking or previous-cell bias; an isolated robot always waits.
+    if (!options.length) return s.enemy
+    const roll = this.random()
+    if (roll < robotWaitRate) return s.enemy
+    const index = Math.floor((roll - robotWaitRate) / (1 - robotWaitRate) * options.length)
+    return options[Math.min(options.length - 1, index)]!
   }
   private discover(room: Room) {
     const s = this.state
@@ -175,7 +184,7 @@ export class Game {
   }
   private charge(log: string[], language: Language) {
     const s = this.state, before = s.energy
-    s.energy = Math.min(s.maxEnergy, s.energy + 12)
+    s.energy = Math.min(s.maxEnergy, s.energy + supplyEnergy)
     log.push(t('chargeResult', language), t('supplyResult', language, s.energy - before, s.energy))
   }
   // Shared by execution and confirmation. Invalid actions must not spend, progress or draw RNG.
@@ -228,10 +237,10 @@ export class Game {
       return log
     }
     const cost = action.type === 'move' ? costs[this.passage(s.location, action.target)]
-      : action.type === 'camera' ? action.fixed ? 1 : 2
+      : action.type === 'camera' ? action.fixed ? fixedCameraCost : aiCameraCost
       : action.type === 'use' ? itemSpecs[action.item].cost
       : action.type === 'activate' ? itemSpecs[s.installations.find(device => device.id === action.id)!.item].cost
-      : action.type === 'facility' ? action.facility === 'camera' || action.facility === 'alarm' || action.facility === 'bulkhead' ? 1 : 0
+      : action.type === 'facility' ? action.facility === 'camera' ? fixedCameraCost : action.facility === 'alarm' || action.facility === 'bulkhead' ? 1 : 0
       : action.type === 'wait' ? 1 : 0
     if (!this.spend(cost, log, language)) return log
     if (action.type === 'move') {

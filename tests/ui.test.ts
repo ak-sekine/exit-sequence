@@ -10,7 +10,7 @@ const buttons = (ui: ReturnType<typeof fixture>) => ui.actions.children.filter(c
 function start(language: 'ja' | 'en' = 'ja', reduce = true) {
   const ui = fixture(reduce, { navigator: { language } }); ui.flush(); ui.click(t('start', language)); ui.flush()
   ui.game.state.enemy = '通信'; ui.game.state.robotNext = '通信'
-  ;(ui.game as unknown as { random: () => number }).random = () => 0.999
+  ;(ui.game as unknown as { random: () => number }).random = () => 0.05
   return ui
 }
 function assertNoProgress(ui: ReturnType<typeof fixture>, run: () => void) {
@@ -32,7 +32,7 @@ for (const language of ['ja', 'en'] as const) {
   })
 
   test(`${language}: collection confirmation locks BACK, decline is read-only and YES executes once`, () => {
-    const ui = start(language); ui.game.state.location = '医療'; ui.render('investigate')
+    const ui = start(language); ui.game.state.location = '電力管理'; ui.render('investigate')
     assertNoProgress(ui, () => {
       ui.click(itemName('map', language)); ui.navigation.children[0]!.click()
       assert.equal(buttons(ui)[0]!.textContent, t('yes', language)); ui.click(t('no', language))
@@ -44,8 +44,8 @@ for (const language of ['ja', 'en'] as const) {
   })
 
   test(`${language}: camera, prediction and references share confirmation and preserve freshness on reads`, () => {
-    const ui = start(language); ui.click(t('aiMenu', language)); ui.click(t('camera', language)); ui.click(t('yes', language))
-    assert.equal(ui.game.state.energy, 38); assert.equal(ui.game.freshness(ui.game.state.feed), 'fresh')
+    const ui = start(language); ui.game.state.items.push('predictor'); ui.click(t('aiMenu', language)); ui.click(t('camera', language)); ui.click(t('yes', language))
+    assert.equal(ui.game.state.energy, 24); assert.equal(ui.game.freshness(ui.game.state.feed), 'fresh')
     ui.click(t('aiMenu', language)); assertNoProgress(ui, () => { ui.click(t('feed', language)); ui.click(t('sensor', language)); ui.click(t('status', language)) })
     ui.navigation.children[0]!.click(); ui.click(t('inventoryMenu', language)); ui.click(itemName('predictor', language) + ' >')
     ui.click(t('use', language)); ui.click(t('yes', language))
@@ -53,7 +53,7 @@ for (const language of ['ja', 'en'] as const) {
   })
 
   test(`${language}: HELP auto-off retains page/menu, navigation is fixed and never executes another action`, () => {
-    const ui = start(language); ui.game.state.items.push('long-decoy', 'remote-key', 'override', 'sensor'); ui.render('inventory')
+    const ui = start(language); ui.game.state.items.push('predictor', 'local-key', 'long-decoy', 'remote-key', 'override', 'sensor'); ui.render('inventory')
     const [back, pager, help] = ui.navigation.children, [previous, indicator, next] = pager!.children
     next!.click(); assert.equal(indicator!.textContent, '2 / 2'); assert.equal(next!.disabled, true)
     const before = structuredClone(ui.game.state); for (let i = 0; i < 5; i++) next!.click()
@@ -80,6 +80,7 @@ for (const language of ['ja', 'en'] as const) {
     ui.click(t('moveMenu', language)); ui.click(t('east', language)); assert.equal(ui.game.state.encounter, true)
     assert.equal(buttons(ui).length, 2); assert.ok(!buttons(ui).some(button => /HIDE|隠れる/.test(button.textContent)))
     ui.click(t('emergency', language)); ui.click(t('west', language))
+    ;(ui.game as unknown as { random: () => number }).random = () => 0.999
     ui.click(t('yes', language)); assert.equal(ui.game.state.status, 'over'); assert.ok(ui.lines().includes('GAME OVER'))
     ui.click(t('restart', language)); ui.game.state.location = '発着'; ui.game.state.items.push(...escapeItems); ui.render('investigate')
     ui.click(t('returnShip', language)); ui.click(t('yes', language)); assert.equal(ui.game.state.status, 'clear')
@@ -136,13 +137,13 @@ for (const language of ['ja', 'en'] as const) {
     }
     ui.game.state.location = '管制'; ui.render('move')
     assert.deepEqual(buttons(ui).map(b => b.textContent), labels)
-    assert.ok(buttons(ui).every(b => !b.disabled))
+    assert.deepEqual(buttons(ui).map(b => b.disabled), [true, false, false, false])
   })
 
   test(`${language}: direction UI preserves complete State and RNG versus direct Room actions`, () => {
     for (const retreat of [false, true]) for (const direction of cardinalDirections) for (const roll of [0.1, 0.25, 0.999]) {
       const ui = start(language), direct = new Game(() => 0.999)
-      ui.game.state.location = '管制'
+      ui.game.state.location = '管制'; ui.game.state.passages[edgeKey('管制', '医療')] = 'NORMAL'
       if (retreat) { ui.game.state.enemy = '管制'; ui.game.state.encounter = true }
       direct.state = structuredClone(ui.game.state)
       const calls: number[][] = [[], []]

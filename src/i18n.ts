@@ -1,3 +1,4 @@
+import { initialEnergy, maxEnergy, supplyEnergy, aiCameraCost, fixedCameraCost } from './balance.ts'
 import type { Room } from './map.ts'
 import type { ItemId, Facility } from './items.ts'
 export type Language = 'ja' | 'en'
@@ -77,7 +78,7 @@ export const messages = {
   "introDamage": {"ja": "AI：基地は致命的損傷を受けています。帰還船で脱出してください。", "en": "AI: The base has suffered critical damage. Escape aboard the return ship."},
   "introRequirements": {"ja": "AI：修理部品・発進キー・帰還用電源・食糧を集めてください。所在地は未確認です。", "en": "AI: Collect repair parts, a launch key, a return battery and food. Their locations are unknown."},
   "introTools": {"ja": "AI：近距離警告は無料です。カメラで正確な位置を確認できます。遭遇時の退避成功率は25%です。", "en": "AI: Proximity warnings are free. Cameras reveal exact positions. Encounter retreat succeeds only 25% of the time."},
-  "introStatus": {"ja": "ENERGY 40 / 40。予測装置・簡易デコイ・簡易隔壁キーを所持。", "en": "ENERGY 40 / 40. Prediction device, short decoy and local bulkhead key equipped."},
+  "introStatus": {"ja": `ENERGY ${initialEnergy} / ${maxEnergy}。簡易デコイを1個所持。`, "en": `ENERGY ${initialEnergy} / ${maxEnergy}. One short decoy equipped.`},
   "menuPage": {"ja": "{0}（{1} / {2}ページ）", "en": "{0} (page {1} / {2})"},
   "helpInput": {"ja": "HELP {0}", "en": "HELP {0}"},
   "locationStatus": {"ja": "現在地 : {0}", "en": "LOCATION : {0}"},
@@ -91,8 +92,8 @@ export const messages = {
   "mapHelp": {"ja": "判明した配置と接続だけを表示する。地図取得で全16区画が判明する。動的情報は含まない。消費・進行なし。", "en": "Shows discovered layout and connections. Collect the map to reveal all 16 districts. No dynamic information. No cost or progression."},
   "guideHelp": {"ja": "訪問済み区画の固定設備だけを参照する。地図から設備・アイテム位置は分からない。消費・進行なし。", "en": "Lists fixed facilities in visited districts only. The map does not reveal facilities or item locations. No cost or progression."},
   "readHelp": {"ja": "情報の参照のみ。ENERGY消費・進行なし。", "en": "Read only. No ENERGY cost or progression."},
-  "cameraHelp": {"ja": "全16区画のロボット位置と通路状態を世界行動後に取得する。ENERGY 2（固定端末1）。次の世界行動で古くなる。次の移動先は分からない。", "en": "Scan robot position and passages across all 16 districts after a world action. ENERGY 2 (fixed terminal 1). Stale after the next world action. Does not reveal its next move."},
-  "predictionHelp": {"ja": "ENERGY 1。世界行動後に次のロボット移動を確定表示する。次の通常行動で一致する。誘導・隔壁操作は予測を更新する。", "en": "ENERGY 1. After a world action, reveal the robot’s committed next move. It matches the next normal action. Lures and bulkhead changes revise the prediction."},
+  "cameraHelp": {"ja": `全16区画のロボット位置と通路状態を世界行動後に取得する。ENERGY ${aiCameraCost}（固定端末${fixedCameraCost}）。次の世界行動で古くなる。次の移動先は分からない。`, "en": `Scan robot position and passages across all 16 districts after a world action. ENERGY ${aiCameraCost} (fixed terminal ${fixedCameraCost}). Stale after the next world action. Does not reveal its next move.`},
+  "predictionHelp": {"ja": "ENERGY 3。世界行動後に次のロボット移動を確定表示する。次の通常行動で一致する。誘導・隔壁操作は予測を更新する。", "en": "ENERGY 3. After a world action, reveal the robot’s committed next move. It matches the next normal action. Lures and bulkhead changes revise the prediction."},
   "selfHelp": {"ja": "ENERGY 0。2ターン現在地へ確実に誘導する。距離1では即遭遇する危険がある。", "en": "ENERGY 0. Lure to your current cell for 2 turns. At distance 1 this can cause an immediate encounter."},
   "emergencyHelp": {"ja": "成功率25%／ENERGY 2。開いている隣接区画へ一度だけ退避を試みる。失敗はGAME OVER。", "en": "25% success / ENERGY 2. One attempt to retreat to an open adjacent cell. Failure is GAME OVER."},
   "actionUnavailable": {"ja": "AI：この行動は実行できません。ENERGY消費なし。", "en": "AI: This action is unavailable. No ENERGY spent."},
@@ -254,7 +255,7 @@ const itemDescriptions: Record<ItemId, Record<Language, string>> = {
   "key": {"ja": "帰還船に持ち込む仮の脱出物資。発進まで保持する。", "en": "Prototype escape supply to take aboard the return ship. Keep until launch."},
   "power": {"ja": "帰還船に持ち込む仮の脱出物資。スーツ補給には使わず発進まで保持する。", "en": "Prototype escape supply for the return ship. Keep until launch; not for suit replenishment."},
   "food": {"ja": "帰還船に持ち込む仮の脱出物資。発進まで保持する。", "en": "Prototype escape supply to take aboard the return ship. Keep until launch."},
-  "battery": {"ja": "使用でENERGY +12（上限40）。1回消耗。好きな場所で使用できる。", "en": "Use for ENERGY +12 (maximum 40). Consumed once. Usable anywhere."},
+  "battery": {"ja": `使用でENERGY +${supplyEnergy}（上限${maxEnergy}）。1回消耗。好きな場所で使用できる。`, "en": `Use for ENERGY +${supplyEnergy} (maximum ${maxEnergy}). Consumed once. Usable anywhere.`},
   "predictor": {"ja": "世界行動後の次の移動先を確定表示する。待機も予測できる。誘導・隔壁操作では予測を更新する。", "en": "Reveal the committed next move after a world action, including a wait. Lures and bulkhead operations revise the prediction."},
   "short-decoy": {"ja": "現在地からロボットと対象がそれぞれ距離2以内。判明したセルへ2ターン確実に誘導。通行可能な経路が必要。", "en": "Robot and target must each be within distance 2 of you. Reliably lure to a known cell for 2 turns. An open path is required."},
   "long-decoy": {"ja": "全域の判明したセルへ4ターン確実に誘導。ロボットは毎ターン最大1セル進む。通行可能な経路が必要。", "en": "Reliably lure to any known cell for 4 turns. The robot moves at most one cell per turn. An open path is required."},

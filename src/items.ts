@@ -11,7 +11,7 @@ export const itemSpecs: Record<ItemId, ItemSpec> = {
   power: { kind: 'portable', effect: 'escape', cost: 0, range: 0, duration: 0, consumable: false },
   food: { kind: 'portable', effect: 'escape', cost: 0, range: 0, duration: 0, consumable: false },
   battery: { kind: 'portable', effect: 'battery', cost: 0, range: 0, duration: 0, consumable: true },
-  predictor: { kind: 'portable', effect: 'predict', cost: 1, range: 6, duration: 1, consumable: false },
+  predictor: { kind: 'portable', effect: 'predict', cost: 3, range: 6, duration: 1, consumable: false },
   'short-decoy': { kind: 'portable', effect: 'lure', cost: 1, range: 2, duration: 2, consumable: true },
   'long-decoy': { kind: 'portable', effect: 'lure', cost: 4, range: 6, duration: 4, consumable: true },
   'remote-decoy': { kind: 'deployable', effect: 'lure', cost: 2, range: 6, duration: 5, consumable: false },
@@ -23,8 +23,8 @@ export const itemSpecs: Record<ItemId, ItemSpec> = {
 }
 export const escapeItems = ['parts', 'key', 'power', 'food'] as const satisfies readonly ItemId[]
 export const placements: Partial<Record<Room, readonly ItemId[]>> = {
-  医療: ['map', 'battery'], 観測: ['remote-decoy'], 倉庫: ['food'], 管制: ['key', 'long-decoy'],
-  電力管理: ['remote-key'], 蓄電: ['power', 'battery'], 研究: ['parts'], 整備: ['override'],
+  医療: ['battery', 'local-key'], 観測: ['remote-decoy'], 中継: ['predictor'], 倉庫: ['food'], 管制: ['key', 'long-decoy'],
+  電力管理: ['map', 'remote-key'], 蓄電: ['power', 'battery'], 研究: ['parts'], 整備: ['override'],
   計測: ['sensor'], 隔壁: ['controller'], 資材: ['short-decoy'],
 }
 export const facilities: Partial<Record<Room, readonly Facility[]>> = {

@@ -1,3 +1,4 @@
+import { supplyEnergy, maxEnergy } from './balance.ts'
 import { t, roomName, initialLanguage, saveLanguage, languageNames, itemName, roomDescriptions, facilityName, itemDescription } from './i18n.ts'
 import type { Language } from './i18n.ts'
 import './style.css'
@@ -208,8 +209,8 @@ function options(): Option[] {
           if (facility === 'alarm') { targetParent = 'investigate'; targetAction = target => ({ type: 'facility', facility: 'alarm', target }) }
           if (facility === 'bulkhead') { bulkParent = 'investigate'; installingController = false; localEdges = true; edgeAction = (edge, closed) => ({ type: 'facility', facility: 'bulkhead', edge, closed }) }
         },
-        help: submenu ? undefined : () => [facility === 'camera' ? t('cameraHelp', language) : facility === 'ship' ? t('escapeItem', language) : 'ENERGY +12 / 40'],
-        run: () => prepare({ type: 'facility', facility }, [roomDescriptions(language)[s.location], ...(facility === 'camera' ? [t('cameraHelp', language)] : facility === 'charger' ? ['ENERGY +12 / 40'] : game.statusLines(language))]),
+        help: submenu ? undefined : () => [facility === 'camera' ? t('cameraHelp', language) : facility === 'ship' ? t('escapeItem', language) : `ENERGY +${supplyEnergy} / ${maxEnergy}`],
+        run: () => prepare({ type: 'facility', facility }, [roomDescriptions(language)[s.location], ...(facility === 'camera' ? [t('cameraHelp', language)] : facility === 'charger' ? [`ENERGY +${supplyEnergy} / ${maxEnergy}`] : game.statusLines(language))]),
       }
     }),
   ]
