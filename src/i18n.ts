@@ -6,7 +6,7 @@ export const messages = {
   start: text('ゲーム開始', 'START'), restart: text('最初から', 'RESTART'),
   menu: text('メニュー', 'Menu'),
   language: text('言語', 'LANGUAGE'), log: text('物語ログ', 'Story log'), choices: text('行動を選ぶ', 'Choose an action'),
-  intro: text('EXIT SEQUENCE\n短編SFゲームブック\n\n音、光、残された記録。読み取ったことが、生き残るための手掛かりになる。', 'EXIT SEQUENCE\nA short SF survival gamebook\n\nSounds, light, abandoned records. What you read becomes what you can act on.'),
+  intro: text('EXIT SEQUENCE\n短編SFゲームブック\n\n壊れた月面基地から、AIと帰還船を目指そう。音や光、残された記録を手掛かりに、次の行動を選ぶ。', 'EXIT SEQUENCE\nA short SF survival gamebook\n\nEscape a damaged Moon base with your AI companion. Follow sounds, light and old records to choose your next move toward the return ship.'),
 } satisfies Record<string, Text>
 export const t = (key: keyof typeof messages, language: Language) => messages[key][language]
 export function initialLanguage(): Language {

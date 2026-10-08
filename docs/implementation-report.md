@@ -1,5 +1,17 @@
 # SFゲームブック再設計 実装報告
 
+## 文章とキャラクター表現の調整（2026-10-08）
+
+main `7a686c38e49958eeb748d56c7c682fa2fb90ff94` を基準に、日英のScene本文・条件付き描写・Choice・結果文章と開始前の紹介文を調整した。児童文学くらいの読みやすさを目指し、光景を先に、感情を後に書く。主人公は怖がり、焦り、安心しながら軽口で気持ちをつなぐ。AIは明確な警告の後に短い皮肉を添える相棒。息が尽きる場面とOVERは冗談を控え、CLEARで安堵と掛け合いを戻す。
+
+`writing-style.md` に短文・具体的な危険・情報優先・ユーモアの加減・避ける表現を明記した。`game-design.md` と `prototype-spec.md` は文体方針のみ整合させた。途中変更を保持して再開し、長めの本文を短縮、工具台で未選択の作業を始めたように見える描写を修正、英語の走行Choiceで必ず腕を痛める代償を明確にした。
+
+基準コミットのソースを別ディレクトリへ読み出して直接比較。18 Scene・46 Choice、全1,893到達State・2,395合法Choice遷移、Endingが一致。文章を除いたScene構造・条件・効果・取得条件も一致する。`game.ts`、`model.ts`、`items.ts`、`main.ts`、`style.css` は差分なし。`i18n.ts` は紹介文のみの変更で、言語設定の仕組みは維持する。
+
+回帰テストは文章とルールの比較を分け、基準コミットの構造と全状態遷移を固定した。酸素が危険なときの警告が日英とも表示され、補給で消えること、未取得のアーム情報が導入に出ないことを確認する。Chromiumでは短いChoiceが一行に収まることを許容し、必要時はテスト内の仮ラベルで長文の折り返しを確認して元へ戻す。ゲームStateは変更しない。
+
+`npm test`、個別13件（`node --test --test-isolation=none tests/*.test.ts`）、`npm run build`、`git diff --check` が成功。既存Chromiumの日英320×640テスト46項目も成功。START、序盤の掛け合い、Knowledgeと再解釈、脅威三段階、酸素悪化と補給、遭遇、両OVER、RESTART、別ルート、CLEAR、言語変更の非進行、typewriter・tap skipを確認した。画像とレポートは `/tmp/exit-sequence-browser/`、基準比較のレポートは `/tmp/exit-prose-regression.json`。画面画像では短い段落、全文表示、Choiceの折り返しと320pxで横スクロールがないことを確認する。
+
 本書は再設計時の実装記録。現行UIは [ui-layout.md](ui-layout.md) を正本とし、参照画面・下部ナビゲーションは廃止、右上メニューの言語設定のみを提供する。Game.read()も削除済み。ゲームState・シナリオとその条件・効果は維持している。
 
 UI簡素化の回帰確認：最新main `fe1e2ae` を基準に全1,893到達StateとChoice遷移を照合し一致。18 Scene・46 Choice、model/scenario/itemsは変更なし。npm test（個別11件）、build、git diff --check、日英320×640 Chromium 46項目が成功。言語変更のState・履歴・Choice不変、開始前と両OVER／CLEAR後、メニュー開閉・Escape・外側タップ、実Choiceによる全内部状態とEnding、typewriter・tap skip・reduced motion、保存言語の再読込を確認。非ゼロSafe Areaは開発CSSレスポンスのenv値を模擬し、5 Choiceとdropdownが画面内に収まることを確認した。本番コードへテスト用APIは追加していない。

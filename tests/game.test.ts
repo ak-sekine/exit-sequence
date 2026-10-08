@@ -22,10 +22,13 @@ test('knowledge unlocks a reading of earlier marks and a new action', () => {
   const g = play(informed.slice(0, 6)); assert.equal(g.state.scene, 'marks')
   assert.ok(g.choices().some(c => c.id === 'trace-shadow'))
   const unlearned = structuredClone(g.state); unlearned.knowledge = []
-  assert.ok(narrative(g.state, 'ja').join('').includes('あの映像と同じ痕'))
-  assert.ok(!narrative(unlearned, 'ja').join('').includes('あの映像と同じ痕'))
+  for (const [language, recognition] of [['ja', /映像と同じ跡/], ['en', /marks match the footage/]] as const) {
+    assert.match(narrative(g.state, language).join(''), recognition)
+    assert.doesNotMatch(narrative(unlearned, language).join(''), recognition)
+  }
   assert.ok(!matches(unlearned, scenes.marks.choices[0].when))
-  assert.equal(narrative(new Game().state, 'ja').join('').includes('アームが旋回'), false)
+  assert.doesNotMatch(narrative(new Game().state, 'ja').join(''), /アーム|ロボット/)
+  assert.doesNotMatch(narrative(new Game().state, 'en').join(''), /\barm\b|\brobot\b/i)
 })
 test('items unlock actions and single-use decoy and oxygen are consumed', () => {
   const g = play(decoy.slice(0, 5)); assert.equal(g.state.scene, 'encounter'); assert.ok(g.state.items.includes('decoy'))
@@ -41,7 +44,7 @@ test('oxygen, injury and alert affect text, choices and deterministic encounters
   assert.equal(low.state.body, 'injured'); assert.equal(low.state.threat, 1)
   assert.ok(!low.choices().some(c => c.id === 'manual-lift'))
   const high = play(highAlert); assert.equal(high.state.threat, 2)
-  assert.match(narrative(high.state, 'ja').join(''), /駆動音が止まった/)
+  assert.match(narrative(high.state, 'ja').join(''), /モーターの音が止まった/)
   assert.ok(high.choose('wait-relay')); assert.equal(high.state.threat, 1); assert.equal(high.state.oxygen, 1)
   assert.match(narrative(high.state, 'ja').join(''), /金属音が何度も近づいて/)
   assert.equal(high.choose('wait-relay'), null)
@@ -58,7 +61,21 @@ test('rendering either language and listing choices leave state untouched', () =
   const g = play(informed.slice(0, 6)), before = structuredClone(g.state)
   for (const language of ['ja', 'en'] as const) { narrative(g.state, language); g.choices(); assert.deepEqual(g.state, before) }
 })
-test('all states and Choice transitions match main fe1e2ae before the UI change', () => {
+test('critical oxygen warnings stay explicit in both languages and disappear after refilling', () => {
+  const g = play(['check-kit', 'take-both', 'service-hatch', 'inspect-bench', 'unscrew-tools', 'hand-seal', 'flood-scan', 'blue-power'])
+  assert.equal(g.state.scene, 'airlock'); assert.equal(g.state.oxygen, 2)
+  const warning = { ja: /最後の空気/, en: /last air/ }
+  for (const language of ['ja', 'en'] as const) assert.match(narrative(g.state, language).join(''), warning[language])
+  assert.ok(g.choose('airlock-refill'))
+  for (const language of ['ja', 'en'] as const) assert.doesNotMatch(narrative(g.state, language).join(''), warning[language])
+})
+test('Scene and Choice structure, conditions, effects and endings match main 7a686c3 before the prose change', () => {
+  // Keep text slots and their order, but let wording evolve independently of rules.
+  const structure = JSON.stringify(scenes, (_key, value) =>
+    value && typeof value === 'object' && 'ja' in value && 'en' in value ? null : value)
+  assert.equal(createHash('sha256').update(structure).digest('hex'), 'a29d06d58f4acbfb7e2974d897049cdee7db222356ae1c80258ff5c3f53c8e3e')
+})
+test('every reachable State and Choice transition matches main 7a686c3 before the prose change', () => {
   const queue = [new Game().state], seen = new Set<string>(), graph: string[] = []
   while (queue.length) {
     const state = queue.pop()!, key = JSON.stringify(state)
@@ -67,13 +84,14 @@ test('all states and Choice transitions match main fe1e2ae before the UI change'
     const g = new Game(); g.state = structuredClone(state)
     const transitions = g.choices().map(choice => {
       const next = new Game(); next.state = structuredClone(state)
-      const transition = next.choose(choice.id); queue.push(next.state); return transition
+      assert.ok(next.choose(choice.id)); queue.push(next.state)
+      return { id: choice.id, after: next.state }
     })
     graph.push(JSON.stringify({ state, transitions }))
   }
   assert.equal(seen.size, 1893)
-  // Covers every state field, condition, effect, route, result and ending.
-  assert.equal(createHash('sha256').update(graph.sort().join('\n')).digest('hex'), '57f538b2efd6ddf466a5f9c8a34be539d02ae590a6c7b11b2cc88ec4d49b81c7')
+  // Baseline captured before edits; covers every state field and ending for every legal choice.
+  assert.equal(createHash('sha256').update(graph.sort().join('\n')).digest('hex'), '230dea3ddeed4234d7bd47392d1cf6fe8145278ca20c9d8f3c2b409fcf6796f2')
 })
 test('all reachable play states have actions (normally 2–5; constraints can narrow them); every scene and choice is reachable', () => {
   const queue = [new Game().state], seen = new Set<string>(), visited = new Set<string>(), choices = new Set<string>()
