@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { Game, matches, narrative } from '../src/game.ts'
 import { scenes, knowledge } from '../src/scenario.ts'
 import { items } from '../src/items.ts'
@@ -53,9 +54,26 @@ test('robot and oxygen failures; oxygen exhaustion precedes transition results',
   assert.equal(play(robotOver).state.scene, 'robot-over'); assert.equal(play(oxygenOver).state.scene, 'oxygen-over')
   assert.equal(play(['leave-case', 'service-hatch', 'inspect-bench', 'leave-bench', 'hand-seal', 'step-plate', 'blue-power', 'equalise', 'ignite-first']).state.status, 'over')
 })
-test('all read-only panels and both languages leave state untouched', () => {
+test('rendering either language and listing choices leave state untouched', () => {
   const g = play(informed.slice(0, 6)), before = structuredClone(g.state)
-  for (const language of ['ja', 'en'] as const) for (const panel of ['status', 'inventory', 'knowledge', 'help', 'settings', 'language'] as const) { g.read(panel, language); narrative(g.state, language); g.choices(); assert.deepEqual(g.state, before) }
+  for (const language of ['ja', 'en'] as const) { narrative(g.state, language); g.choices(); assert.deepEqual(g.state, before) }
+})
+test('all states and Choice transitions match main fe1e2ae before the UI change', () => {
+  const queue = [new Game().state], seen = new Set<string>(), graph: string[] = []
+  while (queue.length) {
+    const state = queue.pop()!, key = JSON.stringify(state)
+    if (seen.has(key)) continue
+    seen.add(key)
+    const g = new Game(); g.state = structuredClone(state)
+    const transitions = g.choices().map(choice => {
+      const next = new Game(); next.state = structuredClone(state)
+      const transition = next.choose(choice.id); queue.push(next.state); return transition
+    })
+    graph.push(JSON.stringify({ state, transitions }))
+  }
+  assert.equal(seen.size, 1893)
+  // Covers every state field, condition, effect, route, result and ending.
+  assert.equal(createHash('sha256').update(graph.sort().join('\n')).digest('hex'), '57f538b2efd6ddf466a5f9c8a34be539d02ae590a6c7b11b2cc88ec4d49b81c7')
 })
 test('all reachable play states have actions (normally 2–5; constraints can narrow them); every scene and choice is reachable', () => {
   const queue = [new Game().state], seen = new Set<string>(), visited = new Set<string>(), choices = new Set<string>()
@@ -69,7 +87,7 @@ test('all reachable play states have actions (normally 2–5; constraints can na
   assert.deepEqual(Object.values(scenes).flatMap(s => s.choices).filter(c => !choices.has(c.id)).map(c => c.id), [])
 })
 test('localized prose has matched semantic units and correct AI speaker prefixes', () => {
-  assert.equal(Object.keys(scenes).length, 18); assert.equal(Object.keys(items).length, 4); assert.equal(Object.keys(knowledge).length, 4)
+  assert.equal(Object.keys(scenes).length, 18); assert.equal(Object.values(scenes).flatMap(s => s.choices).length, 46); assert.equal(Object.keys(items).length, 4); assert.equal(Object.keys(knowledge).length, 4)
   for (const scene of Object.values(scenes)) {
     assert.equal(scene.id in scenes, true)
     for (const pair of [...scene.narrative, ...(scene.additions ?? []).map(a => a.text), ...scene.choices.flatMap(c => [c.label, c.result, ...(c.routes ?? []).flatMap(r => r.result ? [r.result] : [])])]) {

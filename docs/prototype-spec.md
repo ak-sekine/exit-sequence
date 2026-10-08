@@ -95,4 +95,4 @@ OVER：遭遇中に暗闇で静止／酸素危険のまま空気を使う／圧�
 
 Scene・Choice・条件・効果は同一の定義を使い、Textだけ日英で切り替える。UI共通翻訳はi18n.ts。言語変更はStateと確定Choiceを変更しない。履歴は当時のStateから再描画するため、後で得た知識を過去の描写へ逆流させない。
 
-状態・持ち物・知った事実・設定・遊び方は非進行。BACKはサブUIから物語に戻るだけ。表示速度5ms、タップ全文表示、reduced-motion、言語のみlocalStorage保存、Safe Area、320px、GitHub Pagesを維持する。
+状態・持ち物・Knowledgeは内部Stateに保持し、一覧UIと下部ナビゲーションは設けない。右上メニューは言語設定のみのdropdownで、物語を置き換えず非進行。物語Choiceはundo不可。表示速度5ms、タップ全文表示、reduced-motion、言語のみlocalStorage保存、Safe Area、320px、GitHub Pagesを維持する。

@@ -1,5 +1,9 @@
 # SFゲームブック再設計 実装報告
 
+本書は再設計時の実装記録。現行UIは [ui-layout.md](ui-layout.md) を正本とし、参照画面・下部ナビゲーションは廃止、右上メニューの言語設定のみを提供する。Game.read()も削除済み。ゲームState・シナリオとその条件・効果は維持している。
+
+UI簡素化の回帰確認：最新main `fe1e2ae` を基準に全1,893到達StateとChoice遷移を照合し一致。18 Scene・46 Choice、model/scenario/itemsは変更なし。npm test（個別11件）、build、git diff --check、日英320×640 Chromium 46項目が成功。言語変更のState・履歴・Choice不変、開始前と両OVER／CLEAR後、メニュー開閉・Escape・外側タップ、実Choiceによる全内部状態とEnding、typewriter・tap skip・reduced motion、保存言語の再読込を確認。非ゼロSafe Areaは開発CSSレスポンスのenv値を模擬し、5 Choiceとdropdownが画面内に収まることを確認した。本番コードへテスト用APIは追加していない。
+
 2026-10-08。最新main `d666c43` からmainに直接実装。AGENTS.md、指定4文書、main/game/map/items/i18n/balanceと旧テストを確認。PROJECT.mdは存在しない。
 
 読む → 現象から推測 → 主人公の行動を選ぶ → 知識・道具・状態・脅威が変化 → 次Sceneを読む、という固定シナリオに置き換えた。18 Scene（進行15、CLEAR1、OVER2）、Knowledge4、Item4、状態カテゴリ3。記録と整備の分岐、遭遇割込みと気密室への収束を持つ。

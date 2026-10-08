@@ -1,6 +1,5 @@
 import type { Language } from './i18n.ts'
-import { scenes, knowledge } from './scenario.ts'
-import { items } from './items.ts'
+import { scenes } from './scenario.ts'
 import type { Choice, Condition, Effect, GameState } from './model.ts'
 export type { GameState } from './model.ts'
 export function matches(state: GameState, condition: Condition = {}): boolean {
@@ -47,13 +46,5 @@ export class Game {
     next.status = scenes[next.scene].ending ?? 'playing'
     this.state = next
     return { before, after: structuredClone(next), choice, result: route?.result ?? choice.result }
-  }
-  read(panel: 'status' | 'inventory' | 'knowledge' | 'help' | 'settings' | 'language', language: Language): string[] {
-    if (panel === 'inventory') return this.state.items.map(id => items[id][language])
-    if (panel === 'knowledge') return this.state.knowledge.map(id => knowledge[id][language])
-    if (panel !== 'status') return []
-    return language === 'ja'
-      ? [`身体：${this.state.body === 'normal' ? '正常' : '負傷'}`, `酸素：${['十分', '少ない', '危険'][this.state.oxygen]}`, `ロボット警戒：${['低', '中', '高'][this.state.threat]}`]
-      : [`Body: ${this.state.body === 'normal' ? 'Normal' : 'Injured'}`, `Oxygen: ${['Sufficient', 'Low', 'Critical'][this.state.oxygen]}`, `Robot alert: ${['Low', 'Medium', 'High'][this.state.threat]}`]
   }
 }
