@@ -1,132 +1,23 @@
-# Exit Sequence：観察と攻略の縦切り仕様
+# 原因発見プロトタイプ仕様
 
-設計の正本は[game-design.md](game-design.md)。本書は実装中の短編の具体仕様。初見10～20分を目標とし、人による体験時間は未計測。待ち時間や選択数だけで引き延ばさない。
+15 Scene / 30 Choice。3問題、CLEARのみ。各Sceneは判断の段階であり、位置ではない。
 
-## Scene構造
-
-31 Scene、94 Choice定義。進行27、CLEAR1、OVER3。Choiceは各画面2～5定義、道具の有無や結果で1～5が表示される。結果Sceneでは成功と再挑戦の行動を条件で分ける。
-
-| id | 判断の役割 |
-| --- | --- |
-| wake | 事故後の知覚、ケースか窓 |
-| supplies | 4道具の任意回収、消費済みの再回収なし |
-| refuge | 最初の未突破設備へ戻る、記録、道具、呼吸補給 |
-| records | 光とアーム、青い電池、任意の長い失敗記録 |
-| robot | 赤い走査、音への反応、高い腕、低い管 |
-| robot-watch | 三度の音と折返し、白い表示、動く腕 |
-| robot-prep | 手元の光、奥の箱、何もなし |
-| robot-stance | 低い姿勢、硬い縁、直立 |
-| robot-act | 今進む／折返しに進む、変更、撤退 |
-| robot-result | 結果、成功なら先へ、失敗なら再挑戦／撤退 |
-| seal | ばねで戻るレバー、管の漏れ |
-| seal-watch | 固定と針の関係、補助ガス、留め具 |
-| seal-prep | 固定、工具修正、予備ガスを独立して準備 |
-| seal-act | 均圧と開扉を別操作、現在の針を表示 |
-| seal-result | 結果、再挑戦／撤退 |
-| power | 電源と爪、試験穴、重いレバー |
-| power-watch | 青い独立電源、短い入力、ブレーキの図 |
-| power-prep | 青／主電源／未接続 |
-| power-drive | 工具／箱の振動／手動／未解除 |
-| power-act | 短い入力／保持、変更、撤退 |
-| power-result | 結果、再挑戦／撤退 |
-| ship | ケーブルの逆流札、票と操作盤 |
-| ship-read | 依存関係の図、順序を自分で組み立てる |
-| ship-check | 現在表示、二つの操作盤、補給、票の再確認 |
-| ship-pressure | 固定／均圧／解除を個別操作 |
-| ship-electric | 切断／点火準備／点火を個別操作 |
-| ship-result | 非致命的な誤操作の結果、修正、票、危険な強制点火 |
-| clear | 月面離脱、安堵 |
-| oxygen-over | 累積空気浪費 |
-| injury-over | 重い負傷を無視した追加負傷 |
-| launch-over | 明示された封印解除による致命操作 |
-
-設備はロボット → 気密 → 昇降 → 船の順。分岐は各困難内の方法に置く。点検室へ撤退しても、突破済み設備はやり直さず、最初の未突破設備へ戻る。
-
-## 4つの主要困難
-
-| 困難 | 観察情報／推論 | 方法と結果 | 失敗から分かること |
-| --- | --- | --- | --- |
-| ロボット | 赤い走査と頭の高さの腕は独立。音へ向く。三度の音で折返す。白い表示で走査が薄れる | 光＋低い姿勢はcleanで空気0・道具温存。箱＋静かな縁はcostlyで箱消費・空気1。何もなし＋低い姿勢＋折返しはcostlyで空気1 | 光だけでは腕が頭の高さを通り負傷。箱を使っても床板を鳴らすと戻る。高警戒で無対策なら退く |
-| 気密 | 留めると針が中央へ、離すと戻る。割れ目は留め具の下。音は完了を保証しない | 固定＋工具修正＋均圧＋開扉はclean。固定＋予備容器＋均圧はcostlyで容器消費。固定＋漏れを待つ均圧はcostlyで空気2 | 固定なしの均圧では針が戻る。均圧前の開扉では風が引き、閉めて戻る |
-| 昇降／電源 | 青だけ点灯。独立電池は短い入力。爪にネジと振動試験穴。手レバーは重い | 青＋工具解除＋短い入力はclean。青＋箱振動＋短い入力はcostlyで箱消費・警戒1。青＋手動保持＋長い入力はcostlyで負傷・空気1 | 青だけでは車輪が爪に当たる。主電源は暗いまま。手動に短い入力ではレバーが戻る。長押ししすぎると余分な空気／警報 |
-| 帰還船 | 固定が均圧を保つ。中央の針で点火準備。外部線の逆流警告。青い灯りで点火 | 固定→均圧、外部切断、準備→点火を手動で組む。工具切断は空気0、素手は空気1。外部切断は圧力操作の前でも後でもよい | 均圧だけなら針が戻る。早い準備で窓が閉じる。外部接続の点火で線が赤く点滅。普通の誤点火は停止し修正できる |
-
-ロボットで低い姿勢を選んだだけ、昇降台でコードをつないだだけでは突破しない。準備は実行判定へ渡る。成功判定はKnowledgeや乱数に依存しない。
-
-## Stateと共通処理
-
-GameState：scene / body / oxygen / threat / knowledge / items / collected / challenges / status。
-
-- body：normal → bruised → injured。重い負傷後にもう一度hurtがあるとOVER。HPではなく身体の状態。
-- oxygen：累積支出。初期0、6からファンと呼吸、10から残量警告、14以上でOVER。数値はUIに出さない。
-- threat：0～4。騒音と危険試行で増加。3以上で近い駆動音。ロボットに無対策なら周期だけでは通れずretreat。照射突破・箱誘導・早い撤退で下がる。
-- items：現在携帯する道具。collected：一度回収した道具。消耗品の再回収を防ぐ。
-- challenges：4困難それぞれのpreparation / observations / attempts / outcome。
-- outcome：untried / clean / costly / retreat / failure。突破はcleanまたはcostly。
-- attempts：実行失敗や突破の回数。3回目から追加空気1、5回目から追加2。準備変更や安全な表示確認は含めない。
-
-型付き準備スロット：
-
-| 困難 | 準備 |
-| --- | --- |
-| robot | signal：none/light/decoy、stance：upright/low/quiet |
-| seal | lock：open/held、patch：none/tools/oxygen、pressure：unequal/equal |
-| power | source：none/blue/main、drive：none/tools/decoy/hand |
-| launch | pressure：open/locked/equal、supply：external/internal、ignition：cold/armed |
-
-一般の再挑戦・撤退は一時準備を解除し、観察・試行回数・Knowledge・消費・損失を保持。気密の修理・交換済みの管は残り、固定と均圧だけを戻す。船の修正は有効な準備を保持できる。手動リセットは圧力と準備灯だけを戻し、外部の線はそのまま。
-
-処理順：合法Choice確認 → 操作前Stateで最初のrouteを選ぶ → route固有effectがある場合はfallbackを置換 → 消費可能確認 → 資源と知識、準備と結果を適用 → 空気／負傷の致命判定 → Endingからstatus更新。成功routeへ失敗の負傷が漏れない。累積消耗のOVERはCLEARより優先し、未完了の操作を成功したと描写しない。game.tsにはScene別switchを設けない。
-
-## Items：鍵ではなく手段
-
-| Item | 用途1 | 用途2 | 消費 |
-| --- | --- | --- | --- |
-| light | ロボットの走査へ照射、姿勢と組合せる | 船の薄い票を照らし読む時間を節約 | なし |
-| tools | 気密の管を締めて漏れを止める | ブレーキを留める、船のケーブルを短時間で外す | なし |
-| decoy | 奥へ置き音を出す。足場の選択が重要 | 丸い穴へ当て振動で爪を引き込む | 実行時に一回 |
-| flask | スーツへ接続し累積空気支出を7戻す | 気密の補助管へ接続する | 接続時に一回 |
-
-ライトと工具の回収は無料。箱と容器の帯外しは空気1ずつ。未使用の箱は準備変更・撤退で回収できる。失敗実行で鳴らした箱や、管へ接続した容器は戻らない。
-
-## Knowledgeと観察
-
-Knowledge5：light-response / arm-cycle / pressure-link / independent-power / launch-interlock。Observationは現場確認の履歴（robot-motion / white-test / seal-gauge / power-label / launch-plate）。white-testはライトだけの失敗でも得られる。記録や結果で得たKnowledgeは、既知の作業灯や電池の再認識に使う。行動解禁キーにも成功の必須条件にも使わない。
-
-ロボット観察は空気1。二度目以降はさらに警戒1。同じ確認でKnowledgeが増殖しない。安全な気密／電源の札や現場表示の確認は無料。船の薄い票はライトなしで空気1、ライトありで0。長い音声記録は空気1。安全な読み直しで資源を得ることはない。
-
-## 失敗と成功の質の具体例
-
-ライトを準備 → 直立 → 進む → 赤い走査だけ止まる → 頭の高さの腕にぶつかる → 空気2、軽い負傷、警戒1、failure。主人公「止まったのは、赤い光だけか」。AIは実験結果を確認するだけ。
-
-再挑戦でライト＋低い姿勢 → 進む → 腕は背中の上を通る → clean、新しい負傷なし、追加空気なし。「さっき引き返した場所を通り、新しい痛みは増えていない」と描く。失敗の代償は消さず、改善した行為の差を伝える。
-
-漏れを待つ気密や手動昇降も通過できるが、工具で準備したルートより空気や身体を使う。最終問題で誤操作後に発進した場合はcostly、無誤操作はclean。UIに結果ラベルを表示しない。
-
-## 通常操作のプレイルート
-
-正確なChoice列は[tests/routes.ts](../tests/routes.ts)。Stateを書き換えずSTARTから進む。
-
-| 検証ルート | 内容 | 最終空気支出／身体 |
+| 問題 | Scene | 行動 |
 | --- | --- | --- |
-| newcomer | ロボット、気密、手動昇降の短押し、船の均圧で失敗。観察・再準備・修正でCLEAR | 7／bruised |
-| expert | 周期・針・札・票を確認し、光＋低姿勢、工具修正、青＋工具＋短押し、個別発進 | 1／normal |
-| remembered | Knowledgeなし。低姿勢と折返し、工具設備、記憶から個別発進 | 1／normal |
-| decoyRoute | 箱の音＋静かな足場、漏れを待つ気密、工具昇降 | 5／normal |
-| equipmentRoute | 光＋低姿勢、予備管、箱の振動、素手でケーブル切断 | 3／normal |
-| manualRoute | 光、工具気密、手動昇降を保持、発進 | 1／bruised |
-| refillRoute | 工具攻略、船内で一回補給 | 0／normal |
+| 導入 | wake | 最初の扉へ |
+| 圧力差 | door / door-inspect / door-cause / door-result | 観察、点検、均圧、開扉 |
+| 氷 | valve / valve-inspect / valve-cause / valve-warm / valve-result | カバー、軸と設備、加熱、レバー |
+| 電力 | power / power-inspect / power-cause / power-result | 表示、単独比較、停止または順番運転 |
+| 終了 | clear | UIのRESTART |
 
-独立した攻略構成は6種類、補給を含むCLEAR手順は7本。最良ルートと初見の差は空気と負傷に残る。
+GameStateはscene / problems / status。各ProblemStateにobservation（0～2）、hintLevel（0～3）、resolution（unresolved / changed / resolved）。boolean群、準備スロット、attemptsは持たない。changedは原因を取り除いたが動作未確認。powerは運転結果まで一操作で確認する。
 
-OVER検証：ロボットに直立・無対策で3回突入するとinjury-over。気密を均圧前に繰返し開け、5回目に空気の累積でoxygen-over。発進警報後に「危険の封印を破り、強制点火する」を選ぶとlaunch-over。3種とも事前に警告が見える。
+src/scenario.tsのcluesにinitial / inspect / deeper / hints[3]をja/enで保持する。ヒントの順序・具体性をデータで調整できる。Sceneも同じcluesを参照し、文章の重複を避ける。game.tsは合法Choice、Effect、ヒント段階、次Scene、Endingのみを処理する。問題別の巨大switchは不要。
 
-## ja/en、UI、検証
+ヒントを早く求めたとき、第2段階で不足しているinspect/deeperを結果に表示し、観察段階2・原因Sceneへ進める。最終説明だけで見えない原因を断定させない。ヒントの閲覧は解決状態を変えず、罰を与えず、他問題も変えない。第3段階以降はヒントChoiceを隠す。段階は次問題へ進んでも保持され、restartで初期化する。
 
-同じSceneデータのTextだけ切り替える。言語変更はState・確定Choice・履歴を進めない。履歴は当時のStateで再翻訳する。
+追加観察の途中から「操作盤を見る」「周りの設備を見る」で詳しい観察画面へ進める。外部知識がある人も必要な現物を見るが、AIは全て省略可能。原因確認前に解答候補を並べない。各問題の原因と知識ゼロで到達できる段階はimplementation-report.mdに記載。
 
-UIは[ui-layout.md](ui-layout.md)。緑のログと全幅Choice、言語のみのメニュー。現在の準備、針、線、灯り、呼吸、痛み、近い音は文章で伝える。typewriterとtap skip、reduced-motion、Safe Area、44px、320pxを維持。一覧UIやゲーム保存は追加しない。
+ja/enはTextだけ違い、Choice・Effect・Stateは共有。履歴は当時のStateを保存。言語変更、メニュー、読書は非進行。UI一覧は追加しない。通常の誤操作も何度でも修正可能。
 
-npm testは観察・準備・代償の異なる攻略・学習・再挑戦・総当たり悪化・複数用途・Knowledgeなし・個別発進・誤操作修正・言語・全SceneとChoiceの到達を検証。無限の無料パネル調整を含むため、旧固定グラフのハッシュは廃止。合法ルートからの有限探索で全Choiceを確認する。
-
-Chromiumはja/en・320×640で実ボタンを使う。読取り専用のState観測を開発レスポンスに注入し、参照Gameと各操作を比較する。本番にテストAPIは出さない。CLEAR7手順と修正発進、OVER3種、追加観察・撤退・別道具・補給、現状UIを確認する。自動操作の時間を人のプレイ時間とはみなさない。
+tests/routes.tsのA=expert、B=hinted、C=mistakenを単体とChromiumで操作する。電源の停止と順番運転の両方を検証。有限State探索で全Scene/Choiceの到達と行動数を確認する。

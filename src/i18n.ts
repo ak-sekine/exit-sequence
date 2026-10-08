@@ -6,7 +6,7 @@ export const messages = {
   start: text('ゲーム開始', 'START'), restart: text('最初から', 'RESTART'),
   menu: text('メニュー', 'Menu'),
   language: text('言語', 'LANGUAGE'), log: text('物語ログ', 'Story log'), choices: text('行動を選ぶ', 'Choose an action'),
-  intro: text('EXIT SEQUENCE\n短編SFサバイバル\n\n壊れた月面基地から、AIと帰還船を目指そう。光や音を観察し、道具と手順を組み合わせる。失敗の跡も、次の手掛かりになる。', 'EXIT SEQUENCE\nA short SF survival puzzle\n\nReach the return ship with your AI companion. Observe light and sound. Combine tools and procedures. A failed attempt can leave the clue you need next.'),
+  intro: text('EXIT SEQUENCE\n短編SFサバイバル\n\n壊れた月面基地から、AIと帰還船を目指そう。異常を調べ、原因を見つけて直そう。困ったらAIにヒントを聞ける。', 'EXIT SEQUENCE\nA short SF survival puzzle\n\nReach the return ship with your AI companion. Inspect unusual behavior. Discover its cause, then decide how to fix it. Ask your AI for hints whenever you need them.'),
 } satisfies Record<string, Text>
 export const t = (key: keyof typeof messages, language: Language) => messages[key][language]
 export function initialLanguage(): Language {

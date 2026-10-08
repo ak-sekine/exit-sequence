@@ -1,43 +1,40 @@
-# Exit Sequence
+# EXIT SEQUENCE
 
-A short SF survival puzzle in a damaged lunar base. Observe how machines behave,
-combine independent preparations, execute a plan, and learn from the result.
-The robot, airlock, lift and return ship each require more than one action.
-Consequences are deterministic; the player's own memory can replace stored facts.
+A small cause-discovery prototype in a damaged lunar base. Observe an anomaly,
+inspect its actual cause, decide how to deal with it, and confirm the cause through
+the result. Scientific knowledge lets you skip hints; it is never required.
 
-The provisional slice has 31 scenes, 94 choice definitions, four challenges,
-four tools with multiple uses, and Japanese/English prose sharing the same rules.
-See [design](docs/game-design.md), [prototype specification](docs/prototype-spec.md)
-and [implementation report](docs/implementation-report.md).
+15 scenes, 30 choice definitions, three problems: pressure holding a door shut,
+ice blocking a valve shaft, and two machines overloading a power supply.
+Three free AI hints per problem lead all the way to a clear explanation and a
+solution. Ordinary mistakes remain recoverable. No inventory puzzles, preparation
+slots, action costs, random events or time limit.
 
-The green terminal keeps story history above current full-width choices. The
-top-right menu contains only language settings. Air, injury, alert and current
-preparations are described in prose. Most failures allow another attempt; repeated
-mistakes spend air, damage the body or raise alert. Consumables cannot be retrieved
-again. There is no map, status panel, inventory panel or game save.
+Japanese and English share the same logic. The green terminal has a story log,
+full-width choices and a language-only menu. Tap the log to skip typing; reduced
+motion displays text immediately. Reading and language changes never advance play.
 
-Tap the log to finish the typewriter animation. Reduced motion displays text
-immediately. Reading and changing language never advance play. Only the language
-preference is saved. The first-play target is 10–20 minutes; human play time and
-the quality of the reasoning experience still need user playtesting.
+Target first play: 5–10 minutes, pending human playtesting. Automated checks confirm
+that the routes work, not whether discovery feels satisfying.
+See [design](docs/game-design.md), [spec](docs/prototype-spec.md),
+[writing](docs/writing-style.md), [UI](docs/ui-layout.md), and
+[evaluation report](docs/implementation-report.md).
 
-Use Node.js 24.19.0 (pinned in `.nvmrc`).
+Node 24.19.0 (`.nvmrc`):
 
 ```sh
 npm ci
 npm test
 npm run build
 git diff --check
+npm run dev
+# In another terminal:
+npm run test:browser
 ```
 
-Run `npm run dev` and then `npm run test:browser`.
-Playwright uses `/usr/bin/chromium`, `http://127.0.0.1:5173/exit-sequence/`,
-and writes screenshots/report to `/tmp/exit-sequence-browser`.
-Override with CHROMIUM_PATH, EXIT_SEQUENCE_URL or EXIT_SEQUENCE_ARTIFACTS.
-
-Tests play ordinary choices from START: six distinct solutions, an additional
-refill route, recoverable mistakes and all three OVER conditions. Chromium tests
-both languages at 320px and compare every operation with the reference Game.
-Read-only observation is injected into the test browser's Vite response; it is
-never shipped. Bounded exploration from legal routes covers every choice without
-claiming exhaustive traversal of indefinitely repeatable panel adjustments.
+Chromium uses `/usr/bin/chromium` and `http://127.0.0.1:5173/exit-sequence/`.
+Override with CHROMIUM_PATH or EXIT_SEQUENCE_URL. Screenshots and the report go to
+`/tmp/exit-sequence-browser` (EXIT_SEQUENCE_ARTIFACTS overrides this).
+Browser tests operate real buttons in ja/en at 320px: A without hints, B with all
+final hints, C with recoverable mistakes. Read-only State inspection is injected
+only into the test response and is never shipped.

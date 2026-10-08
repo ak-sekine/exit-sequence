@@ -1,6 +1,6 @@
 # ゲームブックUI仕様
 
-ゲーム画面には、物語と今できる行動を置く。ヘッダーは `EXIT SEQUENCE` と右上のhamburger menu（≡）、中央はこれまでの物語ログ、下部は現在SceneのChoice。下部ナビゲーション（STATUS / INVENTORY / KNOWLEDGE / HELP / SETTINGS）は廃止する。状態・持ち物・Knowledgeは内部Stateとして保持し、本文・条件付き文章・Choiceに反映する。一覧画面や常設HELPは置かない。
+ゲーム画面には、物語と今できる行動を置く。ヘッダーは `EXIT SEQUENCE` と右上のhamburger menu（≡）、中央はこれまでの物語ログ、下部は現在SceneのChoice。下部ナビゲーション（STATUS / INVENTORY / KNOWLEDGE / HELP / SETTINGS）は廃止する。観察・ヒント段階・解決状態は内部Stateとして保持し、本文・条件付き文章・Choiceに反映する。一覧画面や常設HELPは置かない。
 
 右上メニューは言語設定のみ。最初は「言語 >」／「LANGUAGE >」、次の階層に「日本語」「English」を表示する。dropdownは物語を置き換えず、絶対配置でログやChoiceの位置・高さを変えない。メニューボタンの再押下、メニュー外のタップ、Escapeで閉じる。閉じると階層をリセットする。ネイティブbuttonに日本語 `aria-label="メニュー"`／英語 `aria-label="Menu"`、`aria-expanded`、`aria-controls`を設定する。言語階層へ進むと最初の言語ボタンへ、Escapeと選択後はメニューボタンへフォーカスを戻す。
 
@@ -12,10 +12,10 @@ START前はヘッダー・導入文・START、終了後はヘッダー・Ending�
 
 画面高100dvh（100vhフォールバック）、四辺Safe Area、最大幅720px。320pxでもタイトルと≡を重ねず、横スクロールを出さない。ページ全体は固定し、ログのみ縦スクロール。本文14px、line-height 1.8、段落間隔14px、overflow-wrapで長文を折り返す。最新Scene表示時はログ末尾へ追従する。
 
-Choiceは全幅で一列。通常2～5行動（条件で減る）。固定6枠・方向・ページ送りを使わない。日英の長い行動文を切らずに折り返し、Choiceの高さとメニューボタンの幅・高さを最低44px確保する。START / RESTARTとdropdownの項目も44px以上。
+Choiceは全幅で一列。通常2～4行動。結果の確認画面は1行動（ヒント終了で減る）。固定6枠・方向・ページ送りを使わない。日英の長い行動文を切らずに折り返し、Choiceの高さとメニューボタンの幅・高さを最低44px確保する。START / RESTARTとdropdownの項目も44px以上。
 
 緑色テーマ：本文・Choice・タイトルは `#4ade80`、主要枠線は `#2f7548`、背景は `#07100f`、ボタン背景は `#0d211d`。フォーカスは明るい同系色 `#a7eac9` の輪郭で示す。
 
 新Scene本文は5ms/文字で表示（仮演出値）。入力・過去ログは即時。表示中はChoice・RESTART・メニューボタンを無効化し、ログのタップで全文表示して操作可能にする。prefers-reduced-motionでは即時表示、表示中のreduce変更でも完了させる。AI段落はAI：/AI:。role=log、aria-busy、言語と領域ラベルを維持する。
 
-Chromiumテストは320×640の日英で、START前・ゲーム中・3種OVERとCLEAR後のメニュー、非進行・言語保存・過去ログ、観察・準備・実行・失敗・再挑戦・別攻略・Itemの別用途・状態悪化・個別発進、タイプ表示・tap skip・reduced motionを確認する。通常操作だけで進め、read-onlyなテスト観測を開発レスポンスへ注入する。本番に状態変更APIを追加しない。各操作後に横幅・44px・ログ領域、dropdownの画面内配置とログ／Choice位置不変を検査する。準備や現在の操作表示は物語ログで確認できるようにし、一覧UIは追加しない。
+Chromiumテストは320×640の日英で、ヒントなし、最終ヒント、誤操作修正の3ルートがCLEARすることを確認する。START前・ゲーム中・CLEAR後の言語変更は非進行。typewriter、tap skip、live reduced-motion、横幅、44px、全幅一列、dropdownの配置も実操作で確認する。read-onlyの観測を開発レスポンスに注入し、本番にテストAPIは追加しない。
