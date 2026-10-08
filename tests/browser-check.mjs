@@ -4,7 +4,7 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { t, itemName, roomName } from '../src/i18n.ts'
-import { rooms, edges, edgeKey } from '../src/map.ts'
+import { rooms, edges, edgeKey, directionBetween } from '../src/map.ts'
 import { escapeItems } from '../src/items.ts'
 
 const url = process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/'
@@ -63,10 +63,38 @@ try {
 
     await click(t('start', language)); assert.equal((await state()).location, '居住'); checked('1. game start')
     await read(t('inventoryMenu', language), t('baseMap', language)); assert.match(await logText(), /\?/); checked('2. unknown map')
-    await back(); await click(t('moveMenu', language)); await click('? (B1)'); checked('3. move into unexplored district')
+    await back(); await click(t('moveMenu', language))
+    const directionLabels = ['north', 'south', 'west', 'east'].map(d => t(d, language))
+    assert.deepEqual(await labels(), directionLabels)
+    assert.deepEqual(await page.locator('.terminal-actions button').evaluateAll(bs => bs.map(b => b.disabled)), [true, false, true, false])
+    const helpButton = () => page.getByRole('button', { name: t('helpMode', language), exact: true }).click()
+    const beforeUnknownHelp = await state()
+    await helpButton(); await click(t('east', language))
+    assert.deepEqual(await state(), beforeUnknownHelp)
+    assert.ok((await logText()).includes(t('destinationUnknown', language, 'B1')))
+    assert.ok(!(await logText()).includes(language === 'ja' ? '医療' : 'MEDICAL'))
+    await page.screenshot({ path: `${artifactDir}/direction-unknown-${language}-320.png` })
+    await click(t('east', language)); checked('3. direction move into unexplored district')
+    assert.ok((await logText()).includes(`> ${t('move', language)} ${t('east', language)}`))
     assert.equal((await state()).knowledge.医療, 'visited'); checked('4. district name discovered')
+    await fixture(); await click(t('moveMenu', language)); await helpButton(); await click(t('east', language))
+    assert.ok((await logText()).includes(t('destinationKnown', language, roomName('医療', language))))
+    await page.screenshot({ path: `${artifactDir}/direction-known-${language}-320.png` })
+    for (const passage of ['BLOCKED', 'CLOSED']) {
+      await page.evaluate(({ passage, key }) => { globalThis.__exitTest.game.state.passages[key] = passage; globalThis.__exitTest.render() }, { passage, key: edgeKey('居住', '医療') })
+      assert.deepEqual(await labels(), directionLabels)
+      assert.equal(await page.getByRole('button', { name: t('east', language), exact: true }).isDisabled(), true)
+      await helpButton(); await click(t('east', language)); assert.ok((await logText()).includes(`PASSAGE: ${passage}`) || (await logText()).includes(`通路：${passage}`))
+    }
+    await back(); await fixture({ location: '管制' }); await click(t('moveMenu', language))
+    assert.deepEqual(await labels(), directionLabels)
+    assert.ok(await page.locator('.terminal-actions button').evaluateAll(bs => bs.every(b => !b.disabled)))
+    const directionLayout = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, slots: document.querySelector('.terminal-actions').children.length, rows: getComputedStyle(document.querySelector('.terminal-actions')).gridTemplateRows }))
+    assert.deepEqual(directionLayout, { width: 320, slots: 6, rows: '44px 44px 44px' })
+    await page.screenshot({ path: `${artifactDir}/direction-center-${language}-320.png` })
+    checked('fixed A1/central directions, unknown/known HELP, BLOCKED/CLOSED, no overflow')
     await fixture({ enemy: '観測' }); await read(t('aiMenu', language), t('sensor', language)); assert.match(await logText(), language === 'ja' ? /東.*距離2/s : /EAST.*Distance 2/s); checked('5. distance 2 warning')
-    await fixture({ enemy: '医療' }); await read(t('aiMenu', language), t('sensor', language)); assert.match(await logText(), language === 'ja' ? /危険.*距離1/s : /DANGER.*distance 1/s); checked('6. distance 1 warning')
+    await fixture({ enemy: '医療' }); await read(t('aiMenu', language), t('sensor', language)); assert.match(await logText(), language === 'ja' ? /危険.*距離1/s : /DANGER.*distance 1/s); checked('6. distance 1 warning'); await back(); await click(t('moveMenu', language)); assert.equal((await labels())[3], t('east', language))
     await fixture(); await click(t('aiMenu', language)); await click(t('camera', language)); await yes()
     assert.equal((await state()).feed.enemy, '通信'); assert.match(await logText(), /B4/); checked('7. camera exact position')
     await useItem('predictor'); await yes(); const prediction = (await state()).prediction
@@ -75,7 +103,7 @@ try {
     await fixture({ enemy: '発着', items: ['long-decoy'] }); await lure('long-decoy', '観測'); assert.equal((await state()).enemy, '資材'); checked('10. long lure one step')
     await fixture({ location: '観測', enemy: '資材', items: ['remote-decoy'] })
     await click(t('inventoryMenu', language)); await click(itemName('remote-decoy', language) + ' >'); await click(t('install', language)); await yes()
-    await click(t('moveMenu', language)); await click(roomName('医療', language)); await click(t('inventoryMenu', language))
+    await click(t('moveMenu', language)); await click(t('west', language)); await click(t('inventoryMenu', language))
     await click(t('installedLabel', language, itemName('remote-decoy', language), 'C1')); await click(t('activate', language)); await yes()
     assert.equal((await state()).lure.target, '観測'); assert.equal((await state()).installations[0].room, '観測'); checked('11. installed lure remote activation')
     await fixture({ enemy: '観測' }); await click(t('aiMenu', language)); await click(t('selfLure', language)); await yes(); assert.equal((await state()).enemy, '医療'); checked('12. lure to player')
@@ -92,17 +120,16 @@ try {
     const mapLayout = await page.locator('.terminal-line').evaluateAll(lines => lines.filter(line => /^\[/.test(line.textContent)).map(line => ({ text: line.textContent, width: line.scrollWidth, client: line.clientWidth, height: line.getBoundingClientRect().height })))
     assert.ok(mapLayout.every(line => line.width <= line.client && line.height <= 24), JSON.stringify(mapLayout))
     await fixture({ location: '倉庫' }); await read(t('exploreMenu', language), itemName('food', language)); await yes(); assert.ok((await state()).items.includes('food')); checked('19. escape supply collected')
-    await fixture({ enemy: '医療', roll: 0.1 }); await click(t('moveMenu', language)); await click(roomName('医療', language)); assert.equal((await state()).encounter, true); checked('20. robot encounter')
-    await click(t('emergency', language)); await click(roomName('居住', language)); await yes(); assert.equal((await state()).status, 'playing'); assert.equal((await state()).retreatUsed, true); checked('21. low-probability emergency success fixture')
-    await fixture({ enemy: '医療', roll: 0.999 }); await click(t('moveMenu', language)); await click(roomName('医療', language)); await click(t('emergency', language)); await click(roomName('居住', language)); await yes()
+    await fixture({ enemy: '医療', roll: 0.1 }); await click(t('moveMenu', language)); await click(t('east', language)); assert.equal((await state()).encounter, true); checked('20. robot encounter')
+    await click(t('emergency', language)); assert.deepEqual(await labels(), directionLabels); await page.screenshot({ path: `${artifactDir}/retreat-${language}-320.png` }); await click(t('west', language)); assert.ok((await logText()).includes(`> ${t('emergency', language).replace(/ >$/, '')} ${t('west', language)}`)); await yes(); assert.equal((await state()).status, 'playing'); assert.equal((await state()).retreatUsed, true); checked('21. low-probability emergency success fixture')
+    await fixture({ enemy: '医療', roll: 0.999 }); await click(t('moveMenu', language)); await click(t('east', language)); await click(t('emergency', language)); await click(t('west', language)); await yes()
     assert.equal((await state()).status, 'over'); checked('22. emergency failure GAME OVER')
     await page.screenshot({ path: `${artifactDir}/over-${language}-320.png` })
 
     // Complete a playable item-first route through normal controls, without relocating state.
     await fixture({ mapped: false })
     async function move(target) {
-      const s = await state(), label = s.knowledge[target] === 'visited' || s.knowledge[target] === 'mapped' ? roomName(target, language)
-        : `? (${'ABCD'[rooms.indexOf(target) % 4]}${Math.floor(rooms.indexOf(target) / 4) + 1})`
+      const s = await state(), label = t(directionBetween(s.location, target), language)
       await click(t('moveMenu', language)); await click(label); assert.equal((await state()).encounter, false)
     }
     async function collect(item) { await read(t('exploreMenu', language), itemName(item, language)); await yes() }
@@ -116,7 +143,7 @@ try {
     // Additional regressions: HELP/BACK/paging, settings/storage, typewriter/tap skip, A11y/layout.
     await fixture({ items: ['controller', 'sensor', 'long-decoy', 'remote-key', 'override', 'battery'] })
     await click(t('inventoryMenu', language)); await click(itemName('controller', language) + ' >'); await click(t('install', language) + ' >'); await click('B1–A1')
-    await yes(); await click(t('moveMenu', language)); await click(roomName('医療', language)); await click(t('inventoryMenu', language))
+    await yes(); await click(t('moveMenu', language)); await click(t('east', language)); await click(t('inventoryMenu', language))
     await click(t('installedLabel', language, itemName('controller', language), 'A1')); await click(t('close', language)); await yes()
     assert.equal((await state()).passages[edgeKey('居住', '医療')], 'CLOSED'); checked('installed controller remote closure')
     await fixture({ location: '計測', enemy: '資材', items: ['sensor'] }); await click(t('inventoryMenu', language)); await click(itemName('sensor', language) + ' >'); await click(t('install', language)); await yes()

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Game } from '../src/game.ts'
 import type { Action } from '../src/game.ts'
-import { rooms, edges, edgeKey, neighbors, distance, coordinates, initialKnowledge, passable } from '../src/map.ts'
+import { rooms, edges, edgeKey, neighbors, distance, coordinates, initialKnowledge, passable, cardinalDirections, neighborInDirection, directionBetween, direction } from '../src/map.ts'
 import { escapeItems, facilities, itemSpecs } from '../src/items.ts'
 
 function fixture(random = () => 0.999) { const game = new Game(random); game.state.enemy = '通信'; game.state.robotNext = '通信'; return game }
@@ -317,4 +317,20 @@ test('encounter interruption still restores an expired bulkhead and expires a lu
   const log = g.act({ type: 'wait' })
   assert.equal(g.state.turn, 3); assert.equal(g.state.passages[key], 'NORMAL'); assert.equal(g.state.lure, null)
   assert.equal(g.state.encounter, true); assert.match(log.join(''), /自動復旧/)
+})
+
+test('movement and robot warning cardinal axes agree at every adjacent cell', () => {
+  for (const from of rooms) for (const heading of cardinalDirections) {
+    const target = neighborInDirection(from, heading)
+    if (!target) continue
+    assert.equal(directionBetween(from, target), heading)
+    const g = fixture(); g.state.location = from; robot(g, target)
+    for (const language of ['ja', 'en'] as const) {
+      assert.ok(g.warningLines(language).join('').includes(direction(from, target, language)))
+    }
+  }
+  assert.equal(neighborInDirection('居住', 'north'), undefined)
+  assert.equal(neighborInDirection('居住', 'west'), undefined)
+  assert.equal(neighborInDirection('居住', 'east'), '医療')
+  assert.equal(neighborInDirection('居住', 'south'), '倉庫')
 })

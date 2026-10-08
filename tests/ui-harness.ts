@@ -4,7 +4,7 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import * as i18n from '../src/i18n.ts'
 import { Game } from '../src/game.ts'
-import { costs, neighbors, rooms, baseMapLines, passable, cellCode, edgeKey } from '../src/map.ts'
+import { costs, neighbors, rooms, baseMapLines, passable, cellCode, edgeKey, cardinalDirections, neighborInDirection, named } from '../src/map.ts'
 import { facilities, itemSpecs } from '../src/items.ts'
 // Exercise the real UI handlers with a small DOM adapter, without adding a test framework.
 class Element {
@@ -43,7 +43,7 @@ export function fixture(reduce = true, environment: i18n.LanguageEnvironment = {
   let timerId = 0
   const timers = new Map<number, () => void>()
   const context = vm.createContext({
-    Game, costs, neighbors, rooms, baseMapLines, facilities, itemSpecs, passable, cellCode, edgeKey,
+    Game, costs, neighbors, rooms, baseMapLines, facilities, itemSpecs, passable, cellCode, edgeKey, cardinalDirections, neighborInDirection, named,
     ...i18n, initialLanguage: () => i18n.initialLanguage(environment), saveLanguage: (language: i18n.Language) => i18n.saveLanguage(language, environment),
     window: { matchMedia: () => ({ matches: reduce, addEventListener() {} }) },
     setTimeout: (callback: () => void, delay: number) => {

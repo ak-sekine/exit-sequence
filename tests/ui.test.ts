@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fixture } from './ui-harness.ts'
 import { t, itemName, LANGUAGE_STORAGE_KEY } from '../src/i18n.ts'
-import { rooms, edgeKey } from '../src/map.ts'
+import { rooms, edgeKey, cardinalDirections, neighborInDirection } from '../src/map.ts'
+import { Game } from '../src/game.ts'
 import { escapeItems } from '../src/items.ts'
 
 const buttons = (ui: ReturnType<typeof fixture>) => ui.actions.children.filter(child => child.tag === 'button')
@@ -25,7 +26,7 @@ for (const language of ['ja', 'en'] as const) {
     assert.equal(ui.actions.children.length, 6); assert.equal(buttons(ui).length, 5)
     ui.click(t('inventoryMenu', language)); assertNoProgress(ui, () => ui.click(t('baseMap', language)))
     assert.ok(ui.lines().join('').includes('[ ?')); assert.ok(!ui.lines().join('').includes('[ MED]'))
-    ui.navigation.children[0]!.click(); ui.click(t('moveMenu', language)); ui.click('? (B1)')
+    ui.navigation.children[0]!.click(); ui.click(t('moveMenu', language)); ui.click(t('east', language))
     assert.equal(ui.game.state.knowledge.医療, 'visited'); assert.equal(ui.game.state.location, '医療')
     ui.click(t('inventoryMenu', language)); ui.click(t('baseMap', language)); assert.ok(ui.lines().join('').includes(language === 'ja' ? '[*医]' : '[*MED]'))
   })
@@ -76,9 +77,9 @@ for (const language of ['ja', 'en'] as const) {
 
   test(`${language}: encounter offers only emergency retreat, failure and clear use shared end menu`, () => {
     const ui = start(language); ui.game.state.enemy = '医療'; ui.game.state.robotNext = '観測'
-    ui.click(t('moveMenu', language)); ui.click('? (B1)'); assert.equal(ui.game.state.encounter, true)
+    ui.click(t('moveMenu', language)); ui.click(t('east', language)); assert.equal(ui.game.state.encounter, true)
     assert.equal(buttons(ui).length, 2); assert.ok(!buttons(ui).some(button => /HIDE|隠れる/.test(button.textContent)))
-    ui.click(t('emergency', language)); ui.click('居住' === ui.game.label('居住', language) ? '居住' : 'HABITATION')
+    ui.click(t('emergency', language)); ui.click(t('west', language))
     ui.click(t('yes', language)); assert.equal(ui.game.state.status, 'over'); assert.ok(ui.lines().includes('GAME OVER'))
     ui.click(t('restart', language)); ui.game.state.location = '発着'; ui.game.state.items.push(...escapeItems); ui.render('investigate')
     ui.click(t('returnShip', language)); ui.click(t('yes', language)); assert.equal(ui.game.state.status, 'clear')
@@ -106,3 +107,59 @@ test('installed item appears with coordinate and remote controls, and fixed equi
   ui.navigation.children[0]!.click(); ui.navigation.children[0]!.click(); ui.game.state.location = '観測'; ui.click('調べる >')
   assert.ok(buttons(ui).some(button => button.textContent === 'カメラ端末'))
 })
+
+for (const language of ['ja', 'en'] as const) {
+  test(`${language}: fixed directions, hidden HELP names, mapped names and blocked passages`, () => {
+    const ui = start(language)
+    ui.click(t('moveMenu', language))
+    const labels = cardinalDirections.map(d => t(d, language))
+    assert.deepEqual(buttons(ui).map(b => b.textContent), labels)
+    assert.deepEqual(buttons(ui).map(b => b.disabled), [true, false, true, false])
+    assert.equal(ui.actions.children.length, 6)
+    assertNoProgress(ui, () => {
+      ui.navigation.children[2]!.click(); ui.click(t('east', language))
+    })
+    assert.ok(ui.lines().includes(t('destinationUnknown', language, 'B1')))
+    assert.ok(!ui.lines().join('').includes(language === 'ja' ? '医療' : 'MEDICAL'))
+    ui.game.state.knowledge.医療 = 'visited'
+    ui.navigation.children[2]!.click(); ui.click(t('east', language))
+    assert.ok(ui.lines().includes(t('destinationKnown', language, language === 'ja' ? '医療' : 'MEDICAL')))
+    ui.game.state.knowledge.医療 = 'mapped'; ui.render('move')
+    assert.deepEqual(buttons(ui).map(b => b.textContent), labels)
+    for (const passage of ['BLOCKED', 'CLOSED', 'DARK', 'NORMAL'] as const) {
+      ui.game.state.passages[edgeKey('居住', '医療')] = passage; ui.render('move')
+      assert.equal(buttons(ui)[3]!.disabled, passage === 'BLOCKED' || passage === 'CLOSED')
+      if (passage === 'BLOCKED' || passage === 'CLOSED') assertNoProgress(ui, () => {
+        ui.click(t('east', language)); ui.navigation.children[2]!.click(); ui.click(t('east', language))
+        assert.ok(ui.lines().join('').includes(passage))
+      })
+    }
+    ui.game.state.location = '管制'; ui.render('move')
+    assert.deepEqual(buttons(ui).map(b => b.textContent), labels)
+    assert.ok(buttons(ui).every(b => !b.disabled))
+  })
+
+  test(`${language}: direction UI preserves complete State and RNG versus direct Room actions`, () => {
+    for (const retreat of [false, true]) for (const direction of cardinalDirections) for (const roll of [0.1, 0.25, 0.999]) {
+      const ui = start(language), direct = new Game(() => 0.999)
+      ui.game.state.location = '管制'
+      if (retreat) { ui.game.state.enemy = '管制'; ui.game.state.encounter = true }
+      direct.state = structuredClone(ui.game.state)
+      const calls: number[][] = [[], []]
+      ;(ui.game as unknown as { random: () => number }).random = () => { calls[0]!.push(roll); return roll }
+      ;(direct as unknown as { random: () => number }).random = () => { calls[1]!.push(roll); return roll }
+      ui.render(retreat ? 'encounter' : 'main')
+      ui.click(t(retreat ? 'emergency' : 'moveMenu', language)); ui.click(t(direction, language))
+      if (retreat) ui.click(t('yes', language))
+      const target = neighborInDirection('管制', direction)!
+      direct.act(retreat ? { type: 'retreat', target } : { type: 'move', target }, language)
+      assert.deepEqual(ui.game.state, direct.state)
+      assert.deepEqual(calls[0], calls[1])
+      assert.ok(ui.lines().includes(`> ${t(retreat ? 'emergency' : 'moveMenu', language).replace(/ >$/, '')} ${t(direction, language)}`))
+    }
+    const ui = start(language); ui.click(t('moveMenu', language)); ui.click(t('east', language))
+    assert.equal(ui.game.state.location, '医療'); assert.equal(ui.game.state.knowledge.医療, 'visited')
+    assert.ok(ui.lines().includes(`> ${t('move', language)} ${t('east', language)}`))
+    assert.ok(!ui.lines().some(line => /^> (移動|MOVE) .*(B1|医療|MEDICAL)/.test(line)))
+  })
+}

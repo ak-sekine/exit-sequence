@@ -3,7 +3,7 @@ import type { Language } from './i18n.ts'
 import './style.css'
 import { Game } from './game.ts'
 import type { Action } from './game.ts'
-import { costs, neighbors, rooms, passable, cellCode, edgeKey } from './map.ts'
+import { costs, cardinalDirections, neighborInDirection, named, rooms, passable, cellCode, edgeKey } from './map.ts'
 import { itemSpecs, facilities } from './items.ts'
 import type { ItemId, Installation } from './items.ts'
 
@@ -240,15 +240,21 @@ function options(): Option[] {
     { label: t('yes', language), inputPath: [], run: () => { const action = confirmation!.action; confirmation = null; act(action) } },
     { label: t('no', language), inputPath: [], run: () => { const previous = confirmation!; confirmation = null; pendingInput.splice(0, pendingInput.length, ...previous.path); open(previous.parent); page = previous.page; render(); appendLog(t('declined', language)) } },
   ]
-  return neighbors(s.location).map(target => {
-    const passage = game.passage(s.location, target), blocked = !passable(passage), retreat = menu === 'retreat'
-    return { label: game.label(target, language), disabled: blocked,
+  return cardinalDirections.map(direction => {
+    const target = neighborInDirection(s.location, direction), retreat = menu === 'retreat'
+    const label = t(direction, language)
+    if (!target) return { label, disabled: true }
+    const action: Action = retreat ? { type: 'retreat', target } : { type: 'move', target }
+    const passage = game.passage(s.location, target), blocked = !passable(passage)
+    return { label, disabled: !game.canAct(action),
       help: () => {
-        if (retreat) return [t('emergencyHelp', language)]
         const recorded = s.feed?.passages[edgeKey(s.location, target)]
-        return [t('routeHelp', language, blocked ? passage : recorded ?? t('unchecked', language), blocked ? '—' : recorded ? passable(recorded) ? costs[recorded] : '—' : '1–2', t(game.freshness(s.feed), language))]
+        const destination = named(s.knowledge[target]) ? t('destinationKnown', language, roomName(target, language)) : t('destinationUnknown', language, cellCode(target))
+        return [label, destination,
+          t('routeHelp', language, blocked ? passage : recorded ?? t('unchecked', language), retreat ? 2 : blocked ? '—' : recorded ? passable(recorded) ? costs[recorded] : '—' : '1–2', t(game.freshness(s.feed), language)),
+          ...(retreat ? [t('emergencyHelp', language)] : [])]
       },
-      run: () => retreat ? prepare({ type: 'retreat', target }, [t('emergencyHelp', language)]) : act({ type: 'move', target }),
+      run: () => retreat ? prepare(action, [t('emergencyHelp', language)]) : act(action),
     }
   })
 }

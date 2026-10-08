@@ -13,10 +13,24 @@ export const neighbors = (room: Room): Room[] => edges.flatMap(([a, b]) => a ===
 export const coordinates = (room: Room) => ({ x: rooms.indexOf(room) % 4, y: Math.floor(rooms.indexOf(room) / 4) })
 export const cellCode = (room: Room) => { const { x, y } = coordinates(room); return `${'ABCD'[x]}${y + 1}` }
 export const distance = (a: Room, b: Room) => { const p = coordinates(a), q = coordinates(b); return Math.abs(p.x - q.x) + Math.abs(p.y - q.y) }
+export const cardinalDirections = ['north', 'south', 'west', 'east'] as const
+export type CardinalDirection = typeof cardinalDirections[number]
+export function neighborInDirection(room: Room, direction: CardinalDirection): Room | undefined {
+  const { x, y } = coordinates(room)
+  const dx = direction === 'east' ? 1 : direction === 'west' ? -1 : 0
+  const dy = direction === 'south' ? 1 : direction === 'north' ? -1 : 0
+  if (x + dx < 0 || x + dx > 3 || y + dy < 0 || y + dy > 3) return undefined
+  const target = rooms[(y + dy) * 4 + x + dx]
+  return target && neighbors(room).includes(target) ? target : undefined
+}
+// Shared axis convention for movement and proximity warnings.
+export function directionBetween(a: Room, b: Room): CardinalDirection {
+  const p = coordinates(a), q = coordinates(b)
+  return q.y < p.y ? 'north' : q.y > p.y ? 'south' : q.x > p.x ? 'east' : 'west'
+}
 // At diagonal distance 2, vertical direction wins. No diagonal vocabulary required.
 export function direction(a: Room, b: Room, language: Language) {
-  const p = coordinates(a), q = coordinates(b)
-  return t(q.y < p.y ? 'north' : q.y > p.y ? 'south' : q.x > p.x ? 'east' : 'west', language)
+  return t(directionBetween(a, b), language)
 }
 export const costs: Record<Passage, number> = { NORMAL: 1, DARK: 2, BLOCKED: Infinity, CLOSED: Infinity }
 export const passable = (value: Passage) => value === 'NORMAL' || value === 'DARK'
