@@ -1,8 +1,8 @@
 import { text } from './i18n.ts'
 export const items = {
-  light: text('携帯ライト — 強い照射と通常照明を切り替えられる。', 'Portable light — switches between a flood beam and ordinary lighting.'),
-  tools: text('工具 — ネジと手動弁を静かに扱える。', 'Tools — let me work screws and manual valves quietly.'),
-  decoy: text('簡易デコイ — 一度だけ金属音を繰り返す。', 'Simple decoy — repeats metallic sounds once, then burns out.'),
-  flask: text('予備酸素 — 一回分。使えば酸素を十分まで戻せる。', 'Reserve oxygen — one refill. Restores oxygen to sufficient.'),
+  light: text('携帯ライト — 白い照射と手元の照明。', 'Portable light — a white beam or close lighting.'),
+  tools: text('工具 — 締める、外す、固定する。', 'Tools — tighten, remove or brace parts.'),
+  decoy: text('簡易デコイ — 音と振動を一度だけ出す。', 'Simple decoy — makes sound and vibration once.'),
+  flask: text('予備酸素 — 呼吸か、小さな配管への一回分。', 'Reserve oxygen — one use for breathing or a small pipe.'),
 }
 export type ItemId = keyof typeof items

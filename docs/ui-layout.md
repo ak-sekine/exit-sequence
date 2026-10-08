@@ -18,4 +18,4 @@ Choiceは全幅で一列。通常2～5行動（条件で減る）。固定6枠�
 
 新Scene本文は5ms/文字で表示（仮演出値）。入力・過去ログは即時。表示中はChoice・RESTART・メニューボタンを無効化し、ログのタップで全文表示して操作可能にする。prefers-reduced-motionでは即時表示、表示中のreduce変更でも完了させる。AI段落はAI：/AI:。role=log、aria-busy、言語と領域ラベルを維持する。
 
-Chromiumテストは320×640の日英で、START前・ゲーム中・両OVERとCLEAR後のメニュー、非進行・言語保存・過去ログ、両分岐・Knowledge・Item・body・oxygen・threat、タイプ表示・tap skip・reduced motionを確認する。通常操作だけで進め、read-onlyなテスト観測を開発レスポンスへ注入する。本番に状態変更APIを追加しない。各操作後に横幅・44px・ログ領域、dropdownの画面内配置とログ／Choice位置不変を検査する。
+Chromiumテストは320×640の日英で、START前・ゲーム中・3種OVERとCLEAR後のメニュー、非進行・言語保存・過去ログ、観察・準備・実行・失敗・再挑戦・別攻略・Itemの別用途・状態悪化・個別発進、タイプ表示・tap skip・reduced motionを確認する。通常操作だけで進め、read-onlyなテスト観測を開発レスポンスへ注入する。本番に状態変更APIを追加しない。各操作後に横幅・44px・ログ領域、dropdownの画面内配置とログ／Choice位置不変を検査する。準備や現在の操作表示は物語ログで確認できるようにし、一覧UIは追加しない。
