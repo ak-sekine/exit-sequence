@@ -1,219 +1,320 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Game, taskInfo } from '../src/game.ts'
-import { costs, edgeKey, edges, neighbors, rooms, baseMapLines } from '../src/map.ts'
+import { Game } from '../src/game.ts'
+import type { Action } from '../src/game.ts'
+import { rooms, edges, edgeKey, neighbors, distance, coordinates, initialKnowledge, passable } from '../src/map.ts'
+import { escapeItems, facilities, itemSpecs } from '../src/items.ts'
 
-function fixture(random = () => 0.99) {
-  const game = new Game(random)
-  for (const key of Object.keys(game.state.passages)) game.state.passages[key] = 'NORMAL'
-  game.state.enemy = '研究'
-  return game
-}
-test('passage costs, CLOSED rejection and fatal cost before task results', () => {
-  for (const passage of ['NORMAL', 'DARK', 'BLOCKED', 'CLOSED'] as const) {
-    const game = fixture()
-    game.state.passages[edgeKey('居住', '医療')] = passage
-    game.act({ type: 'move', target: '医療' })
-    assert.equal(game.state.energy, passage === 'CLOSED' ? 20 : 20 - costs[passage])
-    assert.equal(game.state.turn, passage === 'CLOSED' ? 0 : 1)
-    assert.equal(game.state.location, passage === 'CLOSED' ? '居住' : '医療')
+function fixture(random = () => 0.999) { const game = new Game(random); game.state.enemy = '通信'; game.state.robotNext = '通信'; return game }
+function robot(game: Game, room: typeof game.state.location) { game.state.enemy = room; game.state.robotNext = room }
+function mapped(game: Game) { for (const room of rooms) game.state.knowledge[room] = 'mapped'; game.state.knownEdges = edges.map(([a, b]) => edgeKey(a, b)) }
+const snapshot = (game: Game) => structuredClone(game.state)
+
+test('4x4 has 16 cells, 24 unique reciprocal orthogonal edges and all objectives are reachable', () => {
+  assert.equal(rooms.length, 16); assert.equal(new Set(rooms).size, 16)
+  assert.equal(edges.length, 24); assert.equal(new Set(edges.map(([a, b]) => edgeKey(a, b))).size, 24)
+  for (const [a, b] of edges) { assert.equal(distance(a, b), 1); assert.ok(neighbors(a).includes(b)); assert.ok(neighbors(b).includes(a)) }
+  for (const room of rooms) { const g = fixture(); g.state.location = room; assert.ok(g.connected()) }
+})
+
+test('unknown names and connections accumulate by walking; map reveals static layout only', () => {
+  const g = fixture(), s = g.state
+  assert.deepEqual(s.knowledge, initialKnowledge()); assert.equal(s.knownEdges.length, 2)
+  assert.equal(g.mapLines().join('').match(/\?/g)?.length, 15)
+  assert.equal(g.label('医療'), '? (B1)'); assert.ok(!g.guideLines().join('').includes('管制'))
+  g.act({ type: 'move', target: '医療' }); assert.equal(s.knowledge.医療, 'visited'); assert.ok(g.mapLines().join('').includes('医'))
+  g.act({ type: 'move', target: '居住' }); assert.equal(s.knowledge.医療, 'visited')
+  g.act({ type: 'move', target: '医療' })
+  const before = snapshot(g); g.act({ type: 'collect', item: 'map' })
+  assert.ok(rooms.every(room => ['visited', 'mapped'].includes(s.knowledge[room])))
+  assert.equal(s.knownEdges.length, 24); assert.equal(g.mapLines().join('').includes('?'), false)
+  assert.equal(s.feed, null); assert.equal(s.prediction, null); assert.equal(s.enemy, before.enemy)
+  assert.deepEqual(s.passages, before.passages)
+  assert.ok(!g.guideLines().join('').includes('管制')) // map alone never reveals facilities
+  const lines = g.mapLines().join('\n'); assert.ok(!/CLOSED|DARK|ROBOT|ロボット/.test(lines))
+})
+
+test('all read-only information and canAct preserve full State and RNG', () => {
+  const g = fixture(); g.act({ type: 'camera' }); const before = snapshot(g)
+  ;(g as unknown as { random: () => number }).random = () => { throw Error('read consumed RNG') }
+  for (const language of ['ja', 'en'] as const) {
+    g.statusLines(language); g.mapLines(language); g.guideLines(language); g.warningLines(language); g.feedLines(language); g.predictionLines(language); g.freshness(g.state.feed)
+    g.canAct({ type: 'wait' }); g.canAct({ type: 'use', item: 'predictor' })
   }
-  const game = fixture(); game.state.location = '研究'; game.state.energy = 1
-  const log = game.act({ type: 'task', task: 'parts' })
-  assert.equal(game.state.status, 'over'); assert.deepEqual(game.state.items, [])
-  assert.ok(log.includes('GAME OVER'))
+  assert.deepEqual(g.state, before)
 })
-test('camera captures after world, costs one, and becomes stale on next action', () => {
-  const game = fixture()
-  assert.equal(game.freshness('居住', '医療'), '未確認')
-  const log = game.act({ type: 'camera', target: '医療' })
-  assert.equal(game.state.energy, 19); assert.equal(game.state.turn, 1)
-  assert.equal(game.freshness('居住', '医療'), '最新')
-  assert.ok(log.includes('通路：NORMAL'))
-  game.statusLines(); assert.equal(game.state.turn, 1)
-  game.act({ type: 'move', target: '医療' })
-  assert.equal(game.freshness('居住', '医療'), '古い')
+
+test('rejected moves, missing items, wrong facilities and invalid installs never progress', () => {
+  const g = fixture(), actions: Action[] = [
+    { type: 'move', target: '発着' }, { type: 'collect', item: 'food' }, { type: 'use', item: 'long-decoy', target: '医療' },
+    { type: 'facility', facility: 'ship' }, { type: 'facility', facility: 'camera' }, { type: 'camera', fixed: true },
+    { type: 'install', item: 'controller', edge: 'invalid' }, { type: 'activate', id: 999 }, { type: 'retreat', target: '医療' },
+  ]
+  const before = snapshot(g)
+  ;(g as unknown as { random: () => number }).random = () => { throw Error('rejection consumed RNG') }
+  for (const action of actions) { assert.equal(g.canAct(action), false); g.act(action); assert.deepEqual(g.state, before) }
 })
-test('repair requires parts; full return loop consumes parts and retains food', () => {
-  const game = fixture(() => 0.79)
-  game.state.location = '整備'
-  game.act({ type: 'task', task: 'repair' })
-  assert.equal(game.state.turn, 0); assert.equal(game.state.energy, 20)
-  game.state.location = '居住'
-  const move = (target: typeof game.state.location) => {
-    if (game.state.encounter) game.act({ type: 'hide' })
-    game.act({ type: 'move', target })
+
+test('normal robot can wait and chooses only open neighbors, never tracks the player', () => {
+  const g = fixture(); robot(g, '管制'); const previous = g.state.enemy
+  g.act({ type: 'wait' }); assert.equal(g.state.enemy, previous)
+  const candidates = [...g.available('管制'), '管制']
+  const destinations = new Set<string>()
+  for (let i = 0; i < candidates.length; i++) {
+    const x = fixture(() => (i + 0.1) / candidates.length); robot(x, '管制')
+    x.act({ type: 'wait' }); x.act({ type: 'wait' })
+    destinations.add(x.state.enemy)
+    assert.ok(candidates.includes(x.state.enemy))
+    assert.ok(distance('管制', x.state.enemy) <= 1)
   }
-  const task = (task: Parameters<Game['taskDone']>[0]) => {
-    if (game.state.encounter) game.act({ type: 'hide' })
-    game.act({ type: 'task', task })
+  assert.equal(destinations.size, candidates.length)
+})
+
+test('10,000 robot updates never teleport or enter CLOSED/BLOCKED passages', () => {
+  let seed = 29, waits = 0, moves = 0
+  const g = fixture(() => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32 })
+  for (const key of [edgeKey('居住', '医療'), edgeKey('整備', '通信')]) g.state.passages[key] = 'CLOSED'
+  g.state.passages[edgeKey('電力管理', '蓄電')] = 'BLOCKED'
+  for (let i = 0; i < 10000; i++) {
+    g.state.location = rooms.find(room => distance(room, g.state.enemy) >= 4)!; g.state.energy = 40
+    const from = g.state.enemy
+    g.act({ type: 'camera' })
+    const to = g.state.enemy
+    assert.equal(g.state.status, 'playing'); assert.equal(g.state.encounter, false)
+    if (from === to) waits++
+    else { moves++; assert.ok(neighbors(from).includes(to)); assert.ok(passable(g.passage(from, to))) }
   }
-  move('医療'); task('medical'); move('観測'); task('observe')
-  move('電力管理'); task('power'); move('管制'); task('control'); move('倉庫'); task('food'); move('研究'); task('parts')
-  move('整備'); task('repair'); move('発着'); task('launch')
-  assert.equal(game.state.status, 'clear'); assert.equal(game.ready(), true)
-  assert.deepEqual(game.state.items, ['食糧'])
-  game.restart()
-  assert.equal(game.state.location, '居住'); assert.equal(game.state.energy, 20)
-  assert.equal(game.state.turn, 0); assert.equal(game.state.status, 'playing')
-  assert.deepEqual(game.state.items, []); assert.deepEqual(game.state.feeds, {})
-  assert.equal(Object.values(game.state.conditions).some(Boolean), false)
-  assert.equal(Object.values(game.state.supplies).some(Boolean), false)
+  assert.ok(waits > 500); assert.ok(moves > 500)
 })
-test('supplies cap ENERGY, are single use, and incomplete launch is free', () => {
-  const game = fixture(); game.state.location = '医療'; game.state.energy = 18
-  game.act({ type: 'task', task: 'medical' })
-  assert.equal(game.state.energy, 20); assert.equal(game.state.turn, 1)
-  game.act({ type: 'task', task: 'medical' }); assert.equal(game.state.turn, 1)
-  game.state.location = '発着'
-  game.act({ type: 'task', task: 'launch' }); assert.equal(game.state.turn, 1)
-  assert.equal(game.state.status, 'playing')
-})
-test('enemy arrival, hide/force success and failure, flee use exactly one turn', () => {
-  const arrival = fixture(); arrival.state.enemy = '医療'
-  arrival.act({ type: 'move', target: '医療' }); assert.equal(arrival.state.encounter, true)
-  for (const type of ['hide', 'force'] as const) for (const success of [true, false]) {
-    const game = fixture(() => success ? 0.1 : 0.99)
-    game.state.enemy = '居住'; game.state.encounter = true
-    game.act({ type })
-    assert.equal(game.state.energy, 20 - (type === 'hide' ? 1 : 2) - (success ? 0 : 1))
-    assert.equal(game.state.turn, 1); assert.equal(game.state.encounter, false)
+
+test('distance 3+ is silent, distance 2 gives direction, 1 strong warning, 0 encounter', () => {
+  const g = fixture()
+  robot(g, '中継'); assert.deepEqual(g.warningLines(), [])
+  robot(g, '観測'); assert.match(g.warningLines().join(''), /東.*距離2/)
+  robot(g, '管制'); assert.match(g.warningLines().join(''), /南.*距離2/) // vertical wins diagonal
+  robot(g, '医療'); assert.match(g.warningLines().join(''), /隣.*危険.*東.*距離1/s)
+  robot(g, '居住'); assert.match(g.warningLines().join(''), /同一区画/)
+  for (const [room, expected] of [['居住', 'NORTH'], ['整備', 'SOUTH'], ['電力管理', 'EAST'], ['倉庫', 'WEST']] as const) {
+    g.state.location = '管制'; robot(g, room)
+    // Habitation is a diagonal: vertical NORTH wins.
+    assert.match(g.warningLines('en').join(''), new RegExp(expected))
   }
-  const game = fixture(); game.state.encounter = true; game.state.enemy = '居住'
-  game.state.passages[edgeKey('居住', '医療')] = 'DARK'
-  game.act({ type: 'flee', target: '医療' })
-  assert.equal(game.state.turn, 1); assert.equal(game.state.energy, 18)
-  assert.equal(game.state.location, '医療'); assert.equal(game.state.encounter, false)
 })
-test('random restarts and 10,000 world updates preserve all-room reachability', () => {
-  let changes = 0, moves = 0
+
+test('camera captures exact position after a world action; later record is stale and read-only', () => {
+  const g = fixture()
+  assert.equal(g.freshness(g.state.feed), 'unchecked')
+  const knowledge = structuredClone(g.state.knowledge)
+  const log = g.act({ type: 'camera' }, 'en')
+  assert.equal(g.state.energy, 38); assert.equal(g.state.turn, 1)
+  assert.equal(g.state.feed!.enemy, g.state.enemy); assert.equal(g.state.feed!.turn, 1)
+  assert.match(log.join('\n'), /COMMS \(B4\)/); assert.equal(g.freshness(g.state.feed), 'fresh')
+  assert.deepEqual(g.state.knowledge, knowledge)
+  g.act({ type: 'wait' }); assert.equal(g.freshness(g.state.feed), 'stale')
+  const before = snapshot(g); g.feedLines(); assert.deepEqual(g.state, before)
+  g.state.location = '観測'; const energy = g.state.energy
+  g.act({ type: 'camera', fixed: true }); assert.equal(g.state.energy, energy - 1)
+})
+
+test('prediction commits one next move including wait, and matches the next normal action', () => {
+  for (const roll of [0, 0.3, 0.6, 0.99]) {
+    const g = fixture(() => roll); robot(g, '資材')
+    g.act({ type: 'use', item: 'predictor' })
+    assert.equal(g.freshness(g.state.prediction), 'fresh')
+    const predicted = g.state.prediction!.next
+    g.predictionLines(); g.statusLines(); g.mapLines()
+    g.act({ type: 'wait' }); assert.equal(g.state.enemy, predicted)
+    assert.equal(g.freshness(g.state.prediction), 'stale')
+  }
+})
+
+test('short lure succeeds deterministically, costs little and consumes once; invalid range is free', () => {
+  const g = fixture(); mapped(g); robot(g, '観測')
+  const before = snapshot(g); assert.equal(g.canAct({ type: 'use', item: 'short-decoy', target: '発着' }), false)
+  g.act({ type: 'use', item: 'short-decoy', target: '発着' }); assert.deepEqual(g.state, before)
+  g.act({ type: 'use', item: 'short-decoy', target: '管制' })
+  assert.equal(g.state.enemy, '電力管理'); assert.equal(g.state.energy, 39)
+  assert.ok(!g.state.items.includes('short-decoy')); assert.equal(g.state.lure!.remaining, 1)
+  g.act({ type: 'wait' }); assert.equal(g.state.enemy, '管制'); assert.equal(g.state.lure, null)
+})
+
+test('long lure follows a shortest open route one cell per turn, then stays at target', () => {
+  const g = fixture(); mapped(g); g.state.items.push('long-decoy'); robot(g, '発着')
+  const previous = g.state.enemy; g.act({ type: 'use', item: 'long-decoy', target: '観測' })
+  assert.equal(distance(previous, g.state.enemy), 1); assert.equal(distance(g.state.enemy, '観測'), 3)
+  assert.equal(g.state.energy, 36)
+  for (let i = 0; i < 3; i++) { const old = g.state.enemy; g.act({ type: 'wait' }); assert.equal(distance(old, g.state.enemy), 1) }
+  assert.equal(g.state.enemy, '観測'); assert.ok(!g.state.items.includes('long-decoy'))
+})
+
+test('installed decoy stays at placement and can be activated repeatedly from elsewhere', () => {
+  const g = fixture(); g.state.location = '観測'; g.state.items.push('remote-decoy'); robot(g, '資材')
+  g.act({ type: 'install', item: 'remote-decoy' })
+  assert.ok(!g.state.items.includes('remote-decoy')); assert.equal(g.state.installations[0]!.room, '観測')
+  g.act({ type: 'move', target: '医療' })
+  const old = g.state.enemy; g.act({ type: 'activate', id: 1 })
+  assert.equal(distance(old, g.state.enemy), 1); assert.equal(g.state.lure!.target, '観測')
+  assert.equal(g.state.lure!.remaining, 4); assert.equal(g.state.installations.length, 1)
+  g.act({ type: 'activate', id: 1 }); assert.equal(g.state.installations.length, 1)
+})
+
+test('self lure fixes the use-time player cell and is dangerous at distance 1', () => {
+  const g = fixture(); robot(g, '観測'); g.act({ type: 'self-lure' })
+  assert.equal(g.state.enemy, '医療'); assert.equal(g.state.energy, 40); assert.equal(g.state.lure!.target, '居住')
+  g.act({ type: 'move', target: '倉庫' }); assert.equal(g.state.enemy, '居住'); assert.equal(g.state.encounter, false)
+  const danger = fixture(); robot(danger, '医療'); danger.act({ type: 'self-lure' }); assert.equal(danger.state.encounter, true)
+})
+
+test('closed bulkheads block both actors and restore after exactly 3 updates to former state', () => {
+  const g = fixture(); mapped(g); robot(g, '管制'); g.state.robotNext = '医療'
+  const edge = edgeKey('居住', '医療'); g.state.passages[edge] = 'DARK'
+  g.act({ type: 'use', item: 'local-key', edge, closed: true })
+  assert.equal(g.state.passages[edge], 'CLOSED'); assert.equal(g.state.bulkheads[edge]!.restoresAt, 3)
+  const before = snapshot(g); g.act({ type: 'move', target: '医療' }); assert.deepEqual(g.state, before)
+  assert.ok(!g.available('医療').includes('居住'))
+  g.act({ type: 'wait' }); assert.equal(g.state.passages[edge], 'CLOSED')
+  const log = g.act({ type: 'wait' }); assert.equal(g.state.passages[edge], 'DARK'); assert.equal(g.state.bulkheads[edge], undefined)
+  assert.match(log.join(''), /自動復旧/)
+})
+
+test('bulkhead reroutes a lure and invalidates prediction without crossing the closed edge', () => {
+  const g = fixture(); mapped(g); robot(g, '管制'); g.state.items.push('remote-key')
+  g.state.lure = { target: '居住', remaining: 5 }; g.state.robotNext = '医療'
+  g.state.prediction = { current: '管制', next: '医療', turn: 0 }
+  const edge = edgeKey('管制', '医療')
+  const log = g.act({ type: 'use', item: 'remote-key', edge, closed: true })
+  assert.equal(g.state.enemy, '倉庫'); assert.equal(g.state.prediction, null); assert.match(log.join(''), /予測は無効/)
+  assert.equal(g.state.energy, 36)
+})
+
+test('override is one-use and remote; controller remains bound to an adjacent edge after installation', () => {
+  const g = fixture(); mapped(g); g.state.items.push('override', 'controller')
+  const remote = edgeKey('前室', '発着'); g.act({ type: 'use', item: 'override', edge: remote, closed: true })
+  assert.equal(g.state.energy, 40); assert.ok(!g.state.items.includes('override'))
+  assert.equal(g.canAct({ type: 'install', item: 'controller', edge: remote }), false)
+  const local = edgeKey('居住', '倉庫'); g.act({ type: 'install', item: 'controller', edge: local })
+  assert.ok(!g.state.items.includes('controller')); g.act({ type: 'move', target: '医療' })
+  g.act({ type: 'activate', id: 1, closed: true }); assert.equal(g.state.passages[local], 'CLOSED')
+  g.act({ type: 'activate', id: 1, closed: false }); assert.equal(g.state.passages[local], 'NORMAL')
+  assert.equal(g.state.installations[0]!.edge, local)
+})
+
+test('fixed equipment requires its district and provides strong lower-cost functions', () => {
+  const g = fixture(); mapped(g)
+  assert.equal(g.canAct({ type: 'facility', facility: 'alarm', target: '観測' }), false)
+  g.state.location = '管制'; robot(g, '発着')
+  g.act({ type: 'facility', facility: 'alarm', target: '観測' })
+  assert.equal(g.state.energy, 39); assert.equal(g.state.lure!.target, '観測'); assert.equal(g.state.lure!.remaining, 3)
+  g.state.location = '電力管理'; g.state.energy = 30
+  g.act({ type: 'facility', facility: 'charger' }); assert.equal(g.state.energy, 40); assert.ok(g.state.chargerUsed)
+  const before = snapshot(g); g.act({ type: 'facility', facility: 'charger' }); assert.deepEqual(g.state, before)
+  assert.ok(Object.values(facilities).flat().includes('bulkhead'))
+})
+
+test('remote sensor stays installed and reports exact nearby position, never claims free global vision', () => {
+  const g = fixture(); g.state.location = '計測'; g.state.items.push('sensor'); robot(g, '発着')
+  g.act({ type: 'install', item: 'sensor' }); g.act({ type: 'move', target: '電力管理' })
+  let log = g.act({ type: 'activate', id: 1 }, 'en'); assert.match(log.join(''), /No signal within distance 1/)
+  robot(g, '資材'); log = g.act({ type: 'activate', id: 1 }, 'en'); assert.match(log.join(''), /CARGO \(D3\)/)
+  assert.equal(g.state.installations[0]!.room, '計測'); assert.ok(!g.state.items.includes('sensor'))
+})
+
+test('battery is carried then consumed and capped; fatal costs stop before successful results/world', () => {
+  const g = fixture(); g.state.location = '医療'; g.act({ type: 'collect', item: 'battery' })
+  g.state.energy = 35; g.act({ type: 'use', item: 'battery' }); assert.equal(g.state.energy, 40); assert.ok(!g.state.items.includes('battery'))
+  const over = fixture(); over.state.energy = 1; const log = over.act({ type: 'use', item: 'predictor' })
+  assert.equal(over.state.status, 'over'); assert.equal(over.state.turn, 0); assert.equal(over.state.prediction, null)
+  assert.equal(log.at(-1), 'GAME OVER')
+})
+
+test('entering an occupied cell or robot arrival triggers encounter before any escape by patrol', () => {
+  const g = fixture(); robot(g, '医療'); g.state.robotNext = '観測'
+  g.act({ type: 'move', target: '医療' }); assert.equal(g.state.enemy, '医療'); assert.equal(g.state.encounter, true)
+  assert.equal(g.canAct({ type: 'camera' }), false); assert.equal(g.canAct({ type: 'use', item: 'predictor' }), false)
+  const arrival = fixture(); robot(arrival, '医療'); arrival.state.robotNext = '居住'
+  arrival.act({ type: 'wait' }); assert.equal(arrival.state.encounter, true)
+})
+
+test('emergency retreat succeeds only below 25%, is once per run, and otherwise GAME OVER', () => {
+  let success = 0
   for (let i = 0; i < 100; i++) {
-    const game = new Game()
-    assert.equal(game.connected(), true)
-    assert.ok(['研究', '整備', '管制'].includes(game.state.enemy))
-    for (let turn = 0; turn < 100; turn++) {
-      const old = JSON.stringify(game.state.passages), enemy = game.state.enemy
-      // Restore budget only in this stress fixture, never in production UI.
-      game.state.energy = 20
-      game.act(game.state.encounter ? { type: 'hide' } : { type: 'camera', target: neighbors(game.state.location)[0]! })
-      assert.equal(game.connected(), true)
-      assert.ok(Object.values(game.state.passages).filter(p => p !== 'NORMAL').length <= 6)
-      if (old !== JSON.stringify(game.state.passages)) changes++
-      if (enemy !== game.state.enemy) {
-        assert.ok(neighbors(enemy).includes(game.state.enemy))
-        assert.notEqual(game.passage(enemy, game.state.enemy), 'CLOSED'); moves++
-      }
-    }
+    const g = fixture(() => i / 100); robot(g, '居住'); g.state.encounter = true
+    const log = g.act({ type: 'retreat', target: '医療' })
+    assert.equal(g.state.retreatUsed, true); assert.equal(g.state.energy, 38); assert.equal(g.state.turn, 1)
+    if (g.state.status === 'playing') { success++; assert.equal(g.state.location, '医療'); assert.equal(g.state.enemy, '居住'); assert.equal(g.state.knowledge.医療, 'visited') }
+    else assert.equal(log.at(-1), 'GAME OVER')
   }
-  assert.ok(changes > 100); assert.ok(moves > 100)
-})
-test('GAME OVER restart restores all gameplay state', () => {
-  const game = fixture(); game.state.energy = 1
-  game.act({ type: 'camera', target: '医療' })
-  assert.equal(game.state.status, 'over')
-  game.restart()
-  assert.equal(game.state.status, 'playing'); assert.equal(game.state.encounter, false)
-  assert.equal(game.state.enemyPrevious, null); assert.equal(game.state.energy, 20)
+  assert.equal(success, 25)
+  const g = fixture(() => 0.1); robot(g, '居住'); g.state.encounter = true
+  g.act({ type: 'retreat', target: '医療' }); g.state.robotNext = '医療'
+  g.act({ type: 'wait' }); assert.equal(g.state.status, 'over')
 })
 
-test('nine rooms, twelve orthogonal edges and fixed map agree', () => {
-  assert.deepEqual(rooms, ['居住','医療','観測','倉庫','管制','電力管理','研究','整備','発着'])
-  const expected = rooms.flatMap((room,i) => [
-    ...(i % 3 < 2 ? [[room, rooms[i+1]!]] : []),
-    ...(i < 6 ? [[room, rooms[i+3]!]] : []),
-  ])
-  assert.equal(edges.length, 12)
-  assert.deepEqual(edges.map(([a,b]) => edgeKey(a,b)).sort(), expected.map(([a,b]) => edgeKey(a!,b!)).sort())
-  for (const room of rooms) {
-    assert.deepEqual(neighbors(room).sort(), expected.flatMap(([a,b]) => a === room ? [b] : b === room ? [a] : []).sort())
-    const lines = baseMapLines(room), diagram = lines.slice(1).join('')
-    assert.equal(diagram.split('*').length, 2)
-    assert.ok(diagram.includes('[*' + (room === '電力管理' ? '電力' : room) + ']'))
-    assert.equal(diagram.match(/─/g)?.length, 6)
-    assert.equal(diagram.match(/│/g)?.length, 6)
-    const names = [lines[1]!, lines[3]!, lines[5]!].flatMap(line => [...line.matchAll(/\[([ *])([^\]]+)\]/g)].map(m => m[2] === '電力' ? '電力管理' : m[2]))
-    assert.deepEqual(names, rooms)
-    assert.ok(!/NORMAL|DARK|BLOCKED|CLOSED|ENERGY|防災/.test(diagram))
+test('no open retreat route, low energy and surrender are fatal; clear requires supplies at ship', () => {
+  for (const reason of ['sealed', 'low', 'surrender'] as const) {
+    const g = fixture(); robot(g, '医療'); g.state.robotNext = '居住'
+    if (reason === 'sealed') { robot(g, '居住'); for (const next of neighbors('居住')) g.state.passages[edgeKey('居住', next)] = 'CLOSED' }
+    if (reason === 'low') g.state.energy = 3
+    g.act({ type: 'wait' })
+    if (reason === 'surrender') g.act({ type: 'give-up' })
+    assert.equal(g.state.status, 'over')
   }
-  assert.deepEqual(Object.fromEntries(Object.entries(taskInfo).map(([task,info]) => [task,info.room])), {power:'電力管理',control:'管制',repair:'整備',parts:'研究',food:'倉庫',medical:'医療',observe:'観測',launch:'発着'})
-})
-test('four initial candidates and diagonal rejection preserve existing rules', () => {
-  let draws = 0
-  const game = new Game(() => { draws++; return 0.5 })
-  assert.equal(draws, 9)
-  assert.equal(Object.values(game.state.passages).filter(p => p !== 'NORMAL').length, 4)
-  assert.ok(['研究','整備','管制'].includes(game.state.enemy))
-  for (const type of ['move','camera','flee'] as const) {
-    game.state.encounter = type === 'flee'
-    const before = JSON.stringify(game.state)
-    game.act({type, target:'管制'})
-    assert.equal(JSON.stringify(game.state), before)
-  }
+  const g = fixture(); g.state.location = '発着'; const before = snapshot(g)
+  g.act({ type: 'facility', facility: 'ship' }); assert.deepEqual(g.state, before)
+  g.state.items.push(...escapeItems)
+  const enemy = g.state.enemy; g.act({ type: 'facility', facility: 'ship' }); assert.equal(g.state.status, 'clear'); assert.equal(g.state.enemy, enemy)
 })
 
-test('identical random streams and action sequences produce identical full states in ja/en', () => {
-  for (let seed = 1; seed <= 100; seed++) {
-    const stream = () => {
-      let value = seed, draws = 0
-      return { random: () => { draws++; value = (Math.imul(value, 1664525) + 1013904223) >>> 0; return value / 2 ** 32 }, draws: () => draws }
-    }
-    const jaRng = stream(), enRng = stream(), ja = new Game(jaRng.random), en = new Game(enRng.random)
-    assert.deepEqual(ja.state, en.state)
-    for (let step = 0; step < 80; step++) {
-      const s = ja.state, targets = neighbors(s.location)
-      const task = (Object.keys(taskInfo) as (keyof typeof taskInfo)[]).find(task => taskInfo[task].room === s.location && !ja.taskDone(task))
-      const action = s.encounter
-        ? step % 3 === 0 ? { type: 'flee' as const, target: targets[step % targets.length]! } : { type: step % 2 === 0 ? 'hide' as const : 'force' as const }
-        : task && step % 2 === 0 ? { type: 'task' as const, task } : { type: step % 5 === 0 ? 'camera' as const : 'move' as const, target: targets[(step + seed) % targets.length]! }
-      ja.act(action, 'ja')
-      const englishLog = en.act(action, 'en')
-      assert.deepEqual(en.state, ja.state, `seed ${seed}, step ${step}`)
-      assert.equal(enRng.draws(), jaRng.draws())
-      assert.ok(!englishLog.some(line => /[\u3040-\u30ff\u3400-\u9fff]/u.test(line)), englishLog.join('\n'))
-      const before = structuredClone(en.state), draws = enRng.draws()
-      en.statusLines('en'); en.statusLines('ja')
-      assert.deepEqual(en.state, before)
-      assert.equal(enRng.draws(), draws)
+test('full item-first escape loop is playable without equipment Task prerequisites', () => {
+  const g = fixture()
+  const move = (target: typeof g.state.location) => { g.act({ type: 'move', target }); assert.equal(g.state.encounter, false); assert.equal(g.state.status, 'playing') }
+  move('医療'); g.act({ type: 'collect', item: 'map' }); move('管制'); g.act({ type: 'collect', item: 'key' })
+  move('電力管理'); move('蓄電'); g.act({ type: 'collect', item: 'power' }); move('電力管理'); move('管制'); move('倉庫')
+  g.act({ type: 'collect', item: 'food' }); move('研究'); g.act({ type: 'collect', item: 'parts' }); move('整備'); move('計測'); move('前室'); move('発着')
+  assert.ok(g.ready()); const log = g.act({ type: 'facility', facility: 'ship' }); assert.equal(log.at(-1), 'GAME CLEAR')
+  assert.ok(escapeItems.every(item => g.state.items.includes(item)))
+  g.restart(); assert.equal(g.state.status, 'playing'); assert.equal(g.state.retreatUsed, false); assert.equal(g.state.installations.length, 0); assert.equal(g.state.feed, null)
+})
+
+test('ja/en produce identical full State and RNG through randomized actions', () => {
+  for (let seed = 1; seed <= 50; seed++) {
+    const rng = () => { let value = seed, draws = 0; return { next: () => { draws++; value = (Math.imul(value, 1664525) + 1013904223) >>> 0; return value / 2 ** 32 }, draws: () => draws } }
+    const a = rng(), b = rng(), ja = new Game(a.next), en = new Game(b.next)
+    for (let i = 0; i < 30; i++) {
+      const s = ja.state
+      const action: Action = s.encounter ? { type: 'retreat', target: ja.available(s.location)[0]! }
+        : i % 5 === 0 ? { type: 'use', item: 'predictor' } : i % 5 === 1 ? { type: 'camera' } : { type: 'move', target: neighbors(s.location)[i % neighbors(s.location).length]! }
+      ja.act(action, 'ja'); const log = en.act(action, 'en')
+      assert.deepEqual(en.state, ja.state); assert.equal(a.draws(), b.draws())
+      assert.ok(!/[\u3040-\u30ff\u3400-\u9fff]/u.test(log.join('')))
     }
   }
 })
 
-test('all task results, supply caps, repair, clear and fatal costs are language independent', () => {
-  for (const task of Object.keys(taskInfo) as (keyof typeof taskInfo)[]) for (const energy of [1, 17, 20]) {
-    const ja = fixture(), en = fixture()
-    for (const game of [ja, en]) {
-      game.state.location = taskInfo[task].room; game.state.energy = energy
-      if (task === 'repair') game.state.items = ['修理部品']
-      if (task === 'launch') game.state.conditions = { power: true, control: true, repair: true, food: true }
-    }
-    const action = { type: 'task' as const, task }
-    ja.act(action, 'ja'); const lines = en.act(action, 'en')
-    assert.deepEqual(en.state, ja.state)
-    assert.ok(lines.length > 0)
-    assert.ok(!lines.some(line => /[\u3040-\u30ff\u3400-\u9fff]/u.test(line)))
-    if (task === 'launch') assert.equal(en.state.status, 'clear')
-  }
-  for (const roll of [0.1, 0.99]) for (const type of ['hide', 'force', 'flee'] as const) {
-    const ja = fixture(() => roll), en = fixture(() => roll)
-    for (const game of [ja, en]) { game.state.encounter = true; game.state.enemy = game.state.location }
-    const action = type === 'flee' ? { type, target: '医療' as const } : { type }
-    ja.act(action, 'ja'); const lines = en.act(action, 'en')
-    assert.deepEqual(en.state, ja.state)
-    assert.ok(!lines.some(line => /[\u3040-\u30ff\u3400-\u9fff]/u.test(line)))
+test('item taxonomy has distinct portable/deployable behavior and no weapons or combat State', () => {
+  assert.equal(itemSpecs.predictor.kind, 'portable'); assert.equal(itemSpecs['remote-decoy'].kind, 'deployable')
+  assert.equal(itemSpecs['short-decoy'].consumable, true); assert.equal(itemSpecs['long-decoy'].cost, 4)
+  assert.ok(!('hp' in fixture().state)); assert.equal(escapeItems.length, 4)
+  assert.deepEqual(coordinates('発着'), { x: 3, y: 3 })
+})
+
+test('unreachable self lure and BLOCKED installed controller are rejected without State/RNG changes', () => {
+  const g = fixture(); mapped(g); g.state.items.push('controller')
+  const key = edgeKey('居住', '医療'); g.act({ type: 'install', item: 'controller', edge: key })
+  g.state.passages[key] = 'BLOCKED'; g.state.passages[edgeKey('居住', '倉庫')] = 'CLOSED'
+  const before = snapshot(g)
+  ;(g as unknown as { random: () => number }).random = () => { throw Error('invalid action consumed RNG') }
+  for (const action of [{ type: 'self-lure' }, { type: 'activate', id: 1, closed: false }] as const) {
+    assert.equal(g.canAct(action), false); g.act(action); assert.deepEqual(g.state, before)
   }
 })
 
-test('shared task prerequisites are read only and retain existing rejected-action output and RNG', () => {
-  for (const language of ['ja', 'en'] as const) for (const task of ['repair', 'launch'] as const) {
-    const game = fixture(); game.state.location = taskInfo[task].room
-    const before = structuredClone(game.state)
-    ;(game as unknown as { random: () => number }).random = () => { throw new Error('Prerequisites must not use RNG') }
-    assert.equal(game.taskPrerequisite(task), task === 'repair' ? 'repairPartsMissing' : 'requirementsMissing')
-    const lines = game.act({ type: 'task', task }, language)
-    assert.deepEqual(game.state, before)
-    assert.equal(lines.length, task === 'repair' ? 1 : 8)
-    if (task === 'repair') game.state.items.push('修理部品')
-    else game.state.conditions = { power: true, control: true, repair: true, food: true }
-    assert.equal(game.taskPrerequisite(task), null)
-  }
+test('encounter interruption still restores an expired bulkhead and expires a lure on time', () => {
+  const g = fixture(); robot(g, '居住'); g.state.turn = 2
+  const key = edgeKey('居住', '医療')
+  g.state.passages[key] = 'CLOSED'; g.state.bulkheads[key] = { previous: 'NORMAL', restoresAt: 3 }
+  g.state.lure = { target: '観測', remaining: 1 }
+  const log = g.act({ type: 'wait' })
+  assert.equal(g.state.turn, 3); assert.equal(g.state.passages[key], 'NORMAL'); assert.equal(g.state.lure, null)
+  assert.equal(g.state.encounter, true); assert.match(log.join(''), /自動復旧/)
 })

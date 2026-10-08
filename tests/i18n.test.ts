@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { initialLanguage, saveLanguage, LANGUAGE_STORAGE_KEY, messages, t, roomNames, mapNames, roomDescriptions, facilityNames } from '../src/i18n.ts'
-import { rooms, baseMapLines, facilityGuideLines, facilityIds } from '../src/map.ts'
+import { initialLanguage, saveLanguage, LANGUAGE_STORAGE_KEY, messages, t, roomNames, mapNames, roomDescriptions } from '../src/i18n.ts'
+import { rooms, baseMapLines, initialKnowledge, edges, edgeKey } from '../src/map.ts'
 
 const storage = (value: string | null) => ({ getItem: () => value, setItem: (_key: string, next: string) => { value = next } })
 
@@ -42,27 +42,23 @@ test('every catalog entry has matching placeholders and no Japanese in English o
     assert.ok(!/[\u3040-\u30ff\u3400-\u9fff]/u.test(message.en), key)
   }
   // Replacement values stay literal, including dollar syntax and HTML characters.
-  assert.equal(t('cameraDirection', 'en', '<b>$&{0}</b>'), 'Toward <b>$&{0}</b>')
+  assert.equal(t('locationStatus', 'en', '<b>$&{0}</b>'), 'LOCATION : <b>$&{0}</b>')
 })
 
-test('map markers, three-letter abbreviations and facility membership agree across languages', () => {
-  assert.deepEqual(baseMapLines('居住'), ['基地マップ * = 現在地', '[*居住]─[ 医療]─[ 観測]', ' 　│   　　│   　　│', '[ 倉庫]─[ 管制]─[ 電力]', ' 　│   　　│   　　│', '[ 研究]─[ 整備]─[ 発着]'])
-  assert.deepEqual(baseMapLines('居住', 'en'), ['BASE MAP * = YOU', '[*HAB]─[ MED]─[ OBS]', '   │      │      │', '[ STO]─[ CTL]─[ PWR]', '   │      │      │', '[ LAB]─[ MNT]─[ PAD]'])
-  for (const room of rooms) {
-    assert.match(mapNames[room].en, /^[A-Z]{3}$/)
-    const map = baseMapLines(room, 'en')
-    assert.equal(map.join('').split('*').length - 1, 2) // header plus current district
-    assert.ok(map.join('\n').includes(`[*${mapNames[room].en}]`))
-    assert.ok(map.every(line => line.length <= 20))
-    assert.ok(roomDescriptions('en')[room])
-  }
+test('map abbreviations, current marker, unknowns and maximum width agree across languages', () => {
+  const knowledge = initialKnowledge(), knownEdges = edges.map(([a, b]) => edgeKey(a, b))
   for (const language of ['ja', 'en'] as const) {
-    const guide = facilityGuideLines(language), names = facilityNames(language)
-    assert.equal(guide.length, 10)
-    rooms.forEach((room, index) => {
-      for (const id of facilityIds[room]) assert.ok(guide[index + 1]!.includes(names[id]))
-      if (language === 'en') assert.ok(guide[index + 1]!.startsWith(roomNames[room].en + ': '))
-    })
+    const unknown = baseMapLines('居住', knowledge, knownEdges, language)
+    assert.equal(unknown.join('').match(/\?/g)?.length, 15)
+    const all = Object.fromEntries(rooms.map(room => [room, 'mapped'])) as typeof knowledge
+    for (const room of rooms) {
+      assert.match(mapNames[room].en, /^[A-Z]{3}$/)
+      const map = baseMapLines(room, all, knownEdges, language)
+      assert.equal(map.length, 8)
+      assert.equal(map.slice(1).join('').match(/\*/g)?.length, 1)
+      assert.ok(map.slice(1).every(line => [...line].reduce((width, c) => width + (/[^\x00-\x7f─│]/u.test(c) ? 2 : 1), 0) <= 27))
+      assert.ok(map.join('').includes(`[*${mapNames[room][language].slice(0, language === 'ja' ? 1 : 3)}]`))
+      assert.ok(roomDescriptions(language)[room]); assert.ok(roomNames[room][language])
+    }
   }
-  assert.equal(Object.values(facilityIds).flat().length, 19)
 })

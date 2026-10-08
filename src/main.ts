@@ -1,15 +1,17 @@
-import { t, roomName, initialLanguage, saveLanguage, languageNames, itemName, freshnessName, roomDescriptions, taskLabels, conditionLabels, taskConfirmations } from './i18n.ts'
+import { t, roomName, initialLanguage, saveLanguage, languageNames, itemName, roomDescriptions, facilityName, itemDescription } from './i18n.ts'
 import type { Language } from './i18n.ts'
 import './style.css'
-import { Game, taskInfo } from './game'
-import type { Action, Task } from './game'
-import { costs, neighbors, baseMapLines, facilityGuideLines } from './map'
+import { Game } from './game.ts'
+import type { Action } from './game.ts'
+import { costs, neighbors, rooms, passable, cellCode, edgeKey } from './map.ts'
+import { itemSpecs, facilities } from './items.ts'
+import type { ItemId, Installation } from './items.ts'
 
 const app = document.querySelector<HTMLDivElement>('#app')
 if (!app) throw new Error('App element was not found')
 const game = new Game()
 let language: Language = initialLanguage()
-type Menu = 'start' | 'main' | 'move' | 'camera' | 'investigate' | 'confirmation' | 'ai' | 'inventory' | 'encounter' | 'flee' | 'end' | 'settings' | 'language'
+type Menu = 'start' | 'main' | 'move' | 'investigate' | 'confirmation' | 'ai' | 'inventory' | 'encounter' | 'retreat' | 'end' | 'settings' | 'language' | 'item' | 'target' | 'edge' | 'bulk' | 'device'
 type Option = { label: string; setting?: boolean; inputLabel?: string; inputPath?: string[]; submenu?: Menu; enter?: () => void; run?: () => void; disabled?: boolean; help?: () => string[]; helpInput?: string }
 let menu: Menu = 'start', page = 0
 let languageParent: 'start' | 'settings' = 'start'
@@ -20,26 +22,28 @@ function changeLanguage(nextLanguage: Language) {
   pendingInput.length = 0
   open(languageParent === 'settings' ? 'main' : 'start')
 }
-let selectedTask: Task = 'power'
-function targetNames(): Record<Task, string> { return { power: t('powerPanel', language), control: t('controlTerminal', language), repair: t('repairSystem', language), parts: t('partsStorage', language), food: t('foodStorage', language), medical: t('spareBattery', language), observe: t('observationSystem', language), launch: t('returnShip', language) } }
-function investigateTask(task: Task) {
-  selectedTask = task
-  const confirmation = taskConfirmations(language)[task]
-  const checked = confirmation.inspected
-  if (game.taskDone(task) || (task === 'launch' && game.state.status === 'clear')) {
-    appendLog(checked, confirmation.done)
-    return
-  }
-  const prerequisite = game.taskPrerequisite(task)
-  if (prerequisite) {
-    appendLog(checked, t(prerequisite === 'repairPartsMissing' ? 'repairInvestigationMissing' : 'launchInvestigationMissing', language),
-      ...(prerequisite === 'requirementsMissing' ? Object.entries(conditionLabels(language)).filter(([key]) => !game.state.conditions[key as keyof typeof game.state.conditions]).map(([, name]) => t('missingCondition', language, name)) : []))
-    return
-  }
+let selectedItem: ItemId = 'predictor'
+let selectedDevice = 0
+let selectedEdge = ''
+let targetParent: Menu = 'item'
+let bulkParent: Menu = 'item'
+let targetAction: (target: typeof game.state.location) => Action = target => ({ type: 'use', item: selectedItem, target })
+let edgeAction: (edge: string, closed: boolean) => Action = (edge, closed) => ({ type: 'use', item: selectedItem, edge, closed })
+let installingController = false
+let localEdges = true
+let confirmation: { action: Action; parent: Menu; page: number; path: string[] } | null = null
+function prepare(action: Action, description: string[] = []) {
+  if (!game.canAct(action)) { appendLog(action.type === 'facility' && action.facility === 'charger' && game.state.chargerUsed ? t('chargerUsed', language) : t('actionUnavailable', language), ...(action.type === 'facility' && action.facility === 'ship' ? [t('requirementsMissing', language), ...game.statusLines(language)] : [])); return }
+  confirmation = { action, parent: menu, page, path: [...pendingInput] }
   open('confirmation')
-  appendLog(checked, confirmation.explanation, confirmation.question)
+  appendLog(...description, ...(action.type === 'give-up' ? [] : [t('worldHelp', language)]), t(action.type === 'collect' ? 'collectQuestion' : action.type === 'facility' && action.facility === 'ship' ? 'launchQuestion' : 'useQuestion', language))
 }
-function mapLines(): string[] { return baseMapLines(game.state.location, language) }
+function itemHelp(item: ItemId): string[] {
+  const spec = itemSpecs[item]
+  return [itemName(item, language), t('toolStats', language, t(spec.kind, language), spec.cost, spec.range, spec.duration, t(spec.consumable ? 'consumable' : 'reusable', language)),
+    itemDescription(item, language), ...(item === 'predictor' ? [t('predictionHelp', language)] : []),
+    ...(spec.effect === 'escape' ? [t('escapeItem', language)] : [t('worldHelp', language)])]
+}
 let helpMode = false
 const pendingInput: string[] = []
 const terminal = document.createElement('main')
@@ -138,7 +142,7 @@ function button(label: string, run: () => void) {
 }
 function open(nextMenu: Menu) {
   menu = nextMenu; page = 0
-  if (!parent()) pendingInput.length = 0
+  if (!parent() && nextMenu !== 'confirmation') pendingInput.length = 0
   render()
   const first = actions.querySelector<HTMLButtonElement>('button:not(:disabled)')
   const focusTarget = first ?? (parent() ? back : log)
@@ -158,89 +162,105 @@ function restart() {
   characters = []; characterPosition = 0
   isTyping = false
   game.restart()
-  appendLog(t('title', language), t('systemOnline', language), roomDescriptions(language).居住, t('introDamage', language),
-    t('introRequirements', language),
-    t('introSupplies', language), t('introStatus', language))
+  confirmation = null
+  appendLog(t('title', language), roomDescriptions(language).居住, t('introDamage', language), t('introRequirements', language), t('introTools', language), t('introStatus', language), ...game.warningLines(language))
   open('main')
-}
-function itemHelp(item: string): string[] {
-  return [item === '食糧' ? t('foodHelp', language) : t('partsHelp', language)]
-}
-function taskHelp(task: Task): string[] {
-  const s = game.state, info = taskInfo[task]
-  const effects: Record<Task, string> = {
-    power: t('securePowerForTheReturnShip', language), control: t('releaseTheLaunchControlLock', language),
-    repair: t('useRepairPartsToRepairTheReturn', language), parts: t('collectRepairParts', language), food: t('collectFoodToKeepUntilDeparture', language),
-    medical: t('supplyHelp', language), observe: t('supplyHelp', language), launch: t('launchTheReturnShipToAchieveGame', language),
-  }
-  return [taskLabels(language)[task], t('energyCost', language, info.cost), t('taskDone', language, game.taskDone(task) ? t('yes', language) : t('no', language)),
-    task === 'repair' ? t('requiresParts', language, s.items.includes('修理部品') ? t('held', language) : t('missing', language)) : task === 'launch' ? t('requiresAllFourReturnRequirements', language) : t('requiresRoom', language, roomName(info.room, language)),
-    effects[task], ...(task === 'launch' ? Object.entries(conditionLabels(language)).filter(([key]) => !s.conditions[key as keyof typeof s.conditions]).map(([, name]) => t('missingCondition', language, name)) : [])]
 }
 function options(): Option[] {
   const s = game.state
+  const describe = (item: ItemId) => () => itemHelp(item)
   if (menu === 'start') return [{ label: t('start', language), run: restart },
     { label: t('startLanguageMenu', language), setting: true, submenu: 'language', enter: () => { languageParent = 'start' } }]
   if (menu === 'settings') return [{ label: t('languageMenu', language), setting: true, submenu: 'language', enter: () => { languageParent = 'settings' } }]
-  if (menu === 'language') return (['ja', 'en'] as const).map(value => ({
-    label: languageNames[value], setting: true, run: () => changeLanguage(value),
-  }))
-  if (menu === 'end') return [{ label: t('restart', language), run: restart }, { label: t('finalStatus', language), run: () => appendLog(...game.statusLines(language)) }]
+  if (menu === 'language') return (['ja', 'en'] as const).map(value => ({ label: languageNames[value], setting: true, run: () => changeLanguage(value) }))
+  if (menu === 'end') return [{ label: t('restart', language), run: restart }, { label: t('finalStatus', language), help: () => [t('readHelp', language)], run: () => appendLog(...game.statusLines(language)) }]
   if (menu === 'main') return [
-    { label: t('exploreMenu', language), submenu: 'investigate' },
-    { label: t('moveMenu', language), submenu: 'move' },
-    { label: t('inventoryMenu', language), submenu: 'inventory' },
-    { label: t('aiMenu', language), submenu: 'ai' },
+    { label: t('exploreMenu', language), submenu: 'investigate' }, { label: t('moveMenu', language), submenu: 'move' },
+    { label: t('inventoryMenu', language), submenu: 'inventory' }, { label: t('aiMenu', language), submenu: 'ai' },
     { label: t('settingsMenu', language), setting: true, submenu: 'settings' },
   ]
   if (menu === 'ai') return [
-    { label: t('status', language), helpInput: t('aiStatus', language), help: () => [t('statusHelp', language)], run: () => appendLog(...game.statusLines(language)) },
-    { label: t('camera', language), submenu: 'camera' },
+    { label: t('status', language), help: () => [t('readHelp', language)], run: () => appendLog(...game.statusLines(language)) },
+    { label: t('camera', language), help: () => [t('cameraHelp', language)], run: () => prepare({ type: 'camera' }, [t('cameraHelp', language)]) },
+    { label: t('feed', language), help: () => [t('readHelp', language)], run: () => appendLog(...game.feedLines(language)) },
+    { label: t('sensor', language), help: () => [t('readHelp', language)], run: () => appendLog(...(game.warningLines(language).length ? game.warningLines(language) : [t('noSignal', language)])) },
+    { label: t('selfLure', language), help: () => [t('selfHelp', language)], run: () => prepare({ type: 'self-lure' }, [t('selfHelp', language)]) },
+    { label: t('wait', language), help: () => [t('worldHelp', language), 'ENERGY 1'], run: () => prepare({ type: 'wait' }, ['ENERGY 1']) },
+    { label: t('predictionRecord', language), help: () => [t('readHelp', language)], run: () => appendLog(...game.predictionLines(language)) },
   ]
   if (menu === 'encounter') return [
-    { label: t('hide', language), help: () => [t('success80', language), t('energy1', language), t('encounterFailureHelp', language)], run: () => act({ type: 'hide' }) },
-    { label: t('forceThrough', language), help: () => [t('success60', language), t('energy2', language), t('encounterFailureHelp', language)], run: () => act({ type: 'force' }) },
-    { label: t('fleeMenu', language), submenu: 'flee' },
+    { label: t('emergency', language), submenu: 'retreat' },
+    { label: t('giveUp', language), help: () => [t('gameOver', language)], run: () => prepare({ type: 'give-up' }, [t('gameOver', language)]) },
   ]
   if (menu === 'inventory') return [
-    { label: t('baseMap', language), helpInput: t('inventoryBaseMap', language), help: () => [t('mapHelp', language)], run: () => appendLog(...mapLines()) },
-    { label: t('facilityGuide', language), helpInput: t('inventoryFacilityGuide', language), help: () => [t('guideHelpFacilities', language), t('guideHelpLocation', language), t('noEnergyCostOrWorldProgression', language)], run: () => appendLog(...facilityGuideLines(language)) },
-    ...s.items.map(item => ({ label: itemName(item, language), helpInput: t('inventoryInput', language, itemName(item, language)), help: () => itemHelp(item), run: () => appendLog(...itemHelp(item)) })),
+    { label: t('baseMap', language), help: () => [t('mapHelp', language)], run: () => appendLog(...game.mapLines(language)) },
+    { label: t('facilityGuide', language), help: () => [t('guideHelp', language)], run: () => appendLog(...game.guideLines(language)) },
+    ...s.items.filter(item => item !== 'map').map(item => ({ label: itemName(item, language) + ' >', submenu: 'item' as const, enter: () => { selectedItem = item } })),
+    ...s.installations.map(device => ({ label: t('installedLabel', language, itemName(device.item, language), cellCode(device.room)), submenu: 'device' as const, enter: () => { selectedDevice = device.id } })),
   ]
-  if (menu === 'investigate') {
-    const tasks = (Object.keys(taskInfo) as Task[]).filter(task => taskInfo[task].room === s.location)
-    return [{ label: t('surroundings', language), helpInput: t('exploreSurroundings', language), help: () => [t('surroundingsHelp', language)], run: () => appendLog(t('districtLabel', language, roomName(s.location, language)), roomDescriptions(language)[s.location]) },
-      ...tasks.map(task => ({ label: targetNames()[task], inputPath: [t('explore', language)], helpInput: t('exploreInput', language, targetNames()[task]), help: () => taskHelp(task), run: () => investigateTask(task) }))]
+  if (menu === 'investigate') return [
+    { label: t('surroundings', language), help: () => [t('readHelp', language)], run: () => appendLog(t('locationStatus', language, roomName(s.location, language)), roomDescriptions(language)[s.location]) },
+    ...(s.ground[s.location] ?? []).map(item => ({ label: itemName(item, language), help: describe(item), run: () => prepare({ type: 'collect', item }, [t('inspectItem', language, itemName(item, language)), ...itemHelp(item)]) })),
+    ...(facilities[s.location] ?? []).map(facility => {
+      const submenu = facility === 'alarm' ? 'target' as const : facility === 'bulkhead' ? 'edge' as const : undefined
+      return { label: facilityName(facility, language) + (submenu ? ' >' : ''), submenu,
+        enter: () => {
+          if (facility === 'alarm') { targetParent = 'investigate'; targetAction = target => ({ type: 'facility', facility: 'alarm', target }) }
+          if (facility === 'bulkhead') { bulkParent = 'investigate'; installingController = false; localEdges = true; edgeAction = (edge, closed) => ({ type: 'facility', facility: 'bulkhead', edge, closed }) }
+        },
+        help: submenu ? undefined : () => [facility === 'camera' ? t('cameraHelp', language) : facility === 'ship' ? t('escapeItem', language) : 'ENERGY +12 / 40'],
+        run: () => prepare({ type: 'facility', facility }, [roomDescriptions(language)[s.location], ...(facility === 'camera' ? [t('cameraHelp', language)] : facility === 'charger' ? ['ENERGY +12 / 40'] : game.statusLines(language))]),
+      }
+    }),
+  ]
+  if (menu === 'item') {
+    const item = selectedItem, spec = itemSpecs[item]
+    if (spec.effect === 'escape') return [{ label: t('status', language), help: describe(item), run: () => appendLog(...itemHelp(item)) }]
+    if (spec.kind === 'deployable') return [{ label: t('install', language) + (item === 'controller' ? ' >' : ''), submenu: item === 'controller' ? 'edge' : undefined,
+      enter: () => { bulkParent = 'item'; installingController = true; localEdges = true },
+      help: item === 'controller' ? undefined : describe(item), run: () => prepare({ type: 'install', item: item as Installation['item'] }, itemHelp(item)) }]
+    if (spec.effect === 'lure') return [{ label: t('use', language) + ' >', submenu: 'target', enter: () => { targetParent = 'item'; targetAction = target => ({ type: 'use', item, target }) } }]
+    if (spec.effect === 'bulkhead') return [{ label: t('use', language) + ' >', submenu: 'edge', enter: () => { bulkParent = 'item'; installingController = false; localEdges = item === 'local-key'; edgeAction = (edge, closed) => ({ type: 'use', item, edge, closed }) } }]
+    return [{ label: t('use', language), help: describe(item), run: () => prepare({ type: 'use', item }, itemHelp(item)) }]
   }
-  if (menu === 'confirmation') {
-    const task = selectedTask, confirmation = taskConfirmations(language)[task]
-    return [
-      { label: t('yes', language), inputPath: [], disabled: game.taskDone(task), run: () => act({ type: 'task', task }) },
-      { label: t('no', language), inputPath: [], run: () => { open('investigate'); appendLog(confirmation.declined) } },
+  if (menu === 'device') {
+    const device = s.installations.find(device => device.id === selectedDevice)!
+    if (device.item === 'controller') return [
+      ...([true, false] as const).map(closed => ({ label: t(closed ? 'close' : 'open', language), help: describe(device.item), run: () => prepare({ type: 'activate', id: device.id, closed }, itemHelp(device.item)) })),
     ]
+    return [{ label: t('activate', language), help: describe(device.item), run: () => prepare({ type: 'activate', id: device.id }, itemHelp(device.item)) }]
   }
+  if (menu === 'target') return rooms.filter(room => game.targetKnown(room)).map(target => ({ label: game.label(target, language), help: () => targetParent === 'item' ? itemHelp(selectedItem) : [t('toolStats', language, t('fixed', language), 1, 6, 4, t('reusable', language))], run: () => prepare(targetAction(target), targetParent === 'item' ? itemHelp(selectedItem) : [t('toolStats', language, t('fixed', language), 1, 6, 4, t('reusable', language))]) }))
+  if (menu === 'edge') return s.knownEdges.filter(edge => !localEdges || edge.split(':').includes(s.location)).map(edge => ({ label: game.edgeLabel(edge),
+    ...(installingController ? { help: describe('controller'), run: () => prepare({ type: 'install', item: 'controller', edge }, itemHelp('controller')) }
+      : { submenu: 'bulk' as const, enter: () => { selectedEdge = edge } }),
+  }))
+  if (menu === 'bulk') return ([true, false] as const).map(closed => ({ label: t(closed ? 'close' : 'open', language), help: () => bulkParent === 'item' ? itemHelp(selectedItem) : [t('toolStats', language, t('fixed', language), 1, 1, 3, t('reusable', language))], run: () => prepare(edgeAction(selectedEdge, closed), bulkParent === 'item' ? itemHelp(selectedItem) : [t('toolStats', language, t('fixed', language), 1, 1, 3, t('reusable', language))]) }))
+  if (menu === 'confirmation') return [
+    { label: t('yes', language), inputPath: [], run: () => { const action = confirmation!.action; confirmation = null; act(action) } },
+    { label: t('no', language), inputPath: [], run: () => { const previous = confirmation!; confirmation = null; pendingInput.splice(0, pendingInput.length, ...previous.path); open(previous.parent); page = previous.page; render(); appendLog(t('declined', language)) } },
+  ]
   return neighbors(s.location).map(target => {
-    if (menu === 'camera') return { label: t('districtLabel', language, roomName(target, language)), helpInput: t('cameraInput', language, roomName(target, language)), help: () => [t('energy1', language), t('checkOnlyTheSelectedRoute', language), t('capturePassageConditionsEnemyPresenceAndEstimated', language), t('informationBecomesStaleAfterTheNextValid', language), t('thisHelpDoesNotActivateTheCamera', language)], run: () => act({ type: 'camera', target }) }
-    const closed = game.passage(s.location, target) === 'CLOSED'
-    const fleeing = menu === 'flee'
-    return { label: t('districtLabel', language, roomName(target, language)), disabled: closed, helpInput: t('routeInput', language, fleeing ? t('flee', language) : t('move', language), roomName(target, language)), help: () => {
-      const freshness = game.freshness(s.location, target)
-      const feed = s.feeds[`${s.location}:${target}`]
-      return [
-      t('routeHeading', language, roomName(target, language)), t('feedFreshness', language, freshnessName(freshness, language)), t('passageStatus', language, closed ? t('closedCurrentlyImpassable', language) : feed?.passage ?? t('unknownUnchecked', language)),
-      t('estimatedCost', language, closed ? t('impassable', language) : feed ? feed.passage === 'CLOSED' ? t('impassableAtCapture', language) : costs[feed.passage] : t('unknownUnchecked13', language)),
-      t('enemyStatus', language, feed ? feed.enemy ? t('presentAtCapture', language) : t('noneAtCapture', language) : t('unknownUnchecked', language)),
-      ...(freshness === '古い' ? [t('staleInformationDoesNotGuaranteeCurrentSafety', language)] : []),
-      ...(fleeing ? [t('fleeHelp', language)] : []),
-    ] }, run: () => act({ type: fleeing ? 'flee' : 'move', target }) }
+    const passage = game.passage(s.location, target), blocked = !passable(passage), retreat = menu === 'retreat'
+    return { label: game.label(target, language), disabled: blocked,
+      help: () => {
+        if (retreat) return [t('emergencyHelp', language)]
+        const recorded = s.feed?.passages[edgeKey(s.location, target)]
+        return [t('routeHelp', language, blocked ? passage : recorded ?? t('unchecked', language), blocked ? '—' : recorded ? passable(recorded) ? costs[recorded] : '—' : '1–2', t(game.freshness(s.feed), language))]
+      },
+      run: () => retreat ? prepare({ type: 'retreat', target }, [t('emergencyHelp', language)]) : act({ type: 'move', target }),
+    }
   })
 }
 function parent(): Menu | null {
   if (menu === 'language') return languageParent
   if (menu === 'settings') return 'main'
-  if (menu === 'flee') return 'encounter'
-  if (menu === 'camera') return 'ai'
-  if (menu === 'confirmation') return 'investigate'
+  if (menu === 'confirmation') return null
+  if (menu === 'retreat') return 'encounter'
+  if (menu === 'target') return targetParent
+  if (menu === 'edge') return bulkParent
+  if (menu === 'bulk') return 'edge'
+  if (menu === 'item' || menu === 'device') return 'inventory'
   return ['move', 'investigate', 'inventory', 'ai'].includes(menu) ? 'main' : null
 }
 const navigation = document.createElement('nav')
@@ -281,7 +301,7 @@ function render() {
   const list = options(), count = Math.max(1, Math.ceil(list.length / 6))
   page = Math.min(page, count - 1)
   actions.replaceChildren()
-  const names: Record<Menu, string> = { start: t('start', language), main: t('chooseAnAction', language), move: t('destination', language), camera: t('cameraRoute', language), investigate: t('explore', language), confirmation: t('confirmation', language), ai: t('ai', language), inventory: t('inventory', language), encounter: t('encounterResponse', language), flee: t('escapeRoute', language), end: t('end', language), settings: t('settings', language), language: t('language', language) }
+  const names: Record<Menu, string> = { start: t('start', language), main: t('chooseAnAction', language), move: t('destination', language), investigate: t('explore', language), confirmation: t('confirmation', language), ai: t('ai', language), inventory: t('inventory', language), encounter: t('encounterResponse', language), retreat: t('destination', language), end: t('end', language), settings: t('settings', language), language: t('language', language), item: t('use', language), target: t('destination', language), edge: t('destination', language), bulk: t('use', language), device: t('activate', language) }
   actions.setAttribute('aria-label', t('menuPage', language, names[menu], page + 1, count))
   for (let slot = 0; slot < 6; slot++) {
     const option = list[page * 6 + slot]
