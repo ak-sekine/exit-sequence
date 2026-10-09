@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --test tests/*.test.ts",
+    "test": "node --test --test-isolation=none tests/*.test.ts",
+    "test:levels": "node tests/explore.ts",
     "test:browser": "node tests/browser-check.mjs"
   },
   "devDependencies": {

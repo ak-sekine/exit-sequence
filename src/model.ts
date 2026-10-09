@@ -1,15 +1,20 @@
-import type { Text } from './i18n.ts'
-export type Stat = 'BODY' | 'TECH' | 'SENSE'
-export type SceneId = 'wake' | 'create' | 'explore' | 'event' | 'combat' | 'victory' | 'levelup' | 'warehouse' | 'launch' | 'clear' | 'over'
-export type EnemyId = 'maintenance' | 'security' | 'boss'
-export type Intent = 'arm' | 'heavy' | 'recover' | 'armor' | 'scan' | 'burst'
-export type Tool = 'wrench' | 'terminal' | 'visor'
-export type Item = 'kit' | 'battery'
-export interface Enemy { id: EnemyId; hp: number; maxHp: number; turn: number; exposed: boolean; focused: boolean; lastTech: boolean }
-export interface GameState {
- scene: SceneId; location: 0 | 1 | 2; level: number; hp: number; maxHp: number
- stats: Record<Stat, number>; points: number; equipment: { tool: Tool | null; vest: boolean }
- items: Record<Item, number>; enemy: Enemy | null; status: 'playing' | 'clear' | 'over'
- explored: boolean[]; optionalCombat: boolean; bonus: number; defeats: number; turns: number
+export type Terrain = 'floor' | 'wall' | 'hole' | 'goal'
+export type EntityKind = 'player' | 'robot' | 'box'
+export type Direction = 'up' | 'down' | 'left' | 'right'
+export interface Position { x: number; y: number }
+export interface Entity extends Position { id: string; kind: EntityKind }
+export interface Level { terrain: Terrain[][]; entities: Entity[] }
+export type Status = 'playing' | 'fail' | 'clear' | 'all-clear'
+export type Message = 'ready' | 'moved' | 'blocked' | 'pushed' | 'box-fell' | 'robot-fell' | 'fail' | 'clear' | 'all-clear'
+export interface GameState extends Level {
+  stageIndex: number
+  turns: number
+  status: Status
+  message: Message
+  clearBy: 'player' | 'robot' | null
 }
-export interface Choice { id: string; label: Text }
+export const directions: readonly Direction[] = ['up', 'down', 'left', 'right']
+export const vectors: Record<Direction, Position> = {
+  up: { x: 0, y: -1 }, down: { x: 0, y: 1 },
+  left: { x: -1, y: 0 }, right: { x: 1, y: 0 },
+}

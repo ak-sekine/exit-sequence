@@ -1,16 +1,23 @@
 export type Language = 'ja' | 'en'
 export type Text = { ja: string; en: string }
-export const text = (ja: string, en: string): Text => ({ ja, en })
-export const LANGUAGE_STORAGE_KEY = 'exit-sequence-language'
+const text = (ja: string, en: string): Text => ({ ja, en })
 export const messages = {
-  start: text('ゲーム開始', 'START'), restart: text('最初から', 'RESTART'),
-  menu: text('メニュー', 'Menu'),
-  language: text('言語', 'LANGUAGE'), log: text('物語ログ', 'Story log'), choices: text('行動を選ぶ', 'Choose an action'),
-  intro: text('EXIT SEQUENCE\n短編SFダンジョンRPG\n\n能力を選び、探索・戦闘・成長を重ねて月面基地から帰還船へ。HPが0になるとGAME OVER。10～15分を想定した試作です。', 'EXIT SEQUENCE\nA short SF dungeon RPG\n\nBuild your character. Explore, fight and grow on your way from the Moon base to the return ship. HP 0 means GAME OVER. A prototype aiming for 10–15 minutes.'),
+  menu: text('言語メニュー', 'Language menu'),
+  board: text('盤面', 'Board'),
+  up: text('上へ', 'Move up'), down: text('下へ', 'Move down'),
+  left: text('左へ', 'Move left'), right: text('右へ', 'Move right'),
+  legend: text('@ YOU · R ROBOT · B BOX\nO HOLE · G EXIT · # WALL', '@ YOU · R ROBOT · B BOX\nO HOLE · G EXIT · # WALL'),
+  rules: text('@ を G へ\n@ / R / B は連なって押される\nO に入ると消える（@ は FAIL）\n@ が動くと R も1回動く\nR は横を優先、無理なら縦へ近づく', '@ → G\n@ / R / B push in chains\nO removes objects (@ = FAIL)\n@ moves → R acts once\nR: horizontal first; blocked → vertical'),
+  ready: text('方向ボタンで移動', 'Tap an arrow to move'),
+  moved: text('移動した。', 'Moved.'), blocked: text('動かせない。', 'Blocked.'),
+  pushed: text('連なった物体を押した。', 'Objects pushed.'),
+  'box-fell': text('BOX が HOLE に落ちた。', 'BOX fell into HOLE.'),
+  'robot-fell': text('ROBOT が HOLE に落ちた。', 'ROBOT fell into HOLE.'),
+  fail: text('FAIL · UNDO で戻れる', 'FAIL · Try UNDO'),
+  clear: text('STAGE CLEAR', 'STAGE CLEAR'),
+  'all-clear': text('ALL CLEAR', 'ALL CLEAR'),
+  undo: text('UNDO', 'UNDO'), restart: text('RESTART', 'RESTART'),
+  next: text('NEXT STAGE', 'NEXT STAGE'), again: text('PLAY AGAIN', 'PLAY AGAIN'),
 } satisfies Record<string, Text>
 export const t = (key: keyof typeof messages, language: Language) => messages[key][language]
-export function initialLanguage(): Language {
-  try { const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY); if (stored === 'ja' || stored === 'en') return stored } catch { /* Storage may be blocked. */ }
-  return navigator.language.startsWith('ja') ? 'ja' : 'en'
-}
-export function saveLanguage(language: Language) { try { localStorage.setItem(LANGUAGE_STORAGE_KEY, language) } catch { /* Play without storage. */ } }
+export function initialLanguage(): Language { return navigator.language.startsWith('ja') ? 'ja' : 'en' }

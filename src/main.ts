@@ -1,127 +1,110 @@
 import './style.css'
-import { enemies } from './scenario.ts'
-import { equipment } from './items.ts'
-import { Game, narrative, forecast } from './game.ts'
-import { initialLanguage, saveLanguage, t } from './i18n.ts'
+import { Game } from './game.ts'
+import { levels } from './levels.ts'
+import { initialLanguage, t } from './i18n.ts'
 import type { Language } from './i18n.ts'
-const app = document.querySelector<HTMLDivElement>('#app')!
+import type { Direction, EntityKind, Terrain } from './model.ts'
+
 const game = new Game()
 let language: Language = initialLanguage()
-let started = false, menuOpen = false
-let menuView: 'root' | 'language' = 'root'
-// Snapshot prose when choices are confirmed. Changing language never replays an action.
-const history: { state: typeof game.state; input?: { ja: string; en: string }; result?: { ja: string; en: string } }[] = []
-const terminal = document.createElement('main')
-terminal.className = 'terminal'
-const heading = document.createElement('h1'); heading.textContent = 'EXIT SEQUENCE'
-const log = document.createElement('div'); log.className = 'terminal-log'; log.tabIndex = 0
-log.setAttribute('role', 'log')
-const actions = document.createElement('div'); actions.className = 'terminal-actions'
-const header = document.createElement('header'); header.className = 'terminal-header'
-const menuButton = document.createElement('button'); menuButton.className = 'menu-toggle'
-menuButton.type = 'button'; menuButton.innerHTML = '<span aria-hidden="true">≡</span>'
-menuButton.setAttribute('aria-controls', 'language-menu')
-const menu = document.createElement('div'); menu.id = 'language-menu'; menu.className = 'language-menu'; menu.setAttribute('role', 'group')
-header.append(heading, menuButton, menu)
-const status = document.createElement('div'); status.className = 'status'; status.setAttribute('aria-live', 'polite')
-const enemyPanel = document.createElement('div'); enemyPanel.className = 'enemy-panel'; enemyPanel.setAttribute('aria-live', 'polite')
-terminal.append(header, status, enemyPanel, log, actions); app.append(terminal)
-let typingTimer: ReturnType<typeof setTimeout> | undefined, typing = false
-let finishAnimation: (() => void) | undefined
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
-function stopTyping() { if (typingTimer) clearTimeout(typingTimer); typingTimer = undefined; typing = false; finishAnimation = undefined; log.setAttribute('aria-busy', 'false') }
-function output(lines: string[], animate = false) {
-  stopTyping(); log.replaceChildren()
-  const paragraphs = lines.map(value => { const p = document.createElement('p'); p.textContent = value; log.append(p); return p })
-  if (!animate || reducedMotion.matches) { log.scrollTop = log.scrollHeight; return }
-  // Animate only the newest scene; previous history remains readable.
-  const count = narrative(game.state, language).length
-  const targets = paragraphs.slice(-count), contents = targets.map(p => Array.from(p.textContent ?? ''))
-  targets.forEach(p => { p.textContent = '' })
-  typing = true; log.setAttribute('aria-busy', 'true')
-  let line = 0, letter = 0
-  finishAnimation = () => { targets.forEach((p, i) => { p.textContent = contents[i]!.join('') }); stopTyping(); renderControls(); log.scrollTop = log.scrollHeight }
-  function tick() {
-    if (line >= targets.length) { stopTyping(); renderControls(); return }
-    targets[line]!.textContent += contents[line]![letter++] ?? ''
-    if (letter >= contents[line]!.length) { line++; letter = 0 }
-    log.scrollTop = log.scrollHeight; typingTimer = setTimeout(tick, 5)
-  }
-  tick()
-}
-log.addEventListener('click', () => finishAnimation?.())
-reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) finishAnimation?.() })
-function button(label: string, run: () => void, parent: HTMLElement, id?: string) {
-  const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.disabled = typing
-  if (id) b.dataset.choice = id
-  b.addEventListener('click', () => { if (!typing) run() }); parent.append(b)
-}
-function start() { game.restart(); history.length = 0; history.push({ state: structuredClone(game.state) }); started = true; closeMenu(); render(true) }
-function choose(id: string) {
-  const transition = game.choose(id)
-  if (!transition) return
-  history.push({ state: transition.after, input: transition.choice.label, result: transition.result })
-  closeMenu(); render(true)
-}
-function changeLanguage(value: Language) {
-  const scrollTop = log.scrollTop
-  language = value; saveLanguage(value); closeMenu(); render()
-  // Retranslate snapshot history without moving the reader to the newest scene.
-  log.scrollTop = scrollTop; menuButton.focus()
-}
-function closeMenu(restoreFocus = false) {
-  menuOpen = false; menuView = 'root'; renderMenu()
-  if (restoreFocus) menuButton.focus()
-}
+let menuOpen = false
+const app = document.querySelector<HTMLDivElement>('#app')!
+app.innerHTML = `<main class="terminal">
+  <header><h1>EXIT SEQUENCE</h1><button class="menu-toggle" aria-controls="language-menu" aria-expanded="false">≡</button>
+    <div id="language-menu" class="language-menu" hidden><button data-language="ja">日本語</button><button data-language="en">English</button></div>
+  </header>
+  <div class="status-line"><div class="stage"></div><p class="message" role="status" aria-live="polite" aria-atomic="true"></p></div>
+  <section class="playfield"><div class="board" role="img"></div><div class="legend"></div></section>
+  <div class="rules"></div>
+  <div class="controls">
+    <div class="directions"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div>
+    <div class="tools"><button data-action="undo">UNDO</button><button data-action="restart">RESTART</button></div>
+    <button class="advance" data-action="next" hidden>NEXT STAGE</button>
+  </div>
+</main>`
+function element<T extends HTMLElement>(selector: string) { return app.querySelector<T>(selector)! }
+const board = element<HTMLDivElement>('.board')
+const menu = element<HTMLDivElement>('.language-menu')
+const menuButton = element<HTMLButtonElement>('.menu-toggle')
+const advance = element<HTMLButtonElement>('.advance')
+const entitySymbols: Record<EntityKind, string> = { player: '@', robot: 'R', box: 'B' }
+const terrainSymbols: Record<Terrain, string> = { floor: '.', wall: '#', hole: 'O', goal: 'G' }
 function renderMenu() {
-  menuButton.disabled = typing
-  menuButton.setAttribute('aria-label', t('menu', language))
+  menu.hidden = !menuOpen
   menuButton.setAttribute('aria-expanded', String(menuOpen))
-  menu.setAttribute('aria-label', t('language', language))
-  menu.hidden = !menuOpen; menu.replaceChildren()
-  if (!menuOpen) return
-  if (menuView === 'root') button(`${t('language', language)} >`, () => {
-    menuView = 'language'; renderMenu(); menu.querySelector('button')?.focus()
-  }, menu)
-  else {
-    button('日本語', () => changeLanguage('ja'), menu)
-    button('English', () => changeLanguage('en'), menu)
-  }
+  menuButton.setAttribute('aria-label', t('menu', language))
+  for (const button of menu.querySelectorAll<HTMLButtonElement>('button')) button.setAttribute('aria-pressed', String(button.dataset.language === language))
 }
-menuButton.addEventListener('click', () => {
-  if (typing) return
-  if (menuOpen) closeMenu()
-  else { menuOpen = true; menuView = 'root'; renderMenu() }
-})
-document.addEventListener('pointerdown', event => {
-  if (menuOpen && event.target instanceof Node && !menu.contains(event.target) && !menuButton.contains(event.target)) {
-    closeMenu(menu.contains(document.activeElement))
+function closeMenu(focus = false) { menuOpen = false; renderMenu(); if (focus) menuButton.focus() }
+function render() {
+  const state = game.state
+  document.documentElement.lang = language
+  element('.stage').textContent = `STAGE ${state.stageIndex + 1} / ${levels.length}`
+  board.replaceChildren()
+  board.style.setProperty('--columns', String(state.terrain[0]!.length))
+  const rows: string[] = []
+  state.terrain.forEach((row, y) => {
+    let symbols = ''
+    row.forEach((terrain, x) => {
+      const entity = state.entities.find(e => e.x === x && e.y === y)
+      const cell = document.createElement('span')
+      const symbol = entity ? entitySymbols[entity.kind] : terrainSymbols[terrain]
+      cell.textContent = symbol
+      cell.className = `cell ${terrain} ${entity?.kind ?? ''}`
+      cell.dataset.x = String(x); cell.dataset.y = String(y)
+      // Mark terrain beneath entities without changing their identifying symbols.
+      cell.title = entity ? `${entitySymbols[entity.kind]} ${entity.kind.toUpperCase()} / ${terrain.toUpperCase()}` : terrain.toUpperCase()
+      if (terrain === 'goal' && entity) cell.dataset.onGoal = 'true'
+      cell.setAttribute('aria-hidden', 'true')
+      board.append(cell)
+      symbols += symbol
+    })
+    rows.push(symbols)
+  })
+  board.setAttribute('aria-label', `${t('board', language)}\n${rows.join('\n')}`)
+  element('.legend').textContent = t('legend', language)
+  element('.rules').textContent = t('rules', language)
+  element('.message').textContent = t(state.message, language)
+  for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction]')) {
+    button.disabled = state.status !== 'playing'
+    button.setAttribute('aria-label', t(button.dataset.direction as Direction, language))
   }
-})
-document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && menuOpen) { event.preventDefault(); closeMenu(true) }
-})
-function renderControls() {
-  const s = game.state
-  status.hidden = !started
-  status.textContent = `LV${s.level}  HP ${s.hp}/${s.maxHp}\nBODY ${s.stats.BODY}  TECH ${s.stats.TECH}  SENSE ${s.stats.SENSE}`
-  status.title = [s.equipment.tool ? equipment[s.equipment.tool][language] : '', s.equipment.vest ? equipment.vest[language] : ''].filter(Boolean).join(' / ')
-  enemyPanel.hidden = !s.enemy
-  enemyPanel.textContent = s.enemy ? `${enemies[s.enemy.id].name[language]} · HP ${s.enemy.hp}/${s.enemy.maxHp}\nNEXT: ${forecast(s)![language]}` : ''
-  actions.replaceChildren()
-  if (!started) button(t('start', language), start, actions)
-  else if (game.state.status !== 'playing') button(t('restart', language), start, actions)
-  else for (const choice of game.choices()) button(choice.label[language], () => choose(choice.id), actions, choice.id)
+  element<HTMLButtonElement>('[data-action="undo"]').disabled = !game.undoCount
+  element('.directions').hidden = state.status !== 'playing'
+  advance.hidden = state.status !== 'clear' && state.status !== 'all-clear'
+  advance.textContent = t(state.status === 'all-clear' ? 'again' : 'next', language)
   renderMenu()
 }
-function render(animate = false) {
-  document.documentElement.lang = language
-  log.setAttribute('aria-label', t('log', language)); actions.setAttribute('aria-label', t('choices', language))
-  const lines = !started ? [t('intro', language)] : history.flatMap(entry => [
-    ...(entry.input ? [`> ${entry.input[language]}`, entry.result![language]] : []), ...narrative(entry.state, language),
-  ])
-  output(lines, animate); renderControls()
-  // Controls change the log's available height; scroll after their layout settles.
-  if (!typing) log.scrollTop = log.scrollHeight
+function move(direction: Direction) {
+  closeMenu()
+  if (!game.move(direction) && game.state.status === 'playing') {
+    // Feedback is UI-only: failed moves never change state, history, or robot position.
+    element('.message').textContent = t('blocked', language)
+    return
+  }
+  render()
 }
+for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction]')) button.addEventListener('click', () => move(button.dataset.direction as Direction))
+element('[data-action="undo"]').addEventListener('click', () => { game.undo(); closeMenu(); render() })
+element('[data-action="restart"]').addEventListener('click', () => { game.restart(); closeMenu(); render() })
+advance.addEventListener('click', () => {
+  if (game.state.status === 'all-clear') game.playAgain()
+  else game.nextStage()
+  closeMenu(); render()
+})
+menuButton.addEventListener('click', () => { menuOpen = !menuOpen; renderMenu() })
+for (const button of menu.querySelectorAll<HTMLButtonElement>('button')) button.addEventListener('click', () => {
+  language = button.dataset.language as Language
+  closeMenu(true); render()
+})
+document.addEventListener('pointerdown', event => {
+  if (menuOpen && event.target instanceof Node && !menu.contains(event.target) && !menuButton.contains(event.target)) closeMenu(menu.contains(document.activeElement))
+})
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && menuOpen) { event.preventDefault(); closeMenu(true); return }
+  if (menuOpen || event.target instanceof HTMLButtonElement && menu.contains(event.target)) return
+  const keys: Record<string, Direction> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }
+  const direction = keys[event.key]
+  if (direction) { event.preventDefault(); move(direction) }
+})
 render()
