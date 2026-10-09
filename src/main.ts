@@ -1,5 +1,5 @@
 import './style.css'
-import { DUNGEON_MAP, INITIAL_PLAYER, move } from './dungeon.ts'
+import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor } from './dungeon.ts'
 import type { Direction, Player } from './dungeon.ts'
 import { renderDungeon } from './renderer.ts'
 import { initialLanguage, t } from './i18n.ts'
@@ -17,7 +17,7 @@ app.innerHTML = `<main class="terminal">
   <section class="dungeon" role="img"></section>
   <section class="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></section>
   <div class="controls"><div class="directions"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div>
-  <div class="actions"><button data-action="a">A</button><button data-action="b">B</button></div></div>
+  <div class="actions"><button data-action="b">B</button><button data-action="a">A</button></div></div>
 </main>`
 function element<T extends HTMLElement>(selector: string) { return app.querySelector<T>(selector)! }
 const dungeon = element('.dungeon'), log = element('.log')
@@ -48,7 +48,13 @@ function act(direction: Direction) {
   closeMenu(); render(); appendLog(result.message)
 }
 for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction]')) button.addEventListener('click', () => act(button.dataset.direction as Direction))
-// A/B are enabled native buttons with deliberately no game action.
+element('[data-action="a"]').addEventListener('click', () => {
+  const result = passDoor(DUNGEON_MAP, player)
+  if (!result) return
+  player = result.player; logs.push(result.message)
+  closeMenu(); render(); appendLog(result.message)
+})
+// B remains an enabled native button with no game action.
 menuButton.addEventListener('click', () => { menuOpen = !menuOpen; renderMenu() })
 for (const button of menu.querySelectorAll<HTMLButtonElement>('button')) button.addEventListener('click', () => {
   language = button.dataset.language as Language

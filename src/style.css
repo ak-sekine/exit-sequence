@@ -11,7 +11,7 @@ button:focus-visible, .log:focus-visible { outline: 2px solid #e5fff0; outline-o
 .menu-toggle { width: 44px; height: 44px; font-size: 24px; background: transparent; }
 .language-menu { position: absolute; z-index: 2; right: 0; top: calc(100% + 4px); display: grid; gap: 6px; padding: 8px; width: 170px; border: 1px solid #2f7548; background: #07100f; }
 .language-menu button[aria-pressed="true"] { border-color: #e5fff0; }
-.dungeon { flex: 0 1 auto; min-height: 0; width: 100%; aspect-ratio: 8 / 5; max-height: max(0px, calc(100dvh - 210px - var(--safe-top) - var(--safe-bottom))); background: #030806; border: 1px solid #2f7548; overflow: hidden; }
+.dungeon { --dungeon-background: #030806; flex: 0 1 auto; min-height: 0; width: 100%; aspect-ratio: 8 / 5; max-height: max(0px, calc(100dvh - 210px - var(--safe-top) - var(--safe-bottom))); background: var(--dungeon-background); border: 1px solid #2f7548; overflow: hidden; }
 .dungeon svg { width: 100%; height: 100%; display: block; }
 .log { flex: 1 1 0; min-height: 0; overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
 .log p { margin: 0 0 4px; }
