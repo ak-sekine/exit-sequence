@@ -1,7 +1,7 @@
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { Game } from '../src/game.ts'
+import { Game, narrative } from '../src/game.ts'
 import { t } from '../src/i18n.ts'
 import { expert, hinted, mistaken } from './routes.ts'
 const artifacts=process.env.EXIT_SEQUENCE_ARTIFACTS??'/tmp/exit-sequence-browser'
@@ -21,7 +21,20 @@ try {
  await menu()
  for(const [name,route] of [['A',expert],['B',hinted],['C',mistaken]]){
  const reference=new Game();await page.getByRole('button',{name:t(name==='A'?'start':'restart',language),exact:true}).tap();await layout();await menu()
- for(const id of route){const transition=reference.choose(id);assert.ok(transition);await page.locator(`[data-choice="${id}"]`).tap();assert.deepEqual((await snapshot()).state,reference.state);const prose=await page.locator('.terminal-log').innerText();assert.ok(prose.includes(transition.result[language]));assert.equal(await page.locator('.terminal-log').getAttribute('aria-busy'),'false');await layout()}
+ async function storyCheckpoint(){
+   const lines=narrative(reference.state,language)
+   const visible=await page.locator('.terminal-log p').allTextContents()
+   assert.deepEqual(visible.slice(-lines.length),lines)
+   if(name==='A'&&['wake','door','valve','power','clear'].includes(reference.state.scene)){
+     const paragraphs=page.locator('.terminal-log p'),first=paragraphs.nth(visible.length-lines.length)
+     await first.evaluate(el=>{const log=el.closest('.terminal-log');log.scrollTop=el.offsetTop-log.offsetTop})
+     await page.screenshot({path:`${artifacts}/${language}-${reference.state.scene}-start.png`})
+     await page.locator('.terminal-log').evaluate(el=>el.scrollTop=el.scrollHeight)
+     await page.screenshot({path:`${artifacts}/${language}-${reference.state.scene}-end.png`})
+   }
+ }
+ await storyCheckpoint()
+ for(const id of route){const transition=reference.choose(id);assert.ok(transition);await page.locator(`[data-choice="${id}"]`).tap();assert.deepEqual((await snapshot()).state,reference.state);const prose=await page.locator('.terminal-log').innerText();assert.ok(prose.includes(transition.result[language]));assert.equal(await page.locator('.terminal-log').getAttribute('aria-busy'),'false');await layout();await storyCheckpoint()}
  assert.equal(reference.state.status,'clear');await menu();await page.screenshot({path:`${artifacts}/${language}-${name}.png`});report.push({language,width:320,route:name,result:'CLEAR',state:reference.state})
  }
  // Typewriter disables controls, tap skips without advancing, live reduced motion completes.

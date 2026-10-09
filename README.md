@@ -10,6 +10,11 @@ Three free AI hints per problem lead all the way to a clear explanation and a
 solution. Ordinary mistakes remain recoverable. No inventory puzzles, preparation
 slots, action costs, random events or time limit.
 
+The opening explains why you must leave: life support is unstable, nobody answers,
+and malfunctioning robots may restrain and injure you. Other people's fate remains
+unknown. Restore equipment along one route: living quarters → emergency bulkhead
+→ environmental control passage → return ship dock → ship bound for Earth.
+
 Japanese and English share the same logic. The green terminal has a story log,
 full-width choices and a language-only menu. Tap the log to skip typing; reduced
 motion displays text immediately. Reading and language changes never advance play.

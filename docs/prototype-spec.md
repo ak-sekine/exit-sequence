@@ -21,3 +21,9 @@ src/scenario.tsのcluesにinitial / inspect / deeper / hints[3]をja/enで保持
 ja/enはTextだけ違い、Choice・Effect・Stateは共有。履歴は当時のStateを保存。言語変更、メニュー、読書は非進行。UI一覧は追加しない。通常の誤操作も何度でも修正可能。
 
 tests/routes.tsのA=expert、B=hinted、C=mistakenを単体とChromiumで操作する。電源の停止と順番運転の両方を検証。有限State探索で全Scene/Choiceの到達と行動数を確認する。
+
+## 物語上の位置関係
+
+Scene/Choice/Effect/Stateは維持し、既存のnarrativeとchoice resultで導線を補う。wakeは月面基地の居住区での状況と脱出目的を提示。doorは居住区出口の非常隔壁、valveは環境制御通路のドック送気バルブ、powerは帰還船ドックの船内空気充填設備。バルブ復旧後のドック入口の通行可能表示は物語の結果であり、新しい操作や条件は追加しない。power到着時に船を見せ、その後に既存の起動・過負荷描写を置く。
+
+開始時の前提と各エリアの場所・次の目的・障害・理由、移動結果とCLEARをtests/story.test.tsでja/en双方の概念語により確認する。全文の完全一致は使わない。15 Scene / 30 Choiceも確認する。
