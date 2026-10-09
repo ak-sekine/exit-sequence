@@ -1,5 +1,7 @@
 import './style.css'
-import { Game, narrative } from './game.ts'
+import { enemies } from './scenario.ts'
+import { equipment } from './items.ts'
+import { Game, narrative, forecast } from './game.ts'
 import { initialLanguage, saveLanguage, t } from './i18n.ts'
 import type { Language } from './i18n.ts'
 const app = document.querySelector<HTMLDivElement>('#app')!
@@ -21,7 +23,9 @@ menuButton.type = 'button'; menuButton.innerHTML = '<span aria-hidden="true">≡
 menuButton.setAttribute('aria-controls', 'language-menu')
 const menu = document.createElement('div'); menu.id = 'language-menu'; menu.className = 'language-menu'; menu.setAttribute('role', 'group')
 header.append(heading, menuButton, menu)
-terminal.append(header, log, actions); app.append(terminal)
+const status = document.createElement('div'); status.className = 'status'; status.setAttribute('aria-live', 'polite')
+const enemyPanel = document.createElement('div'); enemyPanel.className = 'enemy-panel'; enemyPanel.setAttribute('aria-live', 'polite')
+terminal.append(header, status, enemyPanel, log, actions); app.append(terminal)
 let typingTimer: ReturnType<typeof setTimeout> | undefined, typing = false
 let finishAnimation: (() => void) | undefined
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -98,6 +102,12 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && menuOpen) { event.preventDefault(); closeMenu(true) }
 })
 function renderControls() {
+  const s = game.state
+  status.hidden = !started
+  status.textContent = `LV${s.level}  HP ${s.hp}/${s.maxHp}\nBODY ${s.stats.BODY}  TECH ${s.stats.TECH}  SENSE ${s.stats.SENSE}`
+  status.title = [s.equipment.tool ? equipment[s.equipment.tool][language] : '', s.equipment.vest ? equipment.vest[language] : ''].filter(Boolean).join(' / ')
+  enemyPanel.hidden = !s.enemy
+  enemyPanel.textContent = s.enemy ? `${enemies[s.enemy.id].name[language]} · HP ${s.enemy.hp}/${s.enemy.maxHp}\nNEXT: ${forecast(s)![language]}` : ''
   actions.replaceChildren()
   if (!started) button(t('start', language), start, actions)
   else if (game.state.status !== 'playing') button(t('restart', language), start, actions)

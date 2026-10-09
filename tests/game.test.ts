@@ -1,125 +1,25 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { Game, narrative } from '../src/game.ts';
-import { scenes, clues } from '../src/scenario.ts';
-import { expert, hinted, mistaken, door, valve, power } from './routes.ts';
-function play(route: string[], g = new Game()) { for (const id of route)
-    assert.ok(g.choose(id), `${id} at ${g.state.scene}`); return g; }
-test('door: visible anomaly, direct cause, equal pressure then opening', () => {
-    const g = play(['begin']);
-    assert.match(narrative(g.state, 'ja').join(''), /モーター.*扉.*止まる.*高い.*低い/);
-    play(['door-inspect', 'door-deeper'], g);
-    assert.match(narrative(g.state, 'ja').join(''), /押し戻/);
-    assert.equal(g.state.problems.door.observation, 2);
-    const changed = g.choose('equalize')!;
-    assert.match(changed.result.ja, /同じ.*まだ閉じ/);
-    assert.equal(g.state.problems.door.resolution, 'changed');
-    g.choose('door-open');
-    assert.equal(g.state.problems.door.resolution, 'resolved');
-});
-test('valve: hidden initially, actual ice on inspection, force leaves cause intact, heat then movement', () => {
-    const g = play(door);
-    assert.doesNotMatch(narrative(g.state, 'ja').join(''), /氷/);
-    const closed = structuredClone(g.state);
-    g.choose('valve-inspect');
-    assert.match(narrative(g.state, 'ja').join(''), /軸.*氷.*氷に当た/);
-    play(['valve-deeper'], g);
-    const before = structuredClone(g.state.problems.valve);
-    const wrong = g.choose('valve-force')!;
-    assert.match(wrong.result.ja, /氷もそのまま/);
-    assert.deepEqual(g.state.problems.valve, before);
-    const heated = g.choose('valve-heat')!;
-    assert.match(heated.result.ja, /水滴.*まだ押していない/);
-    assert.equal(g.state.problems.valve.resolution, 'changed');
-    g.choose('valve-turn');
-    assert.equal(g.state.problems.valve.resolution, 'resolved');
-    assert.equal(closed.problems.valve.observation, 0);
-});
-test('power: overload explains simultaneous load, both solutions work, restart alone changes nothing', () => {
-    for (const solution of ['power-stop', 'power-order']) {
-        const g = play([...door, ...valve]);
-        assert.match(narrative(g.state, 'en').join(''), /OVERLOAD.*together/s);
-        play(['power-inspect', 'power-deeper'], g);
-        assert.match(narrative(g.state, 'ja').join(''), /一台ずつ.*二台同時|二台同時.*一台ずつ/);
-        const before = structuredClone(g.state);
-        const wrong = g.choose('power-retry')!;
-        assert.deepEqual(g.state, before);
-        assert.match(wrong.result.en, /still running together/);
-        const solved = g.choose(solution)!;
-        assert.match(solved.result.en, /breaker holds/);
-        g.choose('leave');
-        assert.equal(g.state.status, 'clear');
-    }
-});
-test('zero hints, all final hints, and recoverable mistakes CLEAR in both languages', () => {
-    for (const route of [expert, hinted, mistaken]) {
-        const games = [new Game(), new Game()];
-        for (const id of route) {
-            games.forEach((g, i) => { const before = structuredClone(g.state); narrative(g.state, i === 0 ? 'ja' : 'en'); assert.deepEqual(g.state, before); assert.ok(g.choose(id)); });
-            assert.deepEqual(games[0].state, games[1].state);
-        }
-        assert.equal(games[0].state.status, 'clear');
-        for (const p of Object.values(games[0].state.problems)) {
-            assert.equal(p.resolution, 'resolved');
-            assert.equal(p.hintLevel, route === hinted ? 3 : 0);
-        }
-    }
-});
-test('hints retain stages, reveal observable evidence, never damage state or auto-resolve', () => {
-    const g = play(['begin']);
-    const before = structuredClone(g.state);
-    g.choose('door-hint-door');
-    assert.equal(g.state.problems.door.hintLevel, 1);
-    assert.equal(g.state.problems.door.resolution, before.problems.door.resolution);
-    assert.deepEqual(g.state.problems.valve, before.problems.valve);
-    const second = g.choose('door-hint-door')!;
-    assert.match(second.result.ja, /点検窓.*矢印/s);
-    assert.equal(g.state.scene, 'door-cause');
-    g.choose('door-hint-door-cause');
-    assert.equal(g.state.problems.door.hintLevel, 3);
-    assert.equal(g.choose('door-hint-door-cause'), null);
-    assert.equal(g.state.problems.door.resolution, 'unresolved');
-    for (const [id, c] of Object.entries(clues)) {
-        assert.equal(c.hints.length, 3);
-        assert.match(c.hints[2].ja, /AI：/);
-        assert.match(c.hints[2].en, /AI:/);
-        assert.ok(id);
-    }
-});
-test('invalid actions, snapshots, restart and finite legal exploration of every scene/choice', () => {
-    const g = new Game(), initial = structuredClone(g.state);
-    assert.equal(g.choose('valve-heat'), null);
-    assert.deepEqual(g.state, initial);
-    const transition = g.choose('begin')!;
-    transition.after.problems.door.hintLevel = 3;
-    assert.equal(g.state.problems.door.hintLevel, 0);
-    g.restart();
-    assert.deepEqual(g.state, initial);
-    const queue = [initial], seen = new Set<string>(), actions = new Set<string>(), visited = new Set<string>();
-    while (queue.length) {
-        const state = queue.pop()!, key = JSON.stringify(state);
-        if (seen.has(key))
-            continue;
-        seen.add(key);
-        visited.add(state.scene);
-        const branch = new Game();
-        branch.state = state;
-        const choices = branch.choices();
-        if (state.status === 'playing')
-            assert.ok(choices.length >= 1 && choices.length <= 4);
-        for (const c of choices) {
-            actions.add(c.id);
-            const next = new Game();
-            next.state = structuredClone(state);
-            assert.ok(next.choose(c.id));
-            queue.push(next.state);
-        }
-    }
-    assert.deepEqual(Object.keys(scenes).filter(id => !visited.has(id)), []);
-    assert.deepEqual(Object.values(scenes).flatMap(s => s.choices).filter(c => !actions.has(c.id)), []);
-    for (const s of Object.values(scenes))
-        for (const c of s.choices) {
-            assert.ok(scenes[c.next]);
-            assert.ok(c.label.ja && c.label.en);
-        }
-});
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { Game, intent, narrative, forecast } from '../src/game.ts'
+import { playBuild, nextAction } from './routes.ts'
+import type { Stat } from '../src/model.ts'
+function fight(enemy: 'maintenance'|'security'|'boss'='maintenance') {const g=new Game();g.state.scene='combat';g.state.enemy={id:enemy,hp:26,maxHp:26,turn:0,focused:false,exposed:false,lastTech:false};return g}
+for(const build of ['BODY','TECH','SENSE'] as Stat[]) test(`${build} CLEAR, growth, boss within 5–8 turns, ja/en identical`,()=>{
+ const {game,route,combats}=playBuild(build);assert.equal(game.state.status,'clear');assert.equal(game.state.level,3);assert.equal(game.state.stats[build],5);assert.equal(game.state.maxHp,16);assert.equal(game.state.defeats,4)
+ const boss=combats.find(c=>c.enemy==='boss')!;assert.ok(boss.turns>=5&&boss.turns<=8,JSON.stringify(combats));assert.ok(route.includes('defend'));assert.ok(route.includes('tech'));assert.ok(route.includes('observe') || build==='TECH')
+ const games=[new Game(),new Game()];for(const id of route){games.forEach((g,i)=>{const state=structuredClone(g.state);narrative(g.state,i?'en':'ja');assert.deepEqual(g.state,state);assert.ok(g.choose(id))});assert.deepEqual(games[0].state,games[1].state)}
+ console.log(build,JSON.stringify({hp:game.state.hp,items:game.state.items,combats,turns:game.state.turns}))
+})
+test('creation allocates exactly two points, invalid choice is inert, restart clears state and menu',()=>{const g=new Game(), initial=structuredClone(g.state);assert.equal(g.choose('attack'),null);g.choose('begin');g.choose('BODY');g.choose('TECH');assert.deepEqual(g.state.stats,{BODY:2,TECH:2,SENSE:1});assert.equal(g.state.points,0);assert.equal(g.choose('SENSE'),null);g.itemMenu=true;g.restart();assert.deepEqual(g.state,initial);assert.equal(g.itemMenu,false);const snap=g.choose('begin')!;snap.after.hp=0;assert.equal(g.state.hp,12)})
+test('attack uses BODY, wrench boosts, armor limits and technology opens it',()=>{const g=fight();g.choose('attack');assert.equal(g.state.enemy!.hp,24);const w=fight();w.state.equipment.tool='wrench';w.choose('attack');assert.equal(w.state.enemy!.hp,23);const a=fight('security');a.choose('attack');assert.equal(a.state.enemy!.hp,25);const b=fight('security');b.choose('tech');assert.equal(b.state.enemy!.exposed,true);assert.equal(b.state.enemy!.hp,25);b.state.enemy!.turn=4;assert.match(forecast(b.state)!.en,/cannot close/)})
+test('defense, vest and HP zero GAME OVER',()=>{const g=fight();g.state.enemy!.turn=1;g.choose('defend');assert.equal(g.state.hp,10);const v=fight();v.state.equipment.vest=true;v.choose('attack');assert.equal(v.state.hp,11);const dead=fight();dead.state.hp=1;dead.choose('attack');assert.equal(dead.state.hp,0);assert.equal(dead.state.status,'over');assert.equal(dead.choices().length,0)})
+test('technology blocks scan, repeated tech is resisted, terminal increases damage, cannot cancel heavy',()=>{const g=fight('security');g.state.enemy!.turn=1;g.choose('tech');assert.equal(g.state.enemy!.focused,false);const hp=g.state.enemy!.hp;g.choose('tech');assert.equal(g.state.enemy!.hp,hp);const t=fight();t.state.equipment.tool='terminal';t.choose('tech');assert.equal(t.state.enemy!.hp,24);const h=fight();h.state.enemy!.turn=1;h.choose('tech');assert.equal(h.state.hp,5)})
+test('observe boosts next action, visor adds bonus and scan observation cancels lock',()=>{const g=fight('security');g.state.enemy!.turn=1;g.state.stats.SENSE=3;g.state.equipment.tool='visor';g.choose('observe');assert.equal(g.state.bonus,5);assert.equal(g.state.enemy!.focused,false);g.choose('attack');assert.equal(g.state.enemy!.hp,19);assert.equal(g.state.bonus,0)})
+test('item menu/back consume no turn; kit heals capped; battery cancels action; no empty item use',()=>{const g=fight();g.state.hp=4;const before=structuredClone(g.state);g.choose('items');assert.deepEqual(g.state,before);g.choose('back');assert.deepEqual(g.state,before);g.choose('items');g.choose('kit');assert.equal(g.state.hp,8);assert.equal(g.state.items.kit,1);g.choose('items');g.choose('battery');assert.equal(g.state.hp,8);assert.equal(g.state.items.battery,0);g.choose('items');assert.equal(g.choose('battery'),null)})
+test('enemy cycles differ; forecast updates; defeat grants salvage',()=>{const m=fight(),s=fight('security');assert.equal(intent(m.state),'arm');assert.equal(intent(s.state),'armor');m.choose('observe');assert.equal(intent(m.state),'heavy');s.choose('observe');assert.equal(intent(s.state),'scan');const g=fight();g.state.enemy!.hp=1;g.choose('attack');assert.equal(g.state.scene,'victory');assert.equal(g.state.enemy,null);assert.equal(g.state.defeats,1);assert.equal(g.state.hp,12)})
+test('all three event approaches advance at every ability value; rewards differ; level gains HP',()=>{for(const stat of ['BODY','TECH','SENSE'] as Stat[])for(const value of [1,2,3]){const g=new Game();g.state.scene='event';g.state.stats[stat]=value;g.state.hp=6;g.choose(stat);assert.equal(g.state.scene,'levelup');assert.equal(g.state.level,2);assert.equal(g.state.maxHp,14);assert.equal(g.state.hp,6-Math.max(0,3-value)+(stat==='TECH'?2:0)+4);g.choose(stat);assert.equal(g.state.location,1);assert.equal(g.state.stats[stat],value+1)}})
+test('single-action spam loses against boss for BODY and TECH',()=>{for(const stat of ['BODY','TECH'] as Stat[]){const g=fight('boss');g.state.enemy!.hp=19;g.state.enemy!.maxHp=19;g.state.hp=16;g.state.maxHp=16;g.state.equipment.vest=true;g.state.stats[stat]=5;g.state.equipment.tool=stat==='BODY'?'wrench':'terminal';for(let i=0;i<15&&g.state.status==='playing';i++)g.choose(stat==='BODY'?'attack':'tech');assert.equal(g.state.status,'over')}})
+
+test('all builds can skip every side room and still CLEAR',()=>{for(const build of ['BODY','TECH','SENSE'] as Stat[]){const g=new Game();for(let n=0;g.state.status==='playing'&&n<150;n++)assert.ok(g.choose(g.state.scene==='explore'?'forward':nextAction(g,build)));assert.equal(g.state.status,'clear');assert.equal(g.state.defeats,3);assert.deepEqual(g.state.explored,[false,false,false])}})
+
+test('event HP zero ends before rewards or level recovery',()=>{const g=new Game();g.state.scene='event';g.state.hp=1;g.choose('TECH');assert.equal(g.state.status,'over');assert.equal(g.state.hp,0);assert.equal(g.state.level,1)})

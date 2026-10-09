@@ -15,3 +15,7 @@ button { font: inherit; font-size: 14px; line-height: 1.5; min-height: 44px; whi
 button:hover:not(:disabled) { background: #18382f; }
 button:focus-visible, .terminal-log:focus-visible { outline: 2px solid #a7eac9; outline-offset: 2px; }
 button:disabled { opacity: .45; cursor: default; }
+.status, .enemy-panel { flex-shrink: 0; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.enemy-panel { border-left: 2px solid #4ade80; padding-left: 8px; }
+.status[hidden], .enemy-panel[hidden] { display: none; }
+.terminal-actions { gap: 4px; padding-top: 6px; }

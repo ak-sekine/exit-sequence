@@ -1,29 +1,23 @@
-# 原因発見プロトタイプ仕様
+# RPGプロトタイプ仕様
 
-15 Scene / 30 Choice。3問題、CLEARのみ。各Sceneは判断の段階であり、位置ではない。
+3区画、通常敵2種、ボス1体、装備／アイテム6種、LV1～3。CLEARとHP0のGAME OVER。乱数、時間制限、自由入力、外部AI、酸素・MP等の常時リソースはない。
 
-| 問題 | Scene | 行動 |
-| --- | --- | --- |
-| 導入 | wake | 最初の扉へ |
-| 圧力差 | door / door-inspect / door-cause / door-result | 観察、点検、均圧、開扉 |
-| 氷 | valve / valve-inspect / valve-cause / valve-warm / valve-result | カバー、軸と設備、加熱、レバー |
-| 電力 | power / power-inspect / power-cause / power-result | 表示、単独比較、停止または順番運転 |
-| 終了 | clear | UIのRESTART |
+GameStateはscene、location、level、hp/maxHp、stats、points、equipment、items、enemy、status、寄り道訪問、任意戦闘、観察ボーナス、撃破数、戦闘ターン数を型付きで持つ。アイテム選択の開閉はGameのUI状態で、開閉や戻る操作はターンを消費しない。anyなし。scenario.tsは敵と行動予告・区画文章、items.tsは6品の説明、game.tsは共通戦闘と進行。
 
-GameStateはscene / problems / status。各ProblemStateにobservation（0～2）、hintLevel（0～3）、resolution（unresolved / changed / resolved）。boolean群、準備スロット、attemptsは持たない。changedは原因を取り除いたが動作未確認。powerは運転結果まで一操作で確認する。
+初期HP12、BODY/TECH/SENSE各1、追加2ポイント。武器／ツール1枠、防具1枠。キット初期2、バッテリー初期1。所持上限はキット3、バッテリー2。撃破ごとにキット1、区画突破でLV+1、最大HP+2、HP+4、能力+1。
 
-src/scenario.tsのcluesにinitial / inspect / deeper / hints[3]をja/enで保持する。ヒントの順序・具体性をデータで調整できる。Sceneも同じcluesを参照し、文章の重複を避ける。game.tsは合法Choice、Effect、ヒント段階、次Scene、Endingのみを処理する。問題別の巨大switchは不要。
+| 行動 | 効果 |
+| --- | --- |
+| 攻撃 | BODY+1、レンチ+1、観察ボーナス。閉じた装甲／スキャン中は最大1 |
+| 防御 | 敵ダメージから5+floor(BODY/2)を引く |
+| 技術 | TECH、端末+1、観察ボーナス。装甲を開き、スキャンを中止。連続使用は0ダメージ、効果なし |
+| 観察 | 次の攻撃／技術にSENSE+1、バイザー+1。スキャン中は照準解除 |
+| アイテム | キットHP+6、バッテリー敵行動1回中止。使用は1ターン |
 
-ヒントを早く求めたとき、第2段階で不足しているinspect/deeperを結果に表示し、観察段階2・原因Sceneへ進める。最終説明だけで見えない原因を断定させない。ヒントの閲覧は解決状態を変えず、罰を与えず、他問題も変えない。第3段階以降はヒントChoiceを隠す。段階は次問題へ進んでも保持され、restartで初期化する。
+防護ベストは防御計算後の被ダメージ-1、最低0。敵撃破時は敵行動を実行しない。予告と行動は同じ周期データを使用。
 
-追加観察の途中から「操作盤を見る」「周りの設備を見る」で詳しい観察画面へ進める。外部知識がある人も必要な現物を見るが、AIは全て省略可能。原因確認前に解答候補を並べない。各問題の原因と知識ゼロで到達できる段階はimplementation-report.mdに記載。
+整備ロボットHP8：アーム2 → 強攻撃7 → 回復動作。警備HP12：装甲＋体当たり2 → スキャン → 射撃4／照準8 → 回復動作。ボスHP19：装甲 → スキャン → 射撃 → 強攻撃10 → 回復動作2回。技術で開いた装甲は戦闘中維持する。観察ボーナスは攻撃か技術で消費、防御やアイテムでは保持。
 
-ja/enはTextだけ違い、Choice・Effect・Stateは共有。履歴は当時のStateを保存。言語変更、メニュー、読書は非進行。UI一覧は追加しない。通常の誤操作も何度でも修正可能。
+各区画の瓦礫／昇降路／荷物イベントは全3能力で進める。能力3以上はHP損失0、2は1、1は2。BODYはキット、TECHはHP+2、SENSEはバッテリー。途中HP0なら終了。
 
-tests/routes.tsのA=expert、B=hinted、C=mistakenを単体とChromiumで操作する。電源の停止と順番運転の両方を検証。有限State探索で全Scene/Choiceの到達と行動数を確認する。
-
-## 物語上の位置関係
-
-Scene/Choice/Effect/Stateは維持し、既存のnarrativeとchoice resultで導線を補う。wakeは月面基地の居住区での状況と脱出目的を提示。doorは居住区出口の非常隔壁、valveは環境制御通路のドック送気バルブ、powerは帰還船ドックの船内空気充填設備。バルブ復旧後のドック入口の通行可能表示は物語の結果であり、新しい操作や条件は追加しない。power到着時に船を見せ、その後に既存の起動・過負荷描写を置く。
-
-開始時の前提と各エリアの場所・次の目的・障害・理由、移動結果とCLEARをtests/story.test.tsでja/en双方の概念語により確認する。全文の完全一致は使わない。15 Scene / 30 Choiceも確認する。
+ja/enは文章のみ違い、選択ID・状態・ルールは共通。履歴は確定時の状態コピー。言語変更・メニュー・読む操作は非進行。restartは履歴、キャラ、所持品、敵、アイテムメニューを初期化する。

@@ -1,21 +1,13 @@
-# ゲームブックUI仕様
+# ターミナルRPG UI
 
-ゲーム画面には、物語と今できる行動を置く。ヘッダーは `EXIT SEQUENCE` と右上のhamburger menu（≡）、中央はこれまでの物語ログ、下部は現在SceneのChoice。下部ナビゲーション（STATUS / INVENTORY / KNOWLEDGE / HELP / SETTINGS）は廃止する。観察・ヒント段階・解決状態は内部Stateとして保持し、本文・条件付き文章・Choiceに反映する。一覧画面や常設HELPは置かない。
+上部EXIT SEQUENCE＋≡。下に2行のLV/HP、BODY/TECH/SENSE。戦闘中だけ敵名、敵HP、NEXT予告を2～3行で表示する。中央はスクロール可能な物語・行動・結果ログ、下部は現在の全幅1列Choice。通常探索に敵情報を残さない。
 
-右上メニューは言語設定のみ。最初は「言語 >」／「LANGUAGE >」、次の階層に「日本語」「English」を表示する。dropdownは物語を置き換えず、絶対配置でログやChoiceの位置・高さを変えない。メニューボタンの再押下、メニュー外のタップ、Escapeで閉じる。閉じると階層をリセットする。ネイティブbuttonに日本語 `aria-label="メニュー"`／英語 `aria-label="Menu"`、`aria-expanded`、`aria-controls`を設定する。言語階層へ進むと最初の言語ボタンへ、Escapeと選択後はメニューボタンへフォーカスを戻す。
+320×640最優先、最大幅720px、100dvhと100vhフォールバック。四辺env(safe-area-inset-*)、横スクロールなし。ログ以外でページをスクロールしない。5行動の戦闘中もログ100px以上を確保。ステータスは12px、本文14px・1.8。緑#4ade80、背景#07100f。全ボタン44px以上。長文は折り返す。
 
-言語変更は非進行。UI・本文・Choiceを即時翻訳し、document.documentElement.langを更新、言語だけlocalStorageへ保存する。GameState、Scene、Choice、historyを変更せず、物語進行・undoは発生しない。保存が禁止された環境でもプレイ可能。メニュー開閉・階層移動はログを再描画しない。言語変更時も読んでいたスクロール位置を保つ（文章量に応じてブラウザが末尾へ制限する場合を除く）。
+導入後に2回能力ボタンを選びキャラクター作成。成長時も能力ボタン。アイテムは5番目のChoiceで持ち物を開き、数量と効果を表示。戻ると開閉はターン消費なし。装備は倉庫で一つ選び自動装備、取得文で効果を説明する。ゲーム中に数値入力やキーボードは不要。
 
-物語選択確定時に `> 行動文章`、結果、次Sceneを記録する。物語Choiceはundo不可。過去ログのタップで再実行しない。履歴のStateはコピーとして保存し、言語変更で再翻訳しても後で得た知識を過去へ適用しない。読む時間も進行しない。
+≡は言語のみの二階層dropdown。本文やChoiceの配置を変えず、再タップ・外側タップ・Escapeで閉じる。言語選択後とEscapeは≡へフォーカス。aria-label/expanded/controls、role=log、aria-busyを維持する。
 
-START前はヘッダー・導入文・START、終了後はヘッダー・Endingを含む物語ログ・RESTART。いずれも言語変更可能。RESTARTで履歴とGameStateを初期化する。ゲームのセーブはない。
+新しい本文は5ms/文字のtypewriter。過去ログと選択結果は即時。演出中は操作無効、ログのtap skipで完了。reduced-motionでは即時、実行中の変更にも応じる。言語はlocalStorageに保存し、保存禁止でも遊べる。変更は状態・履歴・ターンを変えず、読んでいたスクロール位置を保つ。RESTARTで全ゲームを初期化。
 
-画面高100dvh（100vhフォールバック）、四辺Safe Area、最大幅720px。320pxでもタイトルと≡を重ねず、横スクロールを出さない。ページ全体は固定し、ログのみ縦スクロール。本文14px、line-height 1.8、段落間隔14px、overflow-wrapで長文を折り返す。最新Scene表示時はログ末尾へ追従する。
-
-Choiceは全幅で一列。通常2～4行動。結果の確認画面は1行動（ヒント終了で減る）。固定6枠・方向・ページ送りを使わない。日英の長い行動文を切らずに折り返し、Choiceの高さとメニューボタンの幅・高さを最低44px確保する。START / RESTARTとdropdownの項目も44px以上。
-
-緑色テーマ：本文・Choice・タイトルは `#4ade80`、主要枠線は `#2f7548`、背景は `#07100f`、ボタン背景は `#0d211d`。フォーカスは明るい同系色 `#a7eac9` の輪郭で示す。
-
-新Scene本文は5ms/文字で表示（仮演出値）。入力・過去ログは即時。表示中はChoice・RESTART・メニューボタンを無効化し、ログのタップで全文表示して操作可能にする。prefers-reduced-motionでは即時表示、表示中のreduce変更でも完了させる。AI段落はAI：/AI:。role=log、aria-busy、言語と領域ラベルを維持する。
-
-Chromiumテストは320×640の日英で、ヒントなし、最終ヒント、誤操作修正の3ルートがCLEARすることを確認する。START前・ゲーム中・CLEAR後の言語変更は非進行。typewriter、tap skip、live reduced-motion、横幅、44px、全幅一列、dropdownの配置も実操作で確認する。read-onlyの観測を開発レスポンスに注入し、本番にテストAPIは追加しない。
+Chromiumではja/en×3ビルドを320pxのtouch操作でCLEAR。HP、敵表示、成長・装備文章、行動予告、言語非進行、GAME OVER/restart、typewriter/tap skip/reduced-motion、44px、非ゼロSafe Areaを確認する。観測用関数は開発レスポンスにのみ注入し本番APIは作らない。
