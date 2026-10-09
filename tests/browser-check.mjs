@@ -87,12 +87,21 @@ try {
     }
     await checkState(); await layout(); await languageMenu()
     await page.screenshot({ path: `${artifacts}/${language}-initial.png` })
-    // Real chain pushing, object removal, repeated undo through all turns.
-    await move('right'); await move('right')
+    // Solver-generated box disposal, then tap undo through every successful turn.
+    await route(searches[0].witnesses.boxDropped, 'box-dropped')
     assert.equal(reference.state.entities.filter(e => e.kind === 'box').length, 1)
-    await undo(); await undo(); assert.equal(reference.undoCount, 0)
-    await move('up'); await move('up') // second is blocked: no history/robot change
-    assert.equal(reference.undoCount, 1); await restart()
+    while (reference.undoCount) await undo()
+    await route(searches[0].witnesses.boxKept, 'box-kept')
+    assert.equal(reference.state.entities.filter(e => e.kind === 'box').length, 2)
+    await restart()
+    // A wall input preserves both the state and undo history.
+    const blockedBefore = await snapshot()
+    await move('up'); await move('up')
+    const blockedAfter = await snapshot()
+    await move('up')
+    assert.deepEqual(await snapshot(), blockedAfter)
+    assert.notDeepEqual(blockedBefore, blockedAfter)
+    await restart()
     await route(searches[0].witnesses.fail, 'hole-fail'); await languageMenu(); await undo(); await restart()
     await route(searches[0].witnesses.clear, 'clear'); await languageMenu(); await undo(); await restart()
     await route(searches[0].witnesses.clear, 'clear-again'); await next()

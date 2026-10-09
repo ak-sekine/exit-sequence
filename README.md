@@ -9,7 +9,7 @@
 - ロボットを消しても残しても脱出でき、STAGE 3ではロボットに押されて出口へ入る方法も成立。
 - 戦闘、能力値、成長、アイテム、物語、スコア、時間制限、乱数、セーブ、バックエンドなし。
 
-自動テストはルール・複数攻略・操作を確認するもの。発見の面白さは人間による評価待ち。
+人間プレイで歩くだけのCLEARが判明したため、配置を「相互作用は必須、利用方法は複数」へ修正した。全ステージで相互作用なしのCLEARは0件。自動テストはルール・必須相互作用・異なる利用方法・操作を確認するもの。発見の面白さは人間による評価待ち。
 
 ## 開発と検証
 
@@ -22,7 +22,7 @@ npm run build
 git diff --check
 ```
 
-`npm test`は同一プロセスのNode test runnerで27件の単体・探索テストを実行する。`npm run test:levels`は全状態のBFS探索、CLEAR終端数と具体的な再現経路を表示し、詳細を`/tmp/exit-sequence-search.json`へ出力する。探索処理はテスト側のみ。
+`npm test`は同一プロセスのNode test runnerで28件の単体・探索テストを実行する。`npm run test:levels`は盤面グラフと攻略signatureのBFS探索、WALK-ONLYの不存在、必須相互作用、最短手数・経路・signature、具体的な異なる利用方法を表示し、詳細を`/tmp/exit-sequence-search.json`へ出力する。探索処理はテスト側のみ。
 
 Chromiumを用意し、開発サーバー起動中に`npm run test:browser`。既定は`/usr/bin/chromium`と`http://127.0.0.1:5173/exit-sequence/`。`CHROMIUM_PATH`、`EXIT_SEQUENCE_URL`、`EXIT_SEQUENCE_ARTIFACTS`で変更できる。320×640のja/enタップ操作で全ステージ、異なる攻略、FAIL、UNDO、RESTART、NEXT STAGE、PLAY AGAIN、44px、横スクロールなし、模擬Safe Areaを検証。結果と画像は`/tmp/exit-sequence-browser`。本番にテスト観測APIは含めない。
 

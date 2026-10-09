@@ -1,64 +1,125 @@
-# 共通pushプロトタイプ：実装と検証
+# 配置修正：実装と検証
 
-2026-10-09、最新origin/mainを取得し、`1a16089bd6f6e788f20fae466089adb93a27b1f0`を基準にmain上で実装した。AGENTS.md、README、指定の5文書、src、tests、package.jsonを確認した。
+2026-10-09、最新 origin/main を取得し、`63bae54476e0700747702e26761d563deeef0142` を基準に main で作業。AGENTS.md、指定文書、README、model / levels / game / main、tests、package.json を確認した。
 
-## 置換と共通ルール
+## 問題と変更範囲
 
-以前のRPGのBODY / TECH / SENSE、HP、レベル・経験値、キャラクター作成、戦闘、敵HP・行動予告、装備・アイテム、イベント、寄り道報酬、戦闘によるGAME OVERを削除した。src/scenario.ts、src/items.ts、tests/story.test.ts、tests/routes.tsを削除し、旧エンジン・UI・文章・テストを置換。現行仕様としてRPG文書を残していない。
+人間の実プレイで、箱やROBOTをほとんど使わず歩くだけでCLEARできる問題が判明した。設計原則を **相互作用は必須、利用方法は複数** とし、src/levels.tsと探索・UI再現テストを修正した。共通push、ターン順序、ROBOT行動、穴・出口の判定、UNDO等の本番ルールは変更していない。UI・ja/en説明も維持し、新ギミック・攻略ヒントは追加していない。
 
-model.ts / levels.ts / game.ts / main.tsに責務を分離。地形と物体は別データ。共通pushは連鎖を全部検査してから全物体を1マス移動する。壁・盤面外なら全体不成立。PLAYER / ROBOT / BOXごとのpushコピーや専用衝突処理はない。穴は物体だけを消し、出口は床。PLAYERだけが到達主体に関係なくCLEARする。
+旧配置のCLEAR終端数498 / 54 / 600は異なる攻略法の数ではなく、ゲーム性の根拠として扱わない。今回も状態数やsignature集合の数から面白さを断定しない。
 
-ROBOTは成功したPLAYER移動後だけ1回行動する。横を優先して近づき、横が塞がれていれば縦へ近づく。横が同じなら縦のみ、両方不可能なら静止。全て共通pushを使い、経路探索・乱数はない。PLAYERフェーズでFAIL/CLEARなら終了し、ROBOTは動かない。ROBOTフェーズ後にも同じ終了判定をする。
+## 探索方法
 
-UNDOは成功入力前の完全なGameStateを保存し、開始まで何度でも復元する。消えた物体、終了状態、ターンも戻る。RESTARTは現在ステージを初期化。NEXT STAGEとPLAY AGAINも履歴を初期化する。言語はUI状態だけで、永続保存しない。
+solverはtests内だけ。盤面グラフをBFSで構築し、必須イベントを禁止した部分グラフの全到達状態からCLEARの不存在を確認する。分類は別の（盤面、累積イベント集合）積グラフで探索する。同じ盤面の異なる履歴を捨てない。既存push / robotTurnのmoved / fallenで各フェーズを観測し、stepの状態遷移を使用する。本番にsolver、signature、操作列、ステージ固有処理を追加していない。
 
-## 3ステージと機械的な攻略
+集合に往復が付加したイベントを攻略数として扱わない。以下の再現例は全て盤面の再訪なしで検証し、物体の存続と消失、出口への到達主体など実際の利用の違いを確認する。盤面600,000 / 積グラフ2,000,000の上限超過は失敗扱い。最初のCLEARがBFS最短解。
 
-| ステージ | 構成と狙い | 探索した重複なし状態 | CLEAR終端数 |
-| --- | --- | ---: | ---: |
-| 1 | BOX 2、HOLE 2、ROBOTなし。箱の列、穴、迂回可能な床で移動・連鎖を試す | 16,908 | 498 |
-| 2 | BOX 1、ROBOT 1、HOLE 2。押せる／押されるロボットを消しても残しても脱出 | 1,407 | 54 |
-| 3 | BOX 2、ROBOT 1、HOLE 2。開けた床で押す方向とロボットの位置関係を試すサンドボックス | 20,998 | 600 |
+## STAGE 1
 
-全ステージ8×8、PLAYER・GOAL各1。BFSは到達可能な状態を展開し終えている。600,000状態の上限には達していない。キーは物体の種類・位置・存在、status、CLEAR到達主体。箱IDは交換可能として正規化し、ターン・結果文・履歴を除く。数値は**重複なしのCLEAR終端状態数**で、全操作列の総数や人間が感じる攻略の数ではない。各終端への探索木上の最短経路を1つ持つ。無意味な同一状態への往復は数えない。
+通路の同じ箱を退かすか穴へ落とすかで、通り道を自分で作れることを発見してほしい。
 
-以下は探索が生成した再現例。画面や本番エンジンには含めていない。各例に状態の再訪がないことをテストで確認する。
+```text
+########
+#...#..#
+#.@.O..#
+#...B..#
+#B...#G#
+#...#..#
+#...#O.#
+########
+```
 
-| ステージ・方法 | タップ順序 |
-| --- | --- |
-| 1・自力で出口へ | ↓ ↓ → ↓ → → |
-| 2・ロボットを残して出口へ | ↓ ↓ → ↓ → → → |
-| 2・ロボットを穴へ押してから出口へ | ↓ ↓ → ↓ → ← → → → |
-| 3・ロボットを穴へ誘導してから出口へ | ↑ ↓ → → ↓ ↓ ← |
-| 3・ロボットを残し、自力で出口へ | → → ↓ ↓ ← |
-| 3・ロボットに押されて出口へ | ↓ ↓ |
+盤面708状態、分類727ノードを完全探索。WALK-ONLY CLEAR = 0、pushなしCLEAR = 0。PLAYER_PUSH_BOXなしCLEAR = 0。
 
-STAGE 2の←はロボットを左下の穴へ押し込む実際の状態変化で、単なる往復差ではない。STAGE 3の消失経路は、箱を押しながら追いかけるロボットを右上の穴へ誘導する。残す経路では箱を下へ押し、ロボットを押し戻しながら出口へ入る。
+最短 **8手**：↓ ↓ → → ↑ → → ↓
 
-STAGE 3の押される経路では、1手目にROBOTがBOXを押し、2手目にPLAYERがそのBOXを下へ押して列に入る。続くROBOTの横pushがPLAYERをGOALへ送り、同じ到達判定でALL CLEARになる。専用イベント、手順判定、攻略ヒントはない。
+signature：PLAYER_PUSH_BOX, BOX_DROPPED_IN_HOLE
 
-## 単体・探索テスト
+| 利用方法 | 手数 | 再現入力 | signature |
+| --- | ---: | --- | --- |
+| 箱を退かして残す | 8 | ↓ → → → ↑ → ↓ ↓ | PLAYER_PUSH_BOX |
+| 箱を穴へ落とす | 8 | ↓ ↓ → → ↑ → → ↓ | PLAYER_PUSH_BOX, BOX_DROPPED_IN_HOLE |
 
-`npm test`：27件PASS。PLAYER移動、壁／盤面外、BOX／ROBOT押し、PLAYER→BOX→ROBOT、ROBOT→BOX→PLAYER、BOXを移動主体とする共通処理、壁による全連鎖停止、各物体の穴消失、PLAYERのFAIL、自力CLEAR、押されてCLEAR、押されてFAIL、BOX／ROBOTのGOAL非CLEAR、成功入力後だけROBOT行動、決定論・横優先・縦fallback・静止、ROBOT自身の穴落下、完全状態UNDO・複数UNDO・物体復元・失敗から復帰、RESTART・NEXT STAGE・最終ALL CLEAR・PLAY AGAIN、配置検証、日英非進行、全探索と異なる攻略を確認した。
+## STAGE 2
 
-`npm run test:levels`：上記全探索・再現経路を出力。`npm run build`：TypeScriptとVite成功。`git diff --check`：成功。solverはtests内だけで、buildの入力に含まれない。
+ROBOTが押した箱とROBOT自身の位置を使い、消すか残すかの通り方を発見してほしい。
 
-## Chromium
+```text
+########
+#...#..#
+#.@.#O.#
+#..BR.G#
+#...#..#
+#O..#..#
+#...#..#
+########
+```
 
-`EXIT_SEQUENCE_URL=http://127.0.0.1:5174/exit-sequence/ npm run test:browser`：PASS。OSの`/usr/bin/chromium`、320×640、touch/mobile、ja/en各1周以上。全3ステージ、STAGE 2の2方法、STAGE 3の3方法、最終ALL CLEARを実際の方向ボタンのtapで再現。各入力後に参照Gameの完全状態とUNDO数を比較した。テスト時に読み取り専用観測関数を開発レスポンスへ注入するだけで、本番APIは追加していない。
+盤面225状態、分類1116ノードを完全探索。WALK-ONLY CLEAR = 0、pushなしCLEAR = 0。意味のあるROBOT相互作用なしCLEAR = 0。
 
-各ステージでPLAYERが穴に落ちてFAIL、UNDO復帰、RESTARTを確認。連鎖押し・BOX消失・複数UNDOで開始へ戻る操作、CLEAR後のUNDO、NEXT STAGE、PLAY AGAIN、日英切替で状態と履歴が変わらないこと、補助矢印キーも確認した。ゲーム進行はタップだけで完結する。
+最短 **9手**：↑ ↓ ← ↓ → → → → →
 
-方向ボタンは52×44px、全表示ボタンは44×44px以上。盤面セルは正方形。320pxでdocument/bodyの横幅320px、横スクロールなし、タイトルとメニューの非重複、通常の全操作が640pxの画面内に収まることを確認した。Safe Areaは実機の切り欠きではなくCSS変数を24/16/20/16pxへ置き換える模擬確認。四辺paddingと横スクロールなし、tapによる操作継続を検証した。画面の高さが不足すれば縦スクロールを許す。
+signature：PLAYER_PUSH_BOX, ROBOT_PUSH_BOX
 
-成果物は`/tmp/exit-sequence-search.json`、`/tmp/exit-sequence-browser/report.json`、日英の初期・FAIL・CLEAR・異なる攻略のスクリーンショット。ブラウザのpageerrorは0。実行環境ではnpmの既定キャッシュが書き込めなかったため`npm ci --cache /tmp/exit-sequence-npm-cache`で依存を準備した。5173が使用中だったため検証サーバーは5174を使用した。
+| 利用方法 | 手数 | 再現入力 | signature |
+| --- | ---: | --- | --- |
+| ROBOTを残して利用し、自分でGOALへ | 9 | ↑ ↓ ← ↓ → → → → → | PLAYER_PUSH_BOX, ROBOT_PUSH_BOX |
+| ROBOTを消してからGOALへ | 11 | ↑ ↓ ← ↓ → → → → ↓ ↑ → | PLAYER_PUSH_BOX, PLAYER_PUSH_ROBOT, ROBOT_PUSH_BOX, ROBOT_DROPPED_IN_HOLE |
 
-## 人間ではまだ評価できていない点
+## STAGE 3
 
-- 想定外の方法を思いついた感覚があるか。
-- 自分で発見した感じがあるか。
-- 他の方法も試したくなるか。
-- 3ステージ遊んでも単なるSokobanに感じないか。
-- ROBOTを「敵」ではなく道具として利用したくなるか。
+箱を押してから入る列を変えることで、ROBOTのpushを出口への移動に使えることを発見してほしい。
 
-これらは人間の初見プレイによる評価待ち。STAGE 1の迂回やSTAGE 3の短い攻略が、発見を促すか・すぐ終わるだけになるかも未評価。自動テストの成功や多数の終端状態から面白さを断定しない。次の判断は追加ステージや追加ギミックより先に、この最小ルールでのプレイ観察に基づく。
+```text
+########
+#..#...#
+#.#@B..#
+#..#...#
+#RB...G#
+#O...O.#
+#......#
+########
+```
+
+盤面6824状態、分類12444ノードを完全探索。WALK-ONLY CLEAR = 0、pushなしCLEAR = 0。意味のあるROBOT相互作用なしCLEAR = 0。
+
+最短 **4手**：→ ↓ ↓ →
+
+signature：PLAYER_PUSH_BOX, ROBOT_PUSH_BOX, ROBOT_PUSH_PLAYER
+
+| 利用方法 | 手数 | 再現入力 | signature |
+| --- | ---: | --- | --- |
+| ROBOTを消してからGOALへ | 6 | → ↓ ↓ ↑ ↓ → | PLAYER_PUSH_BOX, PLAYER_PUSH_ROBOT, ROBOT_PUSH_BOX, ROBOT_PUSH_PLAYER, ROBOT_DROPPED_IN_HOLE |
+| ROBOTを残して利用し、自分でGOALへ | 4 | → ↓ ↓ → | PLAYER_PUSH_BOX, ROBOT_PUSH_BOX, ROBOT_PUSH_PLAYER |
+| ROBOTにGOALへ押させる | 4 | → ↓ → ↓ | PLAYER_PUSH_BOX, ROBOT_PUSH_BOX, ROBOT_PUSH_PLAYER, BOX_DROPPED_IN_HOLE, PLAYER_PUSHED_TO_GOAL |
+
+STAGE 1は両方法で同じ通路の箱の扱いが異なることをテストする。箱を右に押した後、上側から回り込んでGOALへ入る方式と、下側から上の穴へ押し込む方式。
+
+STAGE 2の最初の↑↓はPLAYER位置だけが戻るが、ROBOTは箱を左へ動かしており盤面の往復ではない。その箱を下へ押して通路を空ける。ROBOTを残して進むか、出口手前で下から上へROBOTを押し、穴で消すかが異なる。
+
+STAGE 3の押される方式は、最初にPLAYERが上の箱を右へ押し、ROBOTは下の箱を右へ押す。次にPLAYERが右下の列へ入り、下の箱を穴へ押して場所を空けると、左に並んだROBOTがPLAYERをGOALへ押す。最短の自力到達方式とは箱の消失と出口への到達主体が異なる。ROBOTを消す方式は、押されてから上のROBOTを下の穴へ押す。3方式は方向列の違いだけではない。
+
+全てのROBOTによるGOAL到達について、PLAYER自身によるBOX/ROBOTのpushなしの経路は0件。今回の配置では開始時の↓↓は不成立で、初手の箱pushが必要。ただし最短4手の配置が発見を促すかは人間評価待ちで、長さ自体を成功の根拠としない。
+
+## 検証
+
+- npm test：28件PASS。既存の共通pushエンジン検証を維持し、UNDO/FAIL/終了テストはステージ配置に依存しないfixtureへ変更。追加の一般的な観測テストでROBOT→BOX→PLAYER連鎖とGOAL到達イベントを確認。
+- npm run test:levels：PASS。上記の必須条件、最短経路、signatureを算出し、/tmp/exit-sequence-search.jsonへ出力。
+- npm run build：TypeScript / Vite PASS。solverは本番ビルドに含まれない。
+- git diff --check：PASS。
+- Chromium：/usr/bin/chromium、320×640、touch/mobile、ja/en双方でPASS。STAGE 1の箱を残す/落とす、STAGE 2のROBOTを残す/落とす、STAGE 3のROBOTを残す/落とす/出口へ押すを、solver生成経路の実ボタンtapで再現。各入力後に参照Gameの完全状態とUNDO数を比較。本番には観測APIを追加せず開発レスポンスだけに読み取り関数を注入。
+- FAILからUNDO、複数UNDOで開始へ復帰、CLEARからUNDO、RESTART、NEXT STAGE、PLAY AGAIN、ブロック入力の非進行、ja/en変更の状態/履歴非進行を確認。
+- 320pxで横スクロールなし、セル正方形、全表示操作44px以上、タイトル非重複、通常操作の画面内配置を確認。四辺のSafe Areaは24/16/20/16pxのCSS模擬で確認し、必要な縦スクロール中もtap可能。実機の切り欠きは未検証。
+
+ブラウザpageerrorは0。成果物は/tmp/exit-sequence-browser/report.jsonと日英の各方式・初期・FAIL・CLEARの画像。依存はnpm ci --cache /tmp/exit-sequence-npm-cacheで準備し、開発サーバーは5174を使用。
+
+## 人間評価待ち
+
+機械的に確認したのは、歩くだけではCLEARできないこと、コアルール利用が必須であること、異なる利用方法が複数成立すること。面白くなったとは結論しない。
+
+- コアルールを使う必要性が自然に理解できるか。
+- 攻略を自分で思いついた感覚があるか。
+- ROBOTを利用する発想が生まれるか。
+- 別解を試したくなるか。
+- 唯一解パズルを解く感覚にならないか。
+- 難しすぎたり面倒になっていないか。

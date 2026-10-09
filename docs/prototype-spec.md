@@ -39,12 +39,18 @@ UNDOは成功入力前の地形・全物体・消失前の物体・ターン・s
 
 ## ステージと探索
 
-STAGE 1：PLAYER 1、BOX 2、HOLE 2、GOAL 1。ロボットなし。箱の列の正面から押すことも、別側の床を通ることもできる。
+全ステージでCLEAR可能、WALK-ONLY CLEAR = 0。WALK-ONLYはPLAYER→BOX、PLAYER→ROBOT、ROBOT→BOX、ROBOT→PLAYERのpush、BOX/ROBOTの穴消失、連鎖pushを一度も含まないCLEARを指す。単なる最短経路の検査ではなく、該当イベントを禁止した到達可能部分グラフを全探索する。
 
-STAGE 2：PLAYER 1、ROBOT 1、BOX 1、HOLE 2、GOAL 1。中央の壁が移動の関係を変える。ロボットを左下の穴へ押しても、残したまま出口へ行ってもよい。
+- STAGE 1：PLAYER 1、BOX 2、HOLE 2、GOAL 1、ROBOTなし。全CLEARがPLAYER_PUSH_BOXを含む。通路の同じ箱を右へ退かして残す方法と、上の穴へ落として消す方法が存在する。どちらも最短8手。単一の箱運搬手順に固定しない。
+- STAGE 2：PLAYER 1、ROBOT 1、BOX 1、HOLE 2、GOAL 1。全CLEARにPLAYER_PUSH_ROBOT / ROBOT_PUSH_BOX / ROBOT_PUSH_PLAYER / ROBOT_DROPPED_IN_HOLEのいずれかが必要。ROBOTを穴へ押して消す方法と、ROBOTが箱を押す働きを利用して残す方法が存在する。ROBOTを完全に無視したCLEARはない。
+- STAGE 3：PLAYER 1、ROBOT 1、BOX 2、HOLE 2、GOAL 1。全CLEARにpushと意味のあるROBOT相互作用が必要。ROBOTを落とす、自分で出口へ入りROBOTを残す、ROBOTに出口へ押してもらう3分類を確認する。最後の方式にはROBOT_PUSH_PLAYERとPLAYER_PUSHED_TO_GOALが必要で、全経路にPLAYER自身のBOX/ROBOTのpushが先行する。開始位置から↓↓だけでは進まない。画面で方法を推奨しない。
 
-STAGE 3：PLAYER 1、ROBOT 1、BOX 2、HOLE 2、GOAL 1。広い床で押す方向・ロボットとの位置関係を試す。ロボット消失後の脱出、生存したままの自力脱出、ロボットpushによる脱出を機械的に確認済み。
+テスト専用solverは、まず盤面状態だけで重複を除外した有向グラフをBFSで完全に構築する。キーは物体の種類・位置・存在、status、CLEAR到達主体。交換可能な箱のID、ターン数、メッセージ、履歴は除外する。辺のイベントは既存のpush / robotTurnの一般的な結果（moved / fallen）から両フェーズを観測して分類し、最終UIメッセージだけには依存しない。本番コードの変更やステージ固有処理はない。
 
-テスト専用BFSは各状態の上下左右4入力を展開し、重複状態を除外して探索終了まで実行する。キーは物体の種類・位置・存在、status、CLEAR到達主体。交換可能な箱のID、ターン数、メッセージ、履歴は除外する。全配置が同じ無意味な往復を攻略数に数えない。600,000状態の安全上限に到達した場合はエラーとし、部分探索を完全探索として報告しない。探索数はimplementation-report.mdに記録する。本番にsolverは含めない。
+イベントはPLAYER_PUSH_BOX、PLAYER_PUSH_ROBOT、ROBOT_PUSH_BOX、ROBOT_PUSH_PLAYER、BOX_DROPPED_IN_HOLE、ROBOT_DROPPED_IN_HOLE、CHAIN_PUSH、PLAYER_PUSHED_TO_GOAL。CHAIN_PUSHは移動主体を含む3物体以上の連鎖。経路のsignatureは発生した種類の集合であり、順序・回数を攻略数に数えない。
+
+必須条件はイベントを禁止した部分グラフの到達可能性で証明するため、往復を含む全入力経路も対象になる。分類の探索は別に（盤面ノード、累積イベントbitmask）の積グラフで重複を除外する。同じ盤面でも異なるsignatureは失わない。積グラフには循環に由来する集合も含まれるため、それ自体を異なる攻略の数とは報告しない。報告する再現例は盤面状態を再訪しない経路だけ。箱の存続/消失、ROBOTの存続/消失、到達主体の違いで具体的な異なる利用を検証する。BFSの最初のCLEARが最短解で、その経路とsignatureも出力する。
+
+盤面600,000状態、積グラフ2,000,000ノードを安全上限とし、超過ならエラー。部分探索を完全探索として扱わない。本番にはsolver・signature・操作列を含めない。
 
 ja/enはUI文章だけ切り替わる。地形・行動・判定・履歴は共通。言語設定を含め永続保存は行わない。画像、物語、追加ギミック、オンライン機能はない。

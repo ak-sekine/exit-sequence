@@ -115,7 +115,7 @@ test('ROBOT may itself fall into a hole while approaching', () => {
   assert.equal(terrainAt(next.state, { x: 2, y: 1 }), 'hole')
 })
 test('UNDO stores complete pre-turn state including removed objects; repeated UNDO reaches start', () => {
-  const game = new Game(), initial = structuredClone(game.state)
+  const game = new Game(); game.state = fixture(['########', '#......#', '#.@BB.O#', '#.....G#', '########']); const initial = structuredClone(game.state)
   const states = [initial]
   for (const direction of ['right', 'right', 'up'] as const) {
     assert.equal(game.move(direction), true); states.push(structuredClone(game.state))
@@ -125,7 +125,7 @@ test('UNDO stores complete pre-turn state including removed objects; repeated UN
   assert.equal(game.undoCount, 0); assert.equal(game.undo(), false)
 })
 test('blocked input adds no undo entry; state snapshots are independent', () => {
-  const game = new Game()
+  const game = new Game(); game.state = fixture(['########', '#......#', '#.@....#', '#.....G#', '########'])
   game.move('up'); game.move('up')
   const before = structuredClone(game.state)
   assert.equal(game.move('up'), false); assert.deepEqual(game.state, before); assert.equal(game.undoCount, 1)
@@ -134,7 +134,7 @@ test('blocked input adds no undo entry; state snapshots are independent', () => 
   assert.equal(levels[0]!.terrain[1]![1], 'floor')
 })
 test('FAIL supports UNDO and RESTART without advancing time', () => {
-  const game = new Game()
+  const game = new Game(); game.state = fixture(['########', '#.@....#', '#......#', '#......#', '#.O...G#', '########'])
   game.move('down'); game.move('down'); const before = structuredClone(game.state)
   game.move('down'); assert.equal(game.state.status, 'fail')
   game.undo(); assert.deepEqual(game.state, before)
@@ -147,7 +147,8 @@ test('RESTART resets the current stage, NEXT STAGE requires CLEAR, final ALL CLE
   assert.deepEqual(game.state, createState(1)); assert.equal(game.undoCount, 0)
   game.state.status = 'clear'; game.nextStage()
   assert.equal(game.state.stageIndex, 2)
-  game.move('down'); const before = structuredClone(game.state); game.move('down')
+  game.state = createState(2, defineLevel(['#######', '#..@..#', '#RB.G.#', '#######']))
+  const before = structuredClone(game.state); game.move('down')
   assert.equal(game.state.status, 'all-clear'); assert.equal(game.state.clearBy, 'robot')
   assert.equal(game.nextStage(), false); assert.equal(game.move('left'), false)
   game.undo(); assert.deepEqual(game.state, before)
