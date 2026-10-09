@@ -1,3 +1,5 @@
+> 旧グリッドパズルの履歴資料。現在の実装仕様は[dungeon-sample.md](dungeon-sample.md)と[ui-layout.md](ui-layout.md)を参照。今回のサンプルには適用しない。
+
 # 配置修正：実装と検証
 
 2026-10-09、最新 origin/main を取得し、`63bae54476e0700747702e26761d563deeef0142` を基準に main で作業。AGENTS.md、指定文書、README、model / levels / game / main、tests、package.json を確認した。

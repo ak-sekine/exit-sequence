@@ -1,3 +1,5 @@
+> 旧グリッドパズルの履歴資料。現在の実装仕様は[dungeon-sample.md](dungeon-sample.md)と[ui-layout.md](ui-layout.md)を参照。今回のサンプルには適用しない。
+
 # 共通pushプロトタイプ仕様
 
 ## 状態と構成
