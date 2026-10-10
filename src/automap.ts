@@ -1,5 +1,6 @@
 import { DUNGEON_MAP, DOORS, doorBetween, isFloor, VECTORS } from './dungeon.ts'
 import type { Cell, Direction, Door, DungeonMap, Player } from './dungeon.ts'
+import type { EnemyDetection } from './senses.ts'
 
 export const cellKey = (cell: Cell) => `${cell.x},${cell.y}`
 export const initialVisited = (player: Player): Set<string> => new Set([cellKey(player)])
@@ -27,7 +28,7 @@ export function scrollMap(map: DungeonMap, center: Cell, direction: Direction): 
   return clampMapCenter(map, { x: center.x + delta.x, y: center.y + delta.y })
 }
 
-export function renderMap(map: DungeonMap, player: Player, visited: ReadonlySet<string>, doors: readonly Door[] = map === DUNGEON_MAP ? DOORS : [], center: Cell = clampMapCenter(map, player)): string {
+export function renderMap(map: DungeonMap, player: Player, visited: ReadonlySet<string>, doors: readonly Door[] = map === DUNGEON_MAP ? DOORS : [], center: Cell = clampMapCenter(map, player), detections: readonly EnemyDetection[] = []): string {
   const size = MAP_CELL_SIZE
   const explored = [...visited].map(key => key.split(',').map(Number)).filter(([x, y]) => Number.isInteger(x) && Number.isInteger(y) && isFloor(map, x!, y!))
   const { x: centerX, y: centerY } = center
@@ -55,7 +56,16 @@ export function renderMap(map: DungeonMap, player: Player, visited: ReadonlySet<
     }
   }
   const px = 160 + (player.x - centerX) * size, py = 100 + (player.y - centerY) * size
+  const markers = detections.map(detection => {
+    const x = 160 + (detection.position.x - centerX) * size, y = 100 + (detection.position.y - centerY) * size
+    if (x < 0 || x > 320 || y < 0 || y > 200) return ''
+    const id = detection.enemyId.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
+    const attributes = `data-map-enemy="${id}" data-detection="${detection.kind}"`
+    return detection.kind === 'sight'
+      ? `<path ${attributes} fill="#fb7185" d="M0,-8 L6,6 L0,3 L-6,6 Z" transform="translate(${x} ${y}) rotate(${detection.facing * 90})"/>`
+      : `<circle ${attributes} cx="${x}" cy="${y}" r="7" fill="none" stroke="#fb7185" stroke-width="2"/>`
+  }).join('')
   const arrow = px >= 0 && px <= 320 && py >= 0 && py <= 200 && visited.has(cellKey(player)) && isFloor(map, player.x, player.y)
     ? `<path data-map-arrow="${player.facing}" fill="#e5fff0" d="M0,-8 L6,6 L0,3 L-6,6 Z" transform="translate(${px} ${py}) rotate(${player.facing * 90})"/>` : ''
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" aria-hidden="true"><rect width="320" height="200" fill="#000"/><svg width="320" height="200" viewBox="0 0 320 200" overflow="hidden">${cells.join('')}<g fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="butt">${edges.join('')}</g>${arrow}</svg></svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" aria-hidden="true"><rect width="320" height="200" fill="#000"/><svg width="320" height="200" viewBox="0 0 320 200" overflow="hidden">${cells.join('')}<g fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="butt">${edges.join('')}</g>${markers}${arrow}</svg></svg>`
 }

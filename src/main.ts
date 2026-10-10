@@ -44,7 +44,7 @@ function appendLog(message: LogEvent) {
 }
 function render() {
   document.documentElement.lang = language
-  dungeon.innerHTML = view === '3d' ? renderDungeon(DUNGEON_MAP, player) : renderMap(DUNGEON_MAP, player, visited, undefined, mapCenter)
+  dungeon.innerHTML = view === '3d' ? renderDungeon(DUNGEON_MAP, player) : renderMap(DUNGEON_MAP, player, visited, undefined, mapCenter, game.detections)
   dungeon.dataset.turn = String(game.turn); dungeon.dataset.gameOver = String(game.gameOver)
   dungeon.dataset.view = view
   dungeon.dataset.centerX = String(mapCenter.x); dungeon.dataset.centerY = String(mapCenter.y)

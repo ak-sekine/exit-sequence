@@ -55,7 +55,7 @@ try {
     const frozen = await state(), count = (await logs()).length
     for (const a of ['up', 'left', 'right', 'down', 'a']) await action(a)
     await page.locator('[data-action="b"]').tap()
-    assert.equal(await page.locator('[data-map-enemy]').count(), 0)
+    assert.equal(await page.locator('[data-map-enemy]').count(), game.detections.length)
     for (const d of ['up', 'left', 'down', 'right']) await page.locator(`[data-direction="${d}"]`).tap()
     assert.deepEqual(await state(), frozen)
     const center = await page.locator('.dungeon').getAttribute('data-center-y')

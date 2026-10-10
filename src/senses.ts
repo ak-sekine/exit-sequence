@@ -6,6 +6,8 @@ export type RelativeDirection = 'front' | 'frontRight' | 'right' | 'backRight' |
 export type Sight = Readonly<{ kind: 'sight'; position: Cell; facing: Facing; distance: number }>
 export type Hearing = Readonly<{ kind: 'hearing'; position: Cell; direction: RelativeDirection; distance: number }>
 export type Detection = Sight | Hearing
+// A snapshot of what the player detected, never the enemy's live AI state.
+export type EnemyDetection = Detection & Readonly<{ enemyId: string }>
 export function movementSound(sourceId: string, before: Cell, after: Cell): SoundEvent | null {
   return before.x === after.x && before.y === after.y ? null : { sourceId, position: { x: after.x, y: after.y } }
 }
