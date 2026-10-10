@@ -9,6 +9,45 @@ import { move, DUNGEON_MAP, INITIAL_PLAYER, isFloor } from '../src/dungeon.ts'
 import { translateLog } from '../src/i18n.ts'
 const enemy = (x: number, y: number, facing: 0 | 1 | 2 | 3 = 1) => ({ ...character({ x, y, facing }), id: 'e', destination: null })
 const fixture = (player = character({ x: 0, y: 0, facing: 1 }), e = enemy(3, 0)): GameState => ({ ...createGame(), player, enemies: [e] })
+test('ordinary forward movement and every rotation advance turns without entering log history', () => {
+  let state = { ...fixture(), enemies: [] }
+  for (const action of ['up', 'left', 'right', 'down'] as const) {
+    const before = state
+    state = advanceTurn(state, action, () => 0, ['###']) as typeof state
+    assert.equal(state.turn, before.turn + 1)
+    assert.deepEqual(state.player, { ...before.player, ...move(['###'], before.player, action).player })
+    assert.deepEqual(state.logs, ['ready'])
+  }
+  assert.equal(state.player.x, 1)
+  for (const language of ['ja', 'en'] as const) {
+    assert.deepEqual(state.logs.map(event => translateLog(event, language)), [translateLog('ready', language)])
+  }
+})
+test('failed movement and both door passage events remain in history', () => {
+  const door = [{ from: { x: 0, y: 0 }, to: { x: 1, y: 0 } }]
+  let state = { ...fixture(), enemies: [] }
+  state = advanceTurn(state, 'up', () => 0, ['##'], door) as typeof state
+  assert.deepEqual(state.logs, ['ready', 'blocked'])
+  assert.equal(state.player.x, 0); assert.equal(state.turn, 1)
+  state = advanceTurn(state, 'a', () => 0, ['##'], door) as typeof state
+  assert.deepEqual(state.logs, ['ready', 'blocked', 'enteredRoom'])
+  assert.equal(state.player.x, 1); assert.equal(state.turn, 2)
+  state = advanceTurn(state, 'down', () => 0, ['##'], door) as typeof state
+  state = advanceTurn(state, 'a', () => 0, ['##'], door) as typeof state
+  assert.deepEqual(state.logs, ['ready', 'blocked', 'enteredRoom', 'returnedCorridor'])
+  assert.equal(state.player.x, 0); assert.equal(state.turn, 4)
+  const wall = advanceTurn(state, 'up', () => 0, ['##'], door)
+  assert.equal(wall.logs.at(-1), 'blocked'); assert.equal(wall.turn, 5)
+})
+test('silent forward action still creates sound for enemy hearing and retains detection logs', () => {
+  // Player walks east while the nearby enemy faces away from the player.
+  const state = fixture(character({ x: 0, y: 0, facing: 1 }), enemy(3, 0, 1))
+  const next = advanceTurn(state, 'up', () => 0, ['#####'])
+  assert.deepEqual(next.enemies[0]!.destination, { x: 1, y: 0 })
+  assert.equal(next.enemies[0]!.facing, 3); assert.equal(next.enemies[0]!.x, 3)
+  assert.deepEqual(next.logs.map(event => typeof event === 'string' ? event : event.kind), ['ready', 'sight'])
+  assert.equal(next.turn, 1)
+})
 test('initial enemy valid, distinct and in accessible corridor', () => {
   assert.ok(isFloor(DUNGEON_MAP, INITIAL_ENEMY.x, INITIAL_ENEMY.y))
   assert.notDeepEqual([INITIAL_ENEMY.x, INITIAL_ENEMY.y], [INITIAL_PLAYER.x, INITIAL_PLAYER.y])
@@ -70,6 +109,8 @@ test('both collision phases end game, player collision prevents enemy action', (
   assert.ok(a.gameOver); assert.equal(a.enemies[0]!.facing, 1); assert.equal(a.logs.at(-1), 'gameOver')
   const b = advanceTurn(fixture(character({ x: 0, y: 0, facing: 0 }), enemy(1, 0, 3)), 'right', () => 0, ['##'])
   assert.ok(b.gameOver); assert.equal(b.enemies[0]!.x, 0)
+  assert.equal(b.logs.at(-1), 'gameOver')
+  assert.deepEqual(a.logs, ['ready', 'gameOver'])
 })
 test('sight log wins over simultaneous movement sound, repeated detection logs are retained', () => {
   const state = fixture(character({ x: 0, y: 0, facing: 0 }), enemy(3, 0, 3))
@@ -99,7 +140,7 @@ test('no detection adds no enemy log; doors block AI but not hearing', () => {
   const state = fixture(character({ x: 0, y: 0, facing: 1 }), enemy(3, 0, 1))
   const next = advanceTurn(state, 'down', () => .25, ['####'])
   assert.equal(next.logs.filter(e => typeof e !== 'string').length, 0)
-  assert.equal(next.logs.at(-1), 'down')
+  assert.deepEqual(next.logs, ['ready'])
 })
 test('all sight distances and compass directions survive language changes', () => {
   for (const facing of [0, 1, 2, 3] as const) for (let distance = 1; distance <= 5; distance++) {

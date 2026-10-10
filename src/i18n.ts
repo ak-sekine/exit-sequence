@@ -2,8 +2,6 @@ import type { LogEvent } from './game.ts'
 export type Language = 'ja' | 'en'
 const text = (ja: string, en: string) => ({ ja, en })
 export const messages = {
-  playerControls: text('移動・回転', 'Move / turn'),
-  mapControls: text('マップ移動', 'Scroll map'),
   scrollup: text('マップを北へスクロール', 'Scroll map north'),
   scrolldown: text('マップを南へスクロール', 'Scroll map south'),
   scrollleft: text('マップを西へスクロール', 'Scroll map west'),

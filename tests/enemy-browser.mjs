@@ -50,6 +50,8 @@ try {
       await action('left')
     }
     assert.ok(game.gameOver)
+    const ordinary = /前進した。|左を向いた。|右を向いた。|後ろを向いた。|Moved forward\.|Turned left\.|Turned right\.|Turned around\./
+    assert.doesNotMatch((await logs()).join('\n'), ordinary)
     await page.screenshot({ path: `${artifacts}/${locale}-enemy-${phase}.png` })
     assert.equal((await logs()).at(-1), translateLog('gameOver', locale))
     const frozen = await state(), count = (await logs()).length
@@ -63,6 +65,7 @@ try {
     const other = locale === 'ja' ? 'en' : 'ja'
     await page.locator(`[data-language="${other}"]`).tap()
     assert.deepEqual(await logs(), game.logs.map(e => translateLog(e, other)))
+    assert.doesNotMatch((await logs()).join('\n'), ordinary)
     assert.equal((await logs()).length, count); assert.deepEqual(await state(), frozen)
     assert.equal(await page.locator('.dungeon').getAttribute('data-center-y'), center)
     await page.locator('[data-action="b"]').tap()

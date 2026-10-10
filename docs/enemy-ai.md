@@ -46,7 +46,7 @@ BFS状態は(x,y,facing)。moveの前進／左／右／180度の各操作をコ�
 
 視覚ログは正面距離1〜5に対応する指定メッセージと敵の北／東／南／西向きを出す。聴覚は相対方向とチェビシェフ距離のみ。両方成立なら視覚だけ、どちらも不成立なら追加なし。成立するターンには毎回追加する。
 
-ログは文字列の翻訳キーまたは構造化Detectionとして保持し、表示時translateLogで日英へ翻訳。言語切替は全履歴を再翻訳する。
+ログは文字列の翻訳キーまたは構造化DetectionとしてGameState.logsに保持し、表示時translateLogで日英へ翻訳。初期メッセージ、移動不可の警告、扉通過、検知、捕獲を保持する。通常の前進成功と左／右／180°回転の操作メッセージは履歴に追加しないが、ターン処理と検知ログは維持する。言語切替は保持した全履歴を再翻訳し、省略したログは復活しない。
 
 character.tsは共通状態、senses.tsは感覚と音、pathfinding.tsはBFS、enemy.tsはAI、game.tsはターンと衝突、i18n.tsは翻訳、main.tsはUI。既存dungeon.tsのmove／passDoor／isFloor／doorBetweenを再利用する。
 

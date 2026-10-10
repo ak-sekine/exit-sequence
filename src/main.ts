@@ -25,7 +25,7 @@ app.innerHTML = `<main class="terminal">
     <section class="status"><dl><div class="status-item"><dt class="direction-label"></dt><dd class="direction-value" aria-live="polite" aria-atomic="true"></dd></div></dl></section>
   </div>
   <section class="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></section>
-  <div class="controls"><div class="directions"><span class="controls-mode"></span><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div>
+  <div class="controls"><div class="directions"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div>
   <div class="actions"><button data-action="b">B</button><button data-action="a">A</button></div></div>
 </main>`
 function element<T extends HTMLElement>(selector: string) { return app.querySelector<T>(selector)! }
@@ -48,7 +48,6 @@ function render() {
   dungeon.dataset.turn = String(game.turn); dungeon.dataset.gameOver = String(game.gameOver)
   dungeon.dataset.view = view
   dungeon.dataset.centerX = String(mapCenter.x); dungeon.dataset.centerY = String(mapCenter.y)
-  element('.controls-mode').textContent = t(view === '2d' ? 'mapControls' : 'playerControls', language)
   for (const button of app.querySelectorAll<HTMLButtonElement>('[data-action="a"]')) button.disabled = view === '2d'
   element('[data-action="b"]').setAttribute('aria-label', t(view === '3d' ? 'showMap' : 'showDungeon', language))
   element('[data-action="b"]').setAttribute('aria-pressed', String(view === '2d'))

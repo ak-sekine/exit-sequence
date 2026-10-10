@@ -4,6 +4,7 @@ import { renderDungeon } from '../src/renderer.ts'
 import { DUNGEON_MAP, DOORS, INITIAL_PLAYER, move, passDoor } from '../src/dungeon.ts'
 import { clampMapCenter, scrollMap, initialVisited, recordMovement, renderMap } from '../src/automap.ts'
 import { explore } from './exploration.ts'
+import { t, translateLog } from '../src/i18n.ts'
 import { mkdir } from 'node:fs/promises'
 const artifacts = process.env.EXIT_SEQUENCE_ARTIFACTS ?? '/tmp/exit-sequence-browser'
 await mkdir(artifacts, { recursive: true })
@@ -31,6 +32,15 @@ try {
     }
     const tap = async d => { await page.locator(`[data-direction="${d}"]`).tap(); await checkDirection() }
     async function layout() {
+      assert.equal(await page.locator('.controls-mode').count(), 0)
+      assert.doesNotMatch(await page.locator('.controls').textContent(), /移動・回転|マップ移動|Move \/ turn|Scroll map/)
+      const view = await page.locator('.dungeon').getAttribute('data-view')
+      for (const direction of ['up', 'left', 'down', 'right']) {
+        const button = page.locator(`[data-direction="${direction}"]`)
+        const label = t(view === '2d' ? `scroll${direction}` : direction, displayLanguage)
+        assert.equal(await button.getAttribute('aria-label'), label)
+        assert.equal(await button.getAttribute('title'), label)
+      }
       const result = await page.evaluate(() => {
         const buttons = [...document.querySelectorAll('.controls button, .menu-toggle')].map(el => { const r = el.getBoundingClientRect(); return r.x >= 0 && r.right <= innerWidth && r.y >= 0 && r.bottom <= innerHeight && r.width >= 44 && r.height >= 44 })
         const r = document.querySelector('svg').getBoundingClientRect()
@@ -43,9 +53,22 @@ try {
         const row = document.querySelector('.dungeon-row').getBoundingClientRect()
         const viewBox = document.querySelector('svg').viewBox.baseVal
         const transform = document.querySelector('svg').getScreenCTM()
-        return { buttons, width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight, viewportHeight: innerHeight, viewportWidth: innerWidth, ratio: r.width / r.height, internalRatio: viewBox.width / viewBox.height, scaleX: transform.a, scaleY: transform.d, dungeon, status, log, controls, label, value, row }
+        const positions = [...document.querySelectorAll('.controls button')].map(el => ({ key: el.dataset.direction ?? el.dataset.action, box: el.getBoundingClientRect().toJSON() }))
+        return { buttons, positions, width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight, viewportHeight: innerHeight, viewportWidth: innerWidth, ratio: r.width / r.height, internalRatio: viewBox.width / viewBox.height, scaleX: transform.a, scaleY: transform.d, dungeon, status, log, controls, label, value, row }
       })
       assert.ok(result.buttons.every(Boolean), JSON.stringify(result))
+      // The former absolute caption occupied no grid space: preserve exact button offsets.
+      for (const { key, box } of result.positions) {
+        const expected = {
+          up: [result.controls.x + 56, result.controls.y, 52, 44],
+          left: [result.controls.x, result.controls.y + 48, 52, 44],
+          down: [result.controls.x + 56, result.controls.y + 48, 52, 44],
+          right: [result.controls.x + 112, result.controls.y + 48, 52, 44],
+          b: [result.controls.right - 96, result.controls.y + 24, 44, 44],
+          a: [result.controls.right - 44, result.controls.y + 24, 44, 44],
+        }[key]
+        assert.deepEqual([box.x, box.y, box.width, box.height], expected)
+      }
       assert.equal(result.width, result.viewportWidth); assert.equal(result.height, result.viewportHeight)
       assert.ok(result.dungeon.right <= result.status.x)
       assert.ok(Math.abs(result.dungeon.height - result.status.height) < 1)
@@ -134,12 +157,20 @@ try {
     }
     let model = INITIAL_PLAYER
     const visited = initialVisited(model)
+    const history = ['ready']
+    let turn = 0
     async function perform(action) {
-      const next = action === 'a' ? passDoor(DUNGEON_MAP, model)?.player : move(DUNGEON_MAP, model, action).player
+      const result = action === 'a' ? passDoor(DUNGEON_MAP, model) : move(DUNGEON_MAP, model, action)
+      const next = result?.player
       if (action === 'a') await page.locator('[data-action="a"]').tap()
       else await tap(action)
-      if (next) { recordMovement(visited, model, next); model = next }
+      if (next) {
+        recordMovement(visited, model, next); model = next; turn++
+        if (['blocked', 'enteredRoom', 'returnedCorridor'].includes(result.message)) history.push(result.message)
+      }
       assert.deepEqual(await state(), [model.x, model.y, model.facing])
+      assert.equal(await page.locator('.dungeon').getAttribute('data-turn'), String(turn))
+      assert.deepEqual(await page.locator('.log p').allTextContents(), history.map(event => translateLog(event, displayLanguage)))
     }
     await checkMap([...visited])
     for (let i = 0; i < 3; i++) await perform('up')
@@ -184,6 +215,7 @@ try {
     assert.equal(await page.locator('.dungeon').getAttribute('data-center-y'), centerBeforeLanguage)
     assert.equal(await page.locator('.dungeon').innerHTML(), mapBeforeLanguage)
     displayLanguage = locale === 'ja' ? 'en' : 'ja'; await checkDirection()
+    assert.deepEqual(await page.locator('.log p').allTextContents(), history.map(event => translateLog(event, displayLanguage)))
     assert.equal(await page.locator('.dungeon').getAttribute('data-view'), '2d')
     assert.equal(await page.locator('[data-action="a"]').isDisabled(), true)
     await toggle()
@@ -201,8 +233,9 @@ try {
     await page.locator('.log').evaluate(el => { el.scrollTop = 0 })
     assert.deepEqual(await page.locator('.status').boundingBox(), statusBefore)
     await tap('down'); await tap('down')
-    assert.ok(await page.locator('.log').evaluate(el => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 1))
+    assert.equal(await page.locator('.log').evaluate(el => el.scrollTop), 0, 'silent rotations do not append or scroll logs')
     await page.keyboard.press('ArrowUp'); assert.deepEqual(await state(), [1, 11, 3])
+    assert.ok(await page.locator('.log').evaluate(el => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 1), 'warning scrolls to the latest log')
     await page.screenshot({ path: `${artifacts}/${locale}-short-safe-area.png` })
     await page.setViewportSize({ width: 1280, height: 800 }); await layout()
     await page.screenshot({ path: `${artifacts}/${locale}-desktop-status.png` })
