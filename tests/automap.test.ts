@@ -6,7 +6,7 @@ import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor } from '../src/dungeon.ts'
 test('history records successful movement and door passage once, never turns or failures', () => {
   let player = INITIAL_PLAYER
   const visited = initialVisited(player)
-  assert.deepEqual([...visited], ['2,4'])
+  assert.deepEqual([...visited], ['2,14'])
   const step = (direction: 'up' | 'left' | 'down' | 'right') => {
     const result = move(DUNGEON_MAP, player, direction)
     recordMovement(visited, player, result.player); player = result.player
@@ -32,7 +32,7 @@ test('24px filled floors, black unknown space, no uniform borders and compact ar
   assert.ok(svg.includes('width="24" height="24" fill="#245c38"'))
   assert.ok(svg.includes('width="320" height="200" fill="#000"'))
   assert.equal(count(svg, 'wall'), 3); assert.equal(count(svg, 'door'), 0)
-  assert.equal(edge(svg, 'wall', '2,3.5'), undefined)
+  assert.equal(edge(svg, 'wall', '2,13.5'), undefined)
   assert.ok(!/<rect[^>]*stroke=/.test(svg))
   for (const facing of [0, 1, 2, 3] as const) {
     assert.ok(renderMap(DUNGEON_MAP, { ...INITIAL_PLAYER, facing }, initialVisited(INITIAL_PLAYER)).includes(`translate(160 100) rotate(${facing * 90})`))
@@ -68,10 +68,10 @@ test('doors are distinct, symmetric, deduplicated and discovered only next to vi
     assert.equal(edge(both, 'door', key), edge(reversed, 'door', key))
     assert.equal(count(first, 'cell'), 1)
   }
-  const player = { x: 2, y: 1, facing: 0 } as const
-  const a = renderMap(DUNGEON_MAP, player, new Set(['2,1', '2,0']))
-  const b = renderMap(DUNGEON_MAP, player, new Set(['2,0', '2,1']))
-  assert.equal(edge(a, 'door', '2,0.5'), edge(b, 'door', '2,0.5'))
+  const player = { x: 2, y: 11, facing: 0 } as const
+  const a = renderMap(DUNGEON_MAP, player, new Set(['2,11', '2,10']))
+  const b = renderMap(DUNGEON_MAP, player, new Set(['2,10', '2,11']))
+  assert.equal(edge(a, 'door', '2,10.5'), edge(b, 'door', '2,10.5'))
   assert.equal(count(renderMap(DUNGEON_MAP, INITIAL_PLAYER, initialVisited(INITIAL_PLAYER)), 'door'), 0)
 })
 test('expanded history uses 24px coordinates and oversized axes follow the player', () => {
@@ -82,4 +82,16 @@ test('expanded history uses 24px coordinates and oversized axes follow the playe
   assert.ok(svg.includes('data-map-cell="11,11"><rect x="172" y="112"'))
   assert.ok(!svg.includes('data-map-cell="0,0"'))
   assert.equal(visited.size, 20)
+})
+test('fully explored sample keeps history and follows both oversized axes at 24px', () => {
+  const visited = new Set(DUNGEON_MAP.flatMap((row, y) => [...row].flatMap((cell, x) => cell === '#' ? [`${x},${y}`] : [])))
+  for (const player of [{ x: 2, y: 2, facing: 0 }, { x: 12, y: 12, facing: 2 }] as const) {
+    const svg = renderMap(DUNGEON_MAP, player, visited)
+    assert.ok(svg.includes(`data-map-cell="${cellKey(player)}" data-current="true"><rect x="148" y="88"`))
+    assert.ok(count(svg, 'cell') < visited.size)
+    assert.ok(!svg.includes(`data-map-cell="${player.y === 2 ? '12,12' : '2,2'}"`))
+    assert.ok(count(svg, 'door') > 0)
+    assert.ok(!/NaN|Infinity/.test(svg))
+  }
+  assert.equal(visited.size, 112)
 })

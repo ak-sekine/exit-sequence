@@ -1,12 +1,36 @@
 export type DungeonMap = readonly string[]
-export const DUNGEON_MAP: DungeonMap = Object.freeze(['  #  ', '#####', '  #  ', '  #  ', '  #  '])
+export const DUNGEON_MAP: DungeonMap = Object.freeze([
+  '                ',
+  ' ####     ##### ',
+  ' #### ######### ',
+  ' ####  #  ##### ',
+  '  #    #  ##### ',
+  '  ###########   ',
+  '  #   ###   #   ',
+  '  #   ###   #   ',
+  ' #### ###   #   ',
+  ' ####  #    #   ',
+  ' ####  #  ##### ',
+  ' ############## ',
+  '  #       ##### ',
+  '  #       ##### ',
+  '  #           # ',
+  '                ',
+])
 export type Facing = 0 | 1 | 2 | 3
 export type Player = Readonly<{ x: number; y: number; facing: Facing }>
 export type Cell = Readonly<{ x: number; y: number }>
 export type Door = Readonly<{ from: Cell; to: Cell }>
-export const DOORS: readonly Door[] = Object.freeze([{ from: { x: 2, y: 1 }, to: { x: 2, y: 0 } }])
+export const DOORS: readonly Door[] = Object.freeze([
+  { from: { x: 2, y: 11 }, to: { x: 2, y: 10 } },
+  { from: { x: 2, y: 4 }, to: { x: 2, y: 3 } },
+  { from: { x: 9, y: 2 }, to: { x: 10, y: 2 } },
+  { from: { x: 12, y: 5 }, to: { x: 12, y: 4 } },
+  { from: { x: 7, y: 5 }, to: { x: 7, y: 6 } },
+  { from: { x: 12, y: 9 }, to: { x: 12, y: 10 } },
+])
 export type Direction = 'up' | 'left' | 'right' | 'down'
-export const INITIAL_PLAYER: Player = Object.freeze({ x: 2, y: 4, facing: 0 })
+export const INITIAL_PLAYER: Player = Object.freeze({ x: 2, y: 14, facing: 0 })
 export const VECTORS = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }] as const
 export const isFloor = (map: DungeonMap, x: number, y: number) => map[y]?.[x] === '#'
 const sameCell = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y
