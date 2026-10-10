@@ -1,6 +1,8 @@
 export type Language = 'ja' | 'en'
 const text = (ja: string, en: string) => ({ ja, en })
 export const messages = {
+  direction: text('方角', 'Direction'),
+  north: text('北', 'N'), east: text('東', 'E'), south: text('南', 'S'), west: text('西', 'W'),
   menu: text('言語メニュー', 'Language menu'),
   dungeon: text('3Dダンジョン', '3D dungeon'), log: text('ログ', 'Log'),
   ready: text('通路にいる。', 'In a corridor.'),

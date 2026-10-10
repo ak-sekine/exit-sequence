@@ -14,7 +14,10 @@ app.innerHTML = `<main class="terminal">
   <header><h1>EXIT SEQUENCE</h1><button class="menu-toggle" aria-controls="language-menu" aria-expanded="false">≡</button>
     <div id="language-menu" class="language-menu" hidden><button data-language="ja">日本語</button><button data-language="en">English</button></div>
   </header>
-  <section class="dungeon" role="img"></section>
+  <div class="dungeon-row">
+    <section class="dungeon" role="img"></section>
+    <section class="status"><dl><div class="status-item"><dt class="direction-label"></dt><dd class="direction-value" aria-live="polite" aria-atomic="true"></dd></div></dl></section>
+  </div>
   <section class="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></section>
   <div class="controls"><div class="directions"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div>
   <div class="actions"><button data-action="b">B</button><button data-action="a">A</button></div></div>
@@ -38,6 +41,8 @@ function render() {
   dungeon.innerHTML = renderDungeon(DUNGEON_MAP, player)
   dungeon.dataset.x = String(player.x); dungeon.dataset.y = String(player.y); dungeon.dataset.facing = String(player.facing)
   dungeon.setAttribute('aria-label', `${t('dungeon', language)} (${player.x}, ${player.y}) ${['N', 'E', 'S', 'W'][player.facing]}`)
+  element('.direction-label').textContent = t('direction', language)
+  element('.direction-value').textContent = t((['north', 'east', 'south', 'west'] as const)[player.facing], language)
   log.setAttribute('aria-label', t('log', language))
   for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction]')) button.setAttribute('aria-label', t(button.dataset.direction as Direction, language))
   renderMenu()
