@@ -34,7 +34,7 @@ try {
       assert.deepEqual(await logs(), game.logs.map(e => translateLog(e, locale)))
     }
     await action('a'); assert.equal(game.turn, 0)
-    await action(phase === 'player' ? 'up' : phase === 'hearing' || phase === 'sight' ? 'up' : 'right')
+    await action(phase === 'player' ? 'up' : phase === 'sight' ? 'up' : 'right')
     if (phase === 'sight') {
       assert.equal(game.logs.at(-1).kind, 'sight')
       assert.match((await logs()).at(-1), locale === 'ja' ? /敵は南/ : /facing south/)

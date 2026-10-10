@@ -54,7 +54,7 @@ test('current turn snapshots prioritize sight, then hearing, then discard lost d
   assert.equal('facing' in heard.detections[0]!, false)
   assert.deepEqual(heard.detections[0]!.position, { x: 1, y: 0 })
   // Stop hearing and keep the enemy behind the player: old logs must not leak it.
-  const lost = advanceTurn({ ...heard, enemies: [{ ...enemy, x: 5, facing: 1, destination: null }] }, 'up', () => .25, corridor, [])
+  const lost = advanceTurn({ ...heard, enemies: [{ ...enemy, x: 5, facing: 1, destination: null }] }, 'left', () => .25, corridor, [])
   assert.deepEqual(lost.detections, [])
   assert.ok(lost.logs.some(log => typeof log !== 'string'))
   assert.deepEqual(seen.detections[0]!.position, { x: 2, y: 0 })

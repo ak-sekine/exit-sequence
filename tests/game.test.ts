@@ -28,16 +28,16 @@ test('failed movement and both door passage events remain in history', () => {
   let state = { ...fixture(), enemies: [] }
   state = advanceTurn(state, 'up', () => 0, ['##'], door) as typeof state
   assert.deepEqual(state.logs, ['ready', 'blocked'])
-  assert.equal(state.player.x, 0); assert.equal(state.turn, 1)
+  assert.equal(state.player.x, 0); assert.equal(state.turn, 0)
   state = advanceTurn(state, 'a', () => 0, ['##'], door) as typeof state
   assert.deepEqual(state.logs, ['ready', 'blocked', 'enteredRoom'])
-  assert.equal(state.player.x, 1); assert.equal(state.turn, 2)
+  assert.equal(state.player.x, 1); assert.equal(state.turn, 1)
   state = advanceTurn(state, 'down', () => 0, ['##'], door) as typeof state
   state = advanceTurn(state, 'a', () => 0, ['##'], door) as typeof state
   assert.deepEqual(state.logs, ['ready', 'blocked', 'enteredRoom', 'returnedCorridor'])
-  assert.equal(state.player.x, 0); assert.equal(state.turn, 4)
+  assert.equal(state.player.x, 0); assert.equal(state.turn, 3)
   const wall = advanceTurn(state, 'up', () => 0, ['##'], door)
-  assert.equal(wall.logs.at(-1), 'blocked'); assert.equal(wall.turn, 5)
+  assert.equal(wall.logs.at(-1), 'blocked'); assert.equal(wall.turn, 3)
 })
 test('silent forward action still creates sound for enemy hearing and retains detection logs', () => {
   // Player walks east while the nearby enemy faces away from the player.
@@ -84,10 +84,10 @@ test('BFS counts turns including 180 turn, never crosses wall or closed door', (
   const failed = enemyTurn(['# #'], { ...enemy(0, 0), destination: { x: 2, y: 0 } }, character({ x: 9, y: 0, facing: 0 }), null)
   assert.equal(failed.enemy.destination, null); assert.equal(failed.enemy.x, 0)
 })
-test('turns consume failed advances and rotations, invalid A and game over freeze', () => {
+test('turns consume rotations but not failed advances, invalid A and game over freeze', () => {
   let state = { ...fixture(), enemies: [] }
   for (const action of ['up', 'left', 'right', 'down'] as const) state = advanceTurn(state, action, () => 0, ['#']) as typeof state
-  assert.equal(state.turn, 4)
+  assert.equal(state.turn, 3)
   assert.equal(advanceTurn(state, 'a', () => 0, ['#']), state)
   const door = [{ from: { x: 0, y: 0 }, to: { x: 1, y: 0 } }]
   const passage = advanceTurn({ ...fixture(), enemies: [enemy(2, 0, 3)] }, 'a', () => 0, ['###'], door)
@@ -150,4 +150,35 @@ test('all sight distances and compass directions survive language changes', () =
     assert.ok(translateLog(event, 'ja').startsWith(['', '目の前', 'すぐ近く', '近く', '遠く', 'すごく遠く'][distance]!))
     assert.equal(event.distance, distance)
   }
+})
+
+for (const [reason, map, doors] of [
+  ['wall', ['# ##'], []],
+  ['map boundary', ['#'], []],
+  ['closed door', ['####'], [{ from: { x: 0, y: 0 }, to: { x: 1, y: 0 } }]],
+] as const) test(`blocked advance at ${reason} only appends warnings, including repeated attempts`, () => {
+  let state: GameState = {
+    ...fixture(), turn: 7,
+    enemies: [{ ...enemy(3, 0, 3), destination: { x: 2, y: 0 } }, { ...enemy(2, 0), id: 'idle' }],
+    detections: [
+      { enemyId: 'e', kind: 'sight', position: { x: 3, y: 0 }, facing: 3, distance: 3 },
+      { enemyId: 'idle', kind: 'hearing', position: { x: 2, y: 0 }, direction: 'right', distance: 2 },
+    ],
+  }
+  for (let i = 0; i < 3; i++) {
+    const before = structuredClone(state)
+    const next = advanceTurn(state, 'up', () => { assert.fail('blocked advance must not run idle AI') }, map, doors)
+    assert.deepEqual(state, before, 'input state stays immutable')
+    assert.deepEqual(next, { ...state, logs: [...state.logs, 'blocked'] })
+    assert.equal(next.player, state.player)
+    assert.equal(next.enemies, state.enemies)
+    assert.equal(next.detections, state.detections)
+    assert.equal(translateLog(next.logs.at(-1)!, 'ja'), 'これ以上進めない。')
+    assert.equal(translateLog(next.logs.at(-1)!, 'en'), 'Cannot go further.')
+    state = next
+  }
+})
+test('blocked advance does not perform a new collision check', () => {
+  const state = fixture(character({ x: 0, y: 0, facing: 1 }), enemy(0, 0))
+  assert.deepEqual(advanceTurn(state, 'up', () => 0, ['#']), { ...state, logs: [...state.logs, 'blocked'] })
 })

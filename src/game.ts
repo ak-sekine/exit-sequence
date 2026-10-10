@@ -15,9 +15,10 @@ export function advanceTurn(state: GameState, action: Direction | 'a', random: (
   if (state.gameOver) return state
   const result = action === 'a' ? passDoor(map, state.player, doors) : move(map, state.player, action, doors)
   if (!result) return state
+  if (result.message === 'blocked') return { ...state, logs: [...state.logs, result.message] }
   const player = { ...state.player, ...result.player }, logs: LogEvent[] = [...state.logs]
-  // Only warnings and door events enter history; ordinary actions still run the full turn.
-  if (result.message === 'blocked' || result.message === 'enteredRoom' || result.message === 'returnedCorridor') logs.push(result.message)
+  // Only door events enter successful turn history; ordinary actions still run the full turn.
+  if (result.message === 'enteredRoom' || result.message === 'returnedCorridor') logs.push(result.message)
   let next: GameState = { ...state, player, turn: state.turn + 1, logs, detections: [] }
   const caught = (enemies: readonly Enemy[]) => enemies.some(enemy => sameCell(player, enemy))
   if (caught(state.enemies)) return { ...next, gameOver: true, logs: [...logs, 'gameOver'] }

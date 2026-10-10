@@ -19,7 +19,7 @@ try {
       const response = await route.fetch()
       let body = (await response.text()).replace('let game = createGame();', `let game = ${JSON.stringify(game)};`)
       assert.ok(body.includes('fixture'))
-      body += '\nwindow.readGameForTest = () => game;'
+      body += '\nwindow.readGameForTest = () => game; window.readVisitedForTest = () => [...visited];'
       await route.fulfill({ response, body })
     })
     await page.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
@@ -57,6 +57,20 @@ try {
     await turn('down') // now facing south: enemy at (2,13) only audible
     assert.equal(game.detections.length, hearing ? 1 : 0)
     if (hearing) { assert.equal(game.detections[0].kind, 'hearing'); assert.equal('facing' in game.detections[0], false) }
+    await checkMap()
+    // South is a wall: repeated failures must preserve AI, detections and visited cells.
+    const beforeBlocked = structuredClone(game)
+    const visitedBefore = await page.evaluate(() => window.readVisitedForTest())
+    const logsBefore = await page.locator('.log p').allTextContents()
+    for (let i = 0; i < 3; i++) {
+      await turn('up')
+      assert.deepEqual(game, { ...beforeBlocked, logs: [...beforeBlocked.logs, ...Array(i + 1).fill('blocked')] })
+      assert.deepEqual(await page.evaluate(() => window.readVisitedForTest()), visitedBefore)
+      assert.deepEqual(await page.locator('.log p').allTextContents(), [...logsBefore, ...Array(i + 1).fill('Cannot go further.')])
+    }
+    await page.locator('.menu-toggle').tap(); await page.locator('[data-language="ja"]').tap()
+    assert.deepEqual(await snapshot(), game)
+    assert.deepEqual((await page.locator('.log p').allTextContents()).slice(-3), Array(3).fill('これ以上進めない。'))
     await checkMap()
     await turn('left'); assert.ok(game.gameOver)
     await checkMap()

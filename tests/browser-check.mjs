@@ -165,7 +165,7 @@ try {
       if (action === 'a') await page.locator('[data-action="a"]').tap()
       else await tap(action)
       if (next) {
-        recordMovement(visited, model, next); model = next; turn++
+        recordMovement(visited, model, next); model = next; if (result.message !== 'blocked') turn++
         if (['blocked', 'enteredRoom', 'returnedCorridor'].includes(result.message)) history.push(result.message)
       }
       assert.deepEqual(await state(), [model.x, model.y, model.facing])
