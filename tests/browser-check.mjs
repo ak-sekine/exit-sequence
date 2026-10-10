@@ -13,6 +13,14 @@ try {
     const context = await browser.newContext({ viewport: { width: 320, height: 640 }, locale, isMobile: true, hasTouch: true })
     const page = await context.newPage(), errors = []
     page.on('pageerror', e => errors.push(e.message))
+    // Existing exploration/render regression runs in an enemy-free fixture.
+    // Transform only the test's dev-server response; production has no test API.
+    await page.route('**/src/main.ts*', async route => {
+      const response = await route.fetch()
+      const body = (await response.text()).replace('let game = createGame();', 'let game = { ...createGame(), enemies: [] };')
+      assert.ok(body.includes('enemies: []'), 'fixture injection must succeed')
+      await route.fulfill({ response, body })
+    })
     await page.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
     const state = () => page.locator('.dungeon').evaluate(el => [Number(el.dataset.x), Number(el.dataset.y), Number(el.dataset.facing)])
     let displayLanguage = locale

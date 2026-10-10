@@ -1,18 +1,20 @@
 import './style.css'
-import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor } from './dungeon.ts'
-import type { Cell, Direction, Player } from './dungeon.ts'
+import { DUNGEON_MAP } from './dungeon.ts'
+import type { Cell, Direction } from './dungeon.ts'
 import { clampMapCenter, initialVisited, recordMovement, renderMap, scrollMap } from './automap.ts'
 import { renderDungeon } from './renderer.ts'
-import { initialLanguage, t } from './i18n.ts'
+import { initialLanguage, t, translateLog } from './i18n.ts'
 import type { Language, Message } from './i18n.ts'
-
-let player: Player = INITIAL_PLAYER
+import { advanceTurn, createGame } from './game.ts'
+import type { LogEvent } from './game.ts'
+let game = createGame()
+let player = game.player
 let language: Language = initialLanguage()
 let menuOpen = false
 let view: '3d' | '2d' = '3d'
 let mapCenter: Cell = clampMapCenter(DUNGEON_MAP, player)
 const visited = initialVisited(player)
-const logs: Message[] = ['ready']
+
 const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `<main class="terminal">
   <header><h1>EXIT SEQUENCE</h1><button class="menu-toggle" aria-controls="language-menu" aria-expanded="false">≡</button>
@@ -36,13 +38,14 @@ function renderMenu() {
   for (const button of menu.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.language === language))
 }
 function closeMenu(focus = false) { menuOpen = false; renderMenu(); if (focus) menuButton.focus() }
-function appendLog(message: Message) {
-  const entry = document.createElement('p'); entry.textContent = t(message, language); log.append(entry)
+function appendLog(message: LogEvent) {
+  const entry = document.createElement('p'); entry.textContent = translateLog(message, language); log.append(entry)
   log.scrollTop = log.scrollHeight
 }
 function render() {
   document.documentElement.lang = language
   dungeon.innerHTML = view === '3d' ? renderDungeon(DUNGEON_MAP, player) : renderMap(DUNGEON_MAP, player, visited, undefined, mapCenter)
+  dungeon.dataset.turn = String(game.turn); dungeon.dataset.gameOver = String(game.gameOver)
   dungeon.dataset.view = view
   dungeon.dataset.centerX = String(mapCenter.x); dungeon.dataset.centerY = String(mapCenter.y)
   element('.controls-mode').textContent = t(view === '2d' ? 'mapControls' : 'playerControls', language)
@@ -65,19 +68,21 @@ function act(direction: Direction) {
     mapCenter = scrollMap(DUNGEON_MAP, mapCenter, direction)
     closeMenu(); render(); return
   }
-  const result = move(DUNGEON_MAP, player, direction)
-  recordMovement(visited, player, result.player)
-  player = result.player; logs.push(result.message)
-  closeMenu(); render(); appendLog(result.message)
+  performTurn(direction)
+}
+function performTurn(action: Direction | 'a') {
+  const before = game
+  game = advanceTurn(game, action)
+  if (game === before) return
+  recordMovement(visited, player, game.player)
+  player = game.player
+  game.logs.slice(before.logs.length).forEach(appendLog)
+  closeMenu(); render()
 }
 for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction]')) button.addEventListener('click', () => act(button.dataset.direction as Direction))
 element('[data-action="a"]').addEventListener('click', () => {
   if (view === '2d') return
-  const result = passDoor(DUNGEON_MAP, player)
-  if (!result) return
-  recordMovement(visited, player, result.player)
-  player = result.player; logs.push(result.message)
-  closeMenu(); render(); appendLog(result.message)
+  performTurn('a')
 })
 element('[data-action="b"]').addEventListener('click', () => {
   if (view === '3d') mapCenter = clampMapCenter(DUNGEON_MAP, player)
@@ -87,7 +92,7 @@ element('[data-action="b"]').addEventListener('click', () => {
 menuButton.addEventListener('click', () => { menuOpen = !menuOpen; renderMenu() })
 for (const button of menu.querySelectorAll<HTMLButtonElement>('button')) button.addEventListener('click', () => {
   language = button.dataset.language as Language
-  closeMenu(true); render(); log.replaceChildren(); logs.forEach(appendLog)
+  closeMenu(true); render(); log.replaceChildren(); game.logs.forEach(appendLog)
 })
 document.addEventListener('pointerdown', event => {
   if (menuOpen && event.target instanceof Node && !menu.contains(event.target) && !menuButton.contains(event.target)) closeMenu(menu.contains(document.activeElement))
