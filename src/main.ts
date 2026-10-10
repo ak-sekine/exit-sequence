@@ -1,6 +1,7 @@
 import './style.css'
 import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor } from './dungeon.ts'
 import type { Direction, Player } from './dungeon.ts'
+import { initialVisited, recordMovement, renderMap } from './automap.ts'
 import { renderDungeon } from './renderer.ts'
 import { initialLanguage, t } from './i18n.ts'
 import type { Language, Message } from './i18n.ts'
@@ -8,6 +9,8 @@ import type { Language, Message } from './i18n.ts'
 let player: Player = INITIAL_PLAYER
 let language: Language = initialLanguage()
 let menuOpen = false
+let view: '3d' | '2d' = '3d'
+const visited = initialVisited(player)
 const logs: Message[] = ['ready']
 const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `<main class="terminal">
@@ -38,9 +41,13 @@ function appendLog(message: Message) {
 }
 function render() {
   document.documentElement.lang = language
-  dungeon.innerHTML = renderDungeon(DUNGEON_MAP, player)
+  dungeon.innerHTML = view === '3d' ? renderDungeon(DUNGEON_MAP, player) : renderMap(DUNGEON_MAP, player, visited)
+  dungeon.dataset.view = view
+  for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction], [data-action="a"]')) button.disabled = view === '2d'
+  element('[data-action="b"]').setAttribute('aria-label', t(view === '3d' ? 'showMap' : 'showDungeon', language))
+  element('[data-action="b"]').setAttribute('aria-pressed', String(view === '2d'))
   dungeon.dataset.x = String(player.x); dungeon.dataset.y = String(player.y); dungeon.dataset.facing = String(player.facing)
-  dungeon.setAttribute('aria-label', `${t('dungeon', language)} (${player.x}, ${player.y}) ${['N', 'E', 'S', 'W'][player.facing]}`)
+  dungeon.setAttribute('aria-label', `${t(view === '3d' ? 'dungeon' : 'map', language)} (${player.x}, ${player.y}) ${['N', 'E', 'S', 'W'][player.facing]}`)
   element('.direction-label').textContent = t('direction', language)
   element('.direction-value').textContent = t((['north', 'east', 'south', 'west'] as const)[player.facing], language)
   log.setAttribute('aria-label', t('log', language))
@@ -48,18 +55,25 @@ function render() {
   renderMenu()
 }
 function act(direction: Direction) {
+  if (view === '2d') return
   const result = move(DUNGEON_MAP, player, direction)
+  recordMovement(visited, player, result.player)
   player = result.player; logs.push(result.message)
   closeMenu(); render(); appendLog(result.message)
 }
 for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction]')) button.addEventListener('click', () => act(button.dataset.direction as Direction))
 element('[data-action="a"]').addEventListener('click', () => {
+  if (view === '2d') return
   const result = passDoor(DUNGEON_MAP, player)
   if (!result) return
+  recordMovement(visited, player, result.player)
   player = result.player; logs.push(result.message)
   closeMenu(); render(); appendLog(result.message)
 })
-// B remains an enabled native button with no game action.
+element('[data-action="b"]').addEventListener('click', () => {
+  view = view === '3d' ? '2d' : '3d'
+  render()
+})
 menuButton.addEventListener('click', () => { menuOpen = !menuOpen; renderMenu() })
 for (const button of menu.querySelectorAll<HTMLButtonElement>('button')) button.addEventListener('click', () => {
   language = button.dataset.language as Language

@@ -30,3 +30,5 @@ button:focus-visible, .log:focus-visible { outline: 2px solid #e5fff0; outline-o
 [data-direction="right"] { grid-column: 3; grid-row: 2; }
 .actions { display: flex; gap: 8px; }
 .actions button { width: 44px; height: 44px; border-radius: 50%; }
+
+button:disabled { opacity: .4; cursor: default; background: #0d211d; }

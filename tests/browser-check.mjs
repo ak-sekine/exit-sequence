@@ -50,6 +50,32 @@ try {
       // On short screens SVG's default xMidYMid meet keeps drawing undistorted.
     }
     assert.deepEqual(await state(), [2, 4, 0]); await checkDirection(); await layout()
+    const toggle = () => page.locator('[data-action="b"]').tap()
+    const mapCells = () => page.locator('[data-map-cell]').evaluateAll(els => els.map(el => el.dataset.mapCell).sort())
+    async function checkMap(expected) {
+      const beforeState = await state(), beforeLog = await page.locator('.log').innerHTML()
+      const boxes = await page.locator('.dungeon, .status, .log, .controls').evaluateAll(els => els.map(el => JSON.stringify(el.getBoundingClientRect())))
+      await toggle()
+      assert.equal(await page.locator('.dungeon').getAttribute('data-view'), '2d')
+      assert.deepEqual(await mapCells(), expected.slice().sort())
+      assert.equal(await page.locator('[data-current] text').textContent(), ['↑', '→', '↓', '←'][beforeState[2]])
+      for (const selector of ['[data-direction="up"]', '[data-direction="left"]', '[data-direction="down"]', '[data-direction="right"]', '[data-action="a"]']) {
+        assert.equal(await page.locator(selector).isDisabled(), true)
+        await page.locator(selector).evaluate(el => el.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+      }
+      for (const key of ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight']) await page.keyboard.press(key)
+      assert.deepEqual(await state(), beforeState); assert.deepEqual(await mapCells(), expected.slice().sort())
+      assert.equal(await page.locator('.log').innerHTML(), beforeLog)
+      assert.deepEqual(await page.locator('.dungeon, .status, .log, .controls').evaluateAll(els => els.map(el => JSON.stringify(el.getBoundingClientRect()))), boxes)
+      await layout()
+      await page.screenshot({ path: `${artifacts}/${locale}-map-${expected.length}.png` })
+      await toggle()
+      assert.equal(await page.locator('.dungeon').getAttribute('data-view'), '3d')
+      assert.deepEqual(await state(), beforeState); assert.equal(await page.locator('.log').innerHTML(), beforeLog)
+      assert.equal(await page.locator('[data-action="a"]').isEnabled(), true)
+    }
+    assert.equal(await page.locator('.dungeon').getAttribute('data-view'), '3d')
+    await checkMap(['2,4'])
     const initial = await page.locator('.dungeon').innerHTML()
     for (let i = 0; i < 3; i++) await tap('up')
     assert.deepEqual(await state(), [2, 1, 0])
@@ -58,8 +84,10 @@ try {
     assert.ok(await page.locator('[data-action="b"]').evaluate(el => el.getBoundingClientRect().x) < await page.locator('[data-action="a"]').evaluate(el => el.getBoundingClientRect().x))
     await page.screenshot({ path: `${artifacts}/${locale}-junction.png` })
     await tap('up'); assert.deepEqual(await state(), [2, 1, 0])
+    await checkMap(['2,4', '2,3', '2,2', '2,1'])
     await page.locator('[data-action="a"]').tap(); assert.deepEqual(await state(), [2, 0, 0]); await checkDirection()
     assert.equal(await page.locator('.log p').last().textContent(), locale === 'ja' ? '扉を開けて部屋に入った。' : 'Opened the door and entered the room.')
+    await checkMap(['2,4', '2,3', '2,2', '2,1', '2,0'])
     await page.screenshot({ path: `${artifacts}/${locale}-room-north.png` })
     await tap('up'); assert.deepEqual(await state(), [2, 0, 0])
     await tap('right'); await tap('up'); assert.deepEqual(await state(), [2, 0, 1])
@@ -85,6 +113,10 @@ try {
     assert.equal(await page.locator('html').getAttribute('lang'), locale === 'ja' ? 'en' : 'ja')
     assert.deepEqual(await state(), [0, 1, 1])
     displayLanguage = locale === 'ja' ? 'en' : 'ja'; await checkDirection()
+    assert.equal(await page.locator('.dungeon').getAttribute('data-view'), '2d')
+    assert.equal(await page.locator('[data-action="a"]').isDisabled(), true)
+    await toggle()
+    await checkMap(['2,4', '2,3', '2,2', '2,1', '2,0', '1,1', '0,1'])
     await page.locator('.menu-toggle').tap(); await page.keyboard.press('Escape')
     assert.equal(await page.locator('.language-menu').isVisible(), false)
     for (const height of [480, 320, 240]) {
@@ -105,6 +137,14 @@ try {
     await page.screenshot({ path: `${artifacts}/${locale}-desktop-status.png` })
     await page.setViewportSize({ width: 320, height: 640 }); await layout()
     await page.screenshot({ path: `${artifacts}/${locale}-mobile-status.png` })
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const pcBefore = await page.locator('.dungeon, .status, .log, .controls').evaluateAll(els => els.map(el => JSON.stringify(el.getBoundingClientRect())))
+    await toggle()
+    assert.deepEqual(await page.locator('.dungeon, .status, .log, .controls').evaluateAll(els => els.map(el => JSON.stringify(el.getBoundingClientRect()))), pcBefore)
+    assert.ok(await page.locator('[data-current] text').isVisible())
+    await page.screenshot({ path: `${artifacts}/${locale}-pc-map.png` })
+    await layout()
+    await toggle()
     // Pixel comparisons prove extra structures behind solid front/side walls
     // cannot change the visible image. Openings must reveal added geometry.
     let imageIndex = 0
@@ -131,5 +171,5 @@ try {
   assert.equal(await desktopPage.locator('.direction-value').textContent(), 'E')
   await desktopPage.screenshot({ path: `${artifacts}/desktop-mouse-keyboard.png` })
   await desktop.close()
-  console.log(`PASS: ja/en direction labels and all four values, immediate rotation/forward/door/language synchronization, fixed status during log scrolling, desktop 1280px, movement, closed-door round trip, SVG wall/door pixel occlusion and openings, B/A, language menu, log scrolling, 320px at 640/480/320/240px heights, simulated safe area. ${artifacts}`)
+  console.log(`PASS: 3D/2D B toggle, visited-only mapping, disabled controls and keyboard, preserved state/log/history/layout, ja/en direction labels and all four values, immediate rotation/forward/door/language synchronization, fixed status during log scrolling, desktop 1280px, movement, closed-door round trip, SVG wall/door pixel occlusion and openings, B/A, language menu, log scrolling, 320px at 640/480/320/240px heights, simulated safe area. ${artifacts}`)
 } finally { await browser.close() }
