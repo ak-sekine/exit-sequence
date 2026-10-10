@@ -1,7 +1,7 @@
 import './style.css'
 import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor } from './dungeon.ts'
-import type { Direction, Player } from './dungeon.ts'
-import { initialVisited, recordMovement, renderMap } from './automap.ts'
+import type { Cell, Direction, Player } from './dungeon.ts'
+import { clampMapCenter, initialVisited, recordMovement, renderMap, scrollMap } from './automap.ts'
 import { renderDungeon } from './renderer.ts'
 import { initialLanguage, t } from './i18n.ts'
 import type { Language, Message } from './i18n.ts'
@@ -10,6 +10,7 @@ let player: Player = INITIAL_PLAYER
 let language: Language = initialLanguage()
 let menuOpen = false
 let view: '3d' | '2d' = '3d'
+let mapCenter: Cell = clampMapCenter(DUNGEON_MAP, player)
 const visited = initialVisited(player)
 const logs: Message[] = ['ready']
 const app = document.querySelector<HTMLDivElement>('#app')!
@@ -22,7 +23,7 @@ app.innerHTML = `<main class="terminal">
     <section class="status"><dl><div class="status-item"><dt class="direction-label"></dt><dd class="direction-value" aria-live="polite" aria-atomic="true"></dd></div></dl></section>
   </div>
   <section class="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></section>
-  <div class="controls"><div class="directions"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div>
+  <div class="controls"><div class="directions"><span class="controls-mode"></span><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div>
   <div class="actions"><button data-action="b">B</button><button data-action="a">A</button></div></div>
 </main>`
 function element<T extends HTMLElement>(selector: string) { return app.querySelector<T>(selector)! }
@@ -41,9 +42,11 @@ function appendLog(message: Message) {
 }
 function render() {
   document.documentElement.lang = language
-  dungeon.innerHTML = view === '3d' ? renderDungeon(DUNGEON_MAP, player) : renderMap(DUNGEON_MAP, player, visited)
+  dungeon.innerHTML = view === '3d' ? renderDungeon(DUNGEON_MAP, player) : renderMap(DUNGEON_MAP, player, visited, undefined, mapCenter)
   dungeon.dataset.view = view
-  for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction], [data-action="a"]')) button.disabled = view === '2d'
+  dungeon.dataset.centerX = String(mapCenter.x); dungeon.dataset.centerY = String(mapCenter.y)
+  element('.controls-mode').textContent = t(view === '2d' ? 'mapControls' : 'playerControls', language)
+  for (const button of app.querySelectorAll<HTMLButtonElement>('[data-action="a"]')) button.disabled = view === '2d'
   element('[data-action="b"]').setAttribute('aria-label', t(view === '3d' ? 'showMap' : 'showDungeon', language))
   element('[data-action="b"]').setAttribute('aria-pressed', String(view === '2d'))
   dungeon.dataset.x = String(player.x); dungeon.dataset.y = String(player.y); dungeon.dataset.facing = String(player.facing)
@@ -51,11 +54,17 @@ function render() {
   element('.direction-label').textContent = t('direction', language)
   element('.direction-value').textContent = t((['north', 'east', 'south', 'west'] as const)[player.facing], language)
   log.setAttribute('aria-label', t('log', language))
-  for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction]')) button.setAttribute('aria-label', t(button.dataset.direction as Direction, language))
+  for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction]')) {
+    const key = view === '2d' ? `scroll${button.dataset.direction}` as Message : button.dataset.direction as Direction
+    button.setAttribute('aria-label', t(key, language)); button.title = t(key, language)
+  }
   renderMenu()
 }
 function act(direction: Direction) {
-  if (view === '2d') return
+  if (view === '2d') {
+    mapCenter = scrollMap(DUNGEON_MAP, mapCenter, direction)
+    closeMenu(); render(); return
+  }
   const result = move(DUNGEON_MAP, player, direction)
   recordMovement(visited, player, result.player)
   player = result.player; logs.push(result.message)
@@ -71,6 +80,7 @@ element('[data-action="a"]').addEventListener('click', () => {
   closeMenu(); render(); appendLog(result.message)
 })
 element('[data-action="b"]').addEventListener('click', () => {
+  if (view === '3d') mapCenter = clampMapCenter(DUNGEON_MAP, player)
   view = view === '3d' ? '2d' : '3d'
   render()
 })

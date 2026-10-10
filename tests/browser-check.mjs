@@ -2,7 +2,7 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { renderDungeon } from '../src/renderer.ts'
 import { DUNGEON_MAP, DOORS, INITIAL_PLAYER, move, passDoor } from '../src/dungeon.ts'
-import { initialVisited, recordMovement, renderMap } from '../src/automap.ts'
+import { clampMapCenter, scrollMap, initialVisited, recordMovement, renderMap } from '../src/automap.ts'
 import { explore } from './exploration.ts'
 import { mkdir } from 'node:fs/promises'
 const artifacts = process.env.EXIT_SEQUENCE_ARTIFACTS ?? '/tmp/exit-sequence-browser'
@@ -76,17 +76,44 @@ try {
       }
       if (expected.length === 112) {
         assert.ok(visibleCells.length < expected.length, 'Oversized map clips distant cells')
-        assert.equal(await page.locator('[data-current] rect').getAttribute('x'), '148')
-        assert.equal(await page.locator('[data-current] rect').getAttribute('y'), '88')
       }
       const arrowBox = await page.locator('[data-map-arrow]').evaluate(el => { const b = el.getBBox(); return [b.width, b.height] })
       assert.ok(arrowBox.every(n => n <= 16))
-      for (const selector of ['[data-direction="up"]', '[data-direction="left"]', '[data-direction="down"]', '[data-direction="right"]', '[data-action="a"]']) {
-        assert.equal(await page.locator(selector).isDisabled(), true)
-        await page.locator(selector).evaluate(el => el.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+      const centerState = () => page.locator('.dungeon').evaluate(el => ({ x: Number(el.dataset.centerX), y: Number(el.dataset.centerY) }))
+      const initialCenter = await centerState()
+      const mapPlayer = { x: beforeState[0], y: beforeState[1], facing: beforeState[2] }
+      assert.deepEqual(initialCenter, clampMapCenter(DUNGEON_MAP, mapPlayer))
+      const verifyMap = async center => {
+        assert.deepEqual(await centerState(), center)
+        const normalized = await page.evaluate(svg => { const el = document.createElement('div'); el.innerHTML = svg; return el.innerHTML }, renderMap(DUNGEON_MAP, mapPlayer, new Set(expected), undefined, center))
+        assert.equal(await page.locator('.dungeon').innerHTML(), normalized)
+        assert.deepEqual(await state(), beforeState)
+        await checkDirection()
       }
-      for (const key of ['ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight']) await page.keyboard.press(key)
-      assert.deepEqual(await state(), beforeState); assert.deepEqual(await mapCells(), [...renderMap(DUNGEON_MAP, { x: beforeState[0], y: beforeState[1], facing: beforeState[2] }, new Set(expected)).matchAll(/data-map-cell="([^"]+)"/g)].map(m => m[1]).sort())
+      for (const [direction, key] of [['up', 'ArrowUp'], ['down', 'ArrowDown'], ['left', 'ArrowLeft'], ['right', 'ArrowRight']]) {
+        const button = page.locator(`[data-direction="${direction}"]`)
+        assert.equal(await button.isEnabled(), true)
+        assert.match(await button.getAttribute('aria-label'), displayLanguage === 'ja' ? /マップ/ : /Scroll map/)
+        await button.tap()
+        await verifyMap(scrollMap(DUNGEON_MAP, initialCenter, direction))
+        await toggle(); await toggle()
+        await verifyMap(initialCenter)
+        await page.keyboard.press(key)
+        await verifyMap(scrollMap(DUNGEON_MAP, initialCenter, direction))
+        await toggle(); await toggle()
+      }
+      let center = initialCenter
+      for (const direction of ['up', 'left', 'down', 'right']) {
+        for (let i = 0; i < 20; i++) {
+          await page.keyboard.press({ up: 'ArrowUp', left: 'ArrowLeft', down: 'ArrowDown', right: 'ArrowRight' }[direction])
+          center = scrollMap(DUNGEON_MAP, center, direction)
+        }
+        await verifyMap(center)
+      }
+      assert.equal(await page.locator('[data-action="a"]').isDisabled(), true)
+      await page.locator('[data-action="a"]').evaluate(el => el.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+      await verifyMap(center)
+      await toggle(); await toggle(); await verifyMap(initialCenter)
       assert.equal(await page.locator('.log').innerHTML(), beforeLog)
       assert.deepEqual(await page.locator('.dungeon, .status, .log, .controls').evaluateAll(els => els.map(el => JSON.stringify(el.getBoundingClientRect()))), boxes)
       await layout()
@@ -139,10 +166,15 @@ try {
     const before = await page.locator('.log').innerHTML()
     await perform('a'); await toggle()
     assert.equal(await page.locator('.log').innerHTML(), before)
+    await page.keyboard.press('ArrowUp')
+    const centerBeforeLanguage = await page.locator('.dungeon').getAttribute('data-center-y')
+    const mapBeforeLanguage = await page.locator('.dungeon').innerHTML()
     await page.locator('.menu-toggle').tap()
     await page.locator(`[data-language="${locale === 'ja' ? 'en' : 'ja'}"]`).tap()
     assert.equal(await page.locator('html').getAttribute('lang'), locale === 'ja' ? 'en' : 'ja')
     assert.deepEqual(await state(), [1, 11, 1])
+    assert.equal(await page.locator('.dungeon').getAttribute('data-center-y'), centerBeforeLanguage)
+    assert.equal(await page.locator('.dungeon').innerHTML(), mapBeforeLanguage)
     displayLanguage = locale === 'ja' ? 'en' : 'ja'; await checkDirection()
     assert.equal(await page.locator('.dungeon').getAttribute('data-view'), '2d')
     assert.equal(await page.locator('[data-action="a"]').isDisabled(), true)
@@ -175,6 +207,8 @@ try {
     assert.ok(await page.locator('[data-map-arrow]').isVisible())
     await page.screenshot({ path: `${artifacts}/${locale}-pc-map.png` })
     await layout()
+    await page.keyboard.press('ArrowUp')
+    await layout()
     await toggle()
     // Pixel comparisons prove extra structures behind solid front/side walls
     // cannot change the visible image. Openings must reveal added geometry.
@@ -202,5 +236,5 @@ try {
   assert.equal(await desktopPage.locator('.direction-value').textContent(), 'E')
   await desktopPage.screenshot({ path: `${artifacts}/desktop-mouse-keyboard.png` })
   await desktop.close()
-  console.log(`PASS: all 112 floors explored via mobile taps, 16×16 map viewport tracking, 3D/2D B toggle, visited-only mapping, disabled controls and keyboard, preserved state/log/history/layout, ja/en direction labels and all four values, immediate rotation/forward/door/language synchronization, fixed status during log scrolling, desktop 1280px, movement, closed-door round trip, SVG wall/door pixel occlusion and openings, B/A, language menu, log scrolling, 320px at 640/480/320/240px heights, simulated safe area. ${artifacts}`)
+  console.log(`PASS: all 112 floors explored via mobile taps, 16×16 map scrolling and bounds, 3D/2D B toggle, visited-only mapping, tap/arrow-key scrolling, disabled A, recenter on reopen, language-preserved viewport, preserved state/log/history/layout, ja/en direction labels and all four values, immediate rotation/forward/door/language synchronization, fixed status during log scrolling, desktop 1280px, movement, closed-door round trip, SVG wall/door pixel occlusion and openings, B/A, language menu, log scrolling, 320px at 640/480/320/240px heights, simulated safe area. ${artifacts}`)
 } finally { await browser.close() }

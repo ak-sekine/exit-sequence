@@ -1,6 +1,12 @@
 export type Language = 'ja' | 'en'
 const text = (ja: string, en: string) => ({ ja, en })
 export const messages = {
+  playerControls: text('移動・回転', 'Move / turn'),
+  mapControls: text('マップ移動', 'Scroll map'),
+  scrollup: text('マップを北へスクロール', 'Scroll map north'),
+  scrolldown: text('マップを南へスクロール', 'Scroll map south'),
+  scrollleft: text('マップを西へスクロール', 'Scroll map west'),
+  scrollright: text('マップを東へスクロール', 'Scroll map east'),
   direction: text('方角', 'Direction'),
   north: text('北', 'N'), east: text('東', 'E'), south: text('南', 'S'), west: text('西', 'W'),
   map: text('2Dマップ', '2D map'),

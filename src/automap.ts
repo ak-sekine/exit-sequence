@@ -1,5 +1,5 @@
 import { DUNGEON_MAP, DOORS, doorBetween, isFloor, VECTORS } from './dungeon.ts'
-import type { Cell, Door, DungeonMap, Player } from './dungeon.ts'
+import type { Cell, Direction, Door, DungeonMap, Player } from './dungeon.ts'
 
 export const cellKey = (cell: Cell) => `${cell.x},${cell.y}`
 export const initialVisited = (player: Player): Set<string> => new Set([cellKey(player)])
@@ -7,13 +7,30 @@ export function recordMovement(visited: Set<string>, before: Player, after: Play
   if (before.x !== after.x || before.y !== after.y) visited.add(cellKey(after))
 }
 
-// World axes stay fixed; oversized explored bounds follow the player per axis.
-export function renderMap(map: DungeonMap, player: Player, visited: ReadonlySet<string>, doors: readonly Door[] = map === DUNGEON_MAP ? DOORS : []): string {
-  const size = 24
+export const MAP_CELL_SIZE = 24
+export const MAP_VIEW_WIDTH = 320
+export const MAP_VIEW_HEIGHT = 200
+// Centers use world cell coordinates, independently of the player and history.
+export function clampMapCenter(map: DungeonMap, center: Cell): Cell {
+  const clampAxis = (value: number, cells: number, viewport: number) => {
+    if (cells * MAP_CELL_SIZE <= viewport) return (cells - 1) / 2
+    const half = viewport / (2 * MAP_CELL_SIZE)
+    return Math.max(half - .5, Math.min(cells - .5 - half, value))
+  }
+  return {
+    x: clampAxis(center.x, Math.max(0, ...map.map(row => row.length)), MAP_VIEW_WIDTH),
+    y: clampAxis(center.y, map.length, MAP_VIEW_HEIGHT),
+  }
+}
+export function scrollMap(map: DungeonMap, center: Cell, direction: Direction): Cell {
+  const delta = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } }[direction]
+  return clampMapCenter(map, { x: center.x + delta.x, y: center.y + delta.y })
+}
+
+export function renderMap(map: DungeonMap, player: Player, visited: ReadonlySet<string>, doors: readonly Door[] = map === DUNGEON_MAP ? DOORS : [], center: Cell = clampMapCenter(map, player)): string {
+  const size = MAP_CELL_SIZE
   const explored = [...visited].map(key => key.split(',').map(Number)).filter(([x, y]) => Number.isInteger(x) && Number.isInteger(y) && isFloor(map, x!, y!))
-  const xs = explored.map(([x]) => x!), ys = explored.map(([, y]) => y!)
-  const centerX = xs.length && (Math.max(...xs) - Math.min(...xs) + 1) * size <= 320 ? (Math.min(...xs) + Math.max(...xs)) / 2 : player.x
-  const centerY = ys.length && (Math.max(...ys) - Math.min(...ys) + 1) * size <= 200 ? (Math.min(...ys) + Math.max(...ys)) / 2 : player.y
+  const { x: centerX, y: centerY } = center
   const cells: string[] = [], edges: string[] = [], seen = new Set<string>()
   for (const [x, y] of explored) {
     const px = 160 + (x! - centerX) * size, py = 100 + (y! - centerY) * size
@@ -38,7 +55,7 @@ export function renderMap(map: DungeonMap, player: Player, visited: ReadonlySet<
     }
   }
   const px = 160 + (player.x - centerX) * size, py = 100 + (player.y - centerY) * size
-  const arrow = visited.has(cellKey(player)) && isFloor(map, player.x, player.y)
+  const arrow = px >= 0 && px <= 320 && py >= 0 && py <= 200 && visited.has(cellKey(player)) && isFloor(map, player.x, player.y)
     ? `<path data-map-arrow="${player.facing}" fill="#e5fff0" d="M0,-8 L6,6 L0,3 L-6,6 Z" transform="translate(${px} ${py}) rotate(${player.facing * 90})"/>` : ''
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" aria-hidden="true"><rect width="320" height="200" fill="#000"/>${cells.join('')}<g fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="butt">${edges.join('')}</g>${arrow}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" aria-hidden="true"><rect width="320" height="200" fill="#000"/><svg width="320" height="200" viewBox="0 0 320 200" overflow="hidden">${cells.join('')}<g fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="butt">${edges.join('')}</g>${arrow}</svg></svg>`
 }
