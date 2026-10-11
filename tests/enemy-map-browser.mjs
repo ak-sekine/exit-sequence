@@ -1,3 +1,4 @@
+import { click, moveCommand, toggleMap } from './command-helpers.mjs'
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { createGame, advanceTurn } from '../src/game.ts'
@@ -24,13 +25,13 @@ try {
     })
     await page.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
     const snapshot = () => page.evaluate(() => window.readGameForTest())
-    const toggle = () => page.locator('[data-action="b"]').tap()
+    const toggle = () => toggleMap(page)
     const boxes = () => page.locator('.dungeon, .status, .log, .controls').evaluateAll(els => els.map(el => JSON.stringify(el.getBoundingClientRect())))
     const initialBoxes = await boxes()
     await toggle(); assert.equal(await page.locator('[data-map-enemy]').count(), 0); await toggle()
     const turn = async action => {
       game = advanceTurn(game, action, () => 0)
-      await page.locator(`[data-direction="${action}"]`).tap()
+      await moveCommand(page, action)
       assert.deepEqual(await snapshot(), game)
     }
     const checkMap = async () => {
@@ -44,7 +45,7 @@ try {
         assert.deepEqual(await snapshot(), before)
       }
       await check()
-      for (const direction of ['up', 'right', 'down', 'left']) { await page.locator(`[data-direction="${direction}"]`).tap(); await check() }
+      for (const direction of ['up', 'right', 'down', 'left']) { await click(page, { up: 'mapUp', down: 'mapDown', left: 'mapLeft', right: 'mapRight' }[direction]); await check() }
       await page.locator('.menu-toggle').tap(); await check()
       await page.locator('[data-language="en"]').tap(); await check()
       assert.deepEqual(await boxes(), initialBoxes)
@@ -61,16 +62,16 @@ try {
     // South is a wall: repeated failures must preserve AI, detections and visited cells.
     const beforeBlocked = structuredClone(game)
     const visitedBefore = await page.evaluate(() => window.readVisitedForTest())
-    const logsBefore = await page.locator('.log p').allTextContents()
+    const logsBefore = await page.locator('.log [data-kind=event]').allTextContents()
     for (let i = 0; i < 3; i++) {
       await turn('up')
       assert.deepEqual(game, { ...beforeBlocked, logs: [...beforeBlocked.logs, ...Array(i + 1).fill('blocked')] })
       assert.deepEqual(await page.evaluate(() => window.readVisitedForTest()), visitedBefore)
-      assert.deepEqual(await page.locator('.log p').allTextContents(), [...logsBefore, ...Array(i + 1).fill('Cannot go further.')])
+      assert.deepEqual(await page.locator('.log [data-kind=event]').allTextContents(), [...logsBefore, ...Array(i + 1).fill('Cannot go further.')])
     }
     await page.locator('.menu-toggle').tap(); await page.locator('[data-language="ja"]').tap()
     assert.deepEqual(await snapshot(), game)
-    assert.deepEqual((await page.locator('.log p').allTextContents()).slice(-3), Array(3).fill('これ以上進めない。'))
+    assert.deepEqual((await page.locator('.log [data-kind=event]').allTextContents()).slice(-3), Array(3).fill('これ以上進めない。'))
     await checkMap()
     await turn('left'); assert.ok(game.gameOver)
     await checkMap()

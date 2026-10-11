@@ -1,3 +1,4 @@
+import { click, moveCommand, toggleMap, passDoorCommand } from './command-helpers.mjs'
 import { chromium } from 'playwright'
 import { mkdir } from 'node:fs/promises'
 const artifacts = process.env.EXIT_SEQUENCE_ARTIFACTS ?? '/tmp/exit-sequence-browser'
@@ -5,6 +6,7 @@ await mkdir(artifacts, { recursive: true })
 import assert from 'node:assert/strict'
 import { createGame, advanceTurn } from '../src/game.ts'
 import { character } from '../src/character.ts'
+import { commandText } from '../src/commands.ts'
 import { translateLog } from '../src/i18n.ts'
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium', args: ['--no-sandbox'] })
 try {
@@ -26,12 +28,21 @@ try {
     })
     await page.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
     const state = () => page.locator('.dungeon').evaluate(el => ({ x: +el.dataset.x, y: +el.dataset.y, facing: +el.dataset.facing, turn: +el.dataset.turn, gameOver: el.dataset.gameOver === 'true' }))
-    const logs = () => page.locator('.log p').allTextContents()
+    const logs = () => page.locator('.log [data-kind=event]').allTextContents()
     const action = async a => {
+      const before = game
+      const beforeLines = await page.locator('.log p').allTextContents()
       game = advanceTurn(game, a, () => 0)
-      await page.locator(a === 'a' ? '[data-action="a"]' : `[data-direction="${a}"]`).tap()
+      if (a === 'a') await passDoorCommand(page); else await moveCommand(page, a)
       assert.deepEqual(await state(), { ...{ x: game.player.x, y: game.player.y, facing: game.player.facing }, turn: game.turn, gameOver: game.gameOver })
       assert.deepEqual(await logs(), game.logs.map(e => translateLog(e, locale)))
+      if (a !== 'a' && !before.gameOver) {
+        const id = { up: 'forward', down: 'turnBack', left: 'turnLeft', right: 'turnRight' }[a]
+        assert.deepEqual(await page.locator('.log p').allTextContents(), [
+          ...beforeLines.slice(0, -1), commandText(['move', id], locale),
+          ...game.logs.slice(before.logs.length).map(e => translateLog(e, locale)), '>',
+        ])
+      } else assert.deepEqual(await page.locator('.log p').allTextContents(), beforeLines)
     }
     await action('a'); assert.equal(game.turn, 0)
     await action(phase === 'player' ? 'up' : phase === 'sight' ? 'up' : 'right')
@@ -55,10 +66,17 @@ try {
     await page.screenshot({ path: `${artifacts}/${locale}-enemy-${phase}.png` })
     assert.equal((await logs()).at(-1), translateLog('gameOver', locale))
     const frozen = await state(), count = (await logs()).length
+    const endedHistory = await page.locator('.log').innerHTML()
+    for (const id of ['move', 'inspect']) {
+      const button = page.locator(`[data-command="${id}"]`)
+      assert.ok(await button.isDisabled())
+      await button.evaluate(el => el.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+    }
+    assert.equal(await page.locator('.log').innerHTML(), endedHistory)
     for (const a of ['up', 'left', 'right', 'down', 'a']) await action(a)
-    await page.locator('[data-action="b"]').tap()
+    await toggleMap(page)
     assert.equal(await page.locator('[data-map-enemy]').count(), game.detections.length)
-    for (const d of ['up', 'left', 'down', 'right']) await page.locator(`[data-direction="${d}"]`).tap()
+    for (const d of ['up', 'left', 'down', 'right']) await click(page, { up: 'mapUp', down: 'mapDown', left: 'mapLeft', right: 'mapRight' }[d])
     assert.deepEqual(await state(), frozen)
     const center = await page.locator('.dungeon').getAttribute('data-center-y')
     await page.locator('.menu-toggle').tap()
@@ -68,7 +86,7 @@ try {
     assert.doesNotMatch((await logs()).join('\n'), ordinary)
     assert.equal((await logs()).length, count); assert.deepEqual(await state(), frozen)
     assert.equal(await page.locator('.dungeon').getAttribute('data-center-y'), center)
-    await page.locator('[data-action="b"]').tap()
+    await toggleMap(page)
     assert.equal(await page.locator('.dungeon').getAttribute('data-view'), '3d')
     assert.deepEqual(await state(), frozen)
     assert.deepEqual(errors, [])
@@ -81,21 +99,21 @@ try {
   await page.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
   let game = createGame()
   const turnBefore = await page.locator('.dungeon').getAttribute('data-turn')
-  const logBefore = await page.locator('.log').innerHTML()
-  await page.locator('[data-action="b"]').tap()
-  for (const d of ['up', 'right', 'down', 'left']) await page.locator(`[data-direction="${d}"]`).tap()
+  const logBefore = await page.locator('.log [data-kind=event]').allTextContents()
+  await toggleMap(page)
+  for (const d of ['up', 'right', 'down', 'left']) await click(page, { up: 'mapUp', down: 'mapDown', left: 'mapLeft', right: 'mapRight' }[d])
   await page.locator('.menu-toggle').tap()
   await page.locator('[data-language="en"]').tap()
   assert.equal(await page.locator('.dungeon').getAttribute('data-turn'), turnBefore)
   await page.locator('.menu-toggle').tap()
   await page.locator('[data-language="ja"]').tap()
-  assert.equal(await page.locator('.log').innerHTML(), logBefore)
-  await page.locator('[data-action="b"]').tap()
+  assert.deepEqual(await page.locator('.log [data-kind=event]').allTextContents(), logBefore)
+  await toggleMap(page)
   for (const action of ['up', 'up', 'up', 'right', 'up', 'up', 'up', 'left', 'up', 'right']) {
     game = advanceTurn(game, action, () => 0)
-    await page.locator(`[data-direction="${action}"]`).tap()
+    await moveCommand(page, action)
     assert.equal(await page.locator('.dungeon').getAttribute('data-turn'), String(game.turn))
-    assert.deepEqual(await page.locator('.log p').allTextContents(), game.logs.map(e => translateLog(e, 'ja')))
+    assert.deepEqual(await page.locator('.log [data-kind=event]').allTextContents(), game.logs.map(e => translateLog(e, 'ja')))
   }
   await context.close()
   console.log('PASS: actual initial AI integration; ja/en mobile taps, both collision phases, sight/hearing, active and ended turn freeze, map scroll/toggle and history retranslation')

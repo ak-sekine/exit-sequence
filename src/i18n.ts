@@ -2,6 +2,13 @@ import type { LogEvent } from './game.ts'
 export type Language = 'ja' | 'en'
 const text = (ja: string, en: string) => ({ ja, en })
 export const messages = {
+  move: text('移動', 'Move'), inspect: text('調べる', 'Inspect'), items: text('持ち物', 'Items'),
+  forward: text('前進', 'Forward'), turnBack: text('後ろを向く', 'Turn around'),
+  turnLeft: text('左を向く', 'Turn left'), turnRight: text('右を向く', 'Turn right'),
+  door: text('扉', 'Door'), itemMap: text('マップ', 'Map'), back: text('戻る', 'Back'),
+  mapUp: text('上', 'Up'), mapDown: text('下', 'Down'), mapLeft: text('左', 'Left'), mapRight: text('右', 'Right'),
+  close: text('閉じる', 'Close'), yes: text('はい', 'Yes'), no: text('いいえ', 'No'),
+  doorConfirmation: text('鍵はかかっていない。扉を開けて中に入りますか？', 'The door is unlocked. Open it and go through?'),
   scrollup: text('マップを北へスクロール', 'Scroll map north'),
   scrolldown: text('マップを南へスクロール', 'Scroll map south'),
   scrollleft: text('マップを西へスクロール', 'Scroll map west'),

@@ -1,16 +1,20 @@
 import './style.css'
 import { DUNGEON_MAP } from './dungeon.ts'
+import { DOORS, VECTORS, doorBetween, isFloor } from './dungeon.ts'
 import type { Cell, Direction } from './dungeon.ts'
 import { clampMapCenter, initialVisited, recordMovement, renderMap, scrollMap } from './automap.ts'
 import { renderDungeon } from './renderer.ts'
 import { initialLanguage, t, translateLog } from './i18n.ts'
-import type { Language, Message } from './i18n.ts'
+import type { Language } from './i18n.ts'
 import { advanceTurn, createGame } from './game.ts'
-import type { LogEvent } from './game.ts'
+import { commandText, menuOptions, pendingCommand } from './commands.ts'
+import type { MenuState, CommandId, HistoryEntry } from './commands.ts'
 let game = createGame()
 let player = game.player
 let language: Language = initialLanguage()
 let menuOpen = false
+let ui: MenuState = 'normal'
+const history: HistoryEntry[] = game.logs.map(event => ({ kind: 'event', event }))
 let view: '3d' | '2d' = '3d'
 let mapCenter: Cell = clampMapCenter(DUNGEON_MAP, player)
 const visited = initialVisited(player)
@@ -25,8 +29,7 @@ app.innerHTML = `<main class="terminal">
     <section class="status"><dl><div class="status-item"><dt class="direction-label"></dt><dd class="direction-value" aria-live="polite" aria-atomic="true"></dd></div></dl></section>
   </div>
   <section class="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></section>
-  <div class="controls"><div class="directions"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div>
-  <div class="actions"><button data-action="b">B</button><button data-action="a">A</button></div></div>
+  <div class="controls"></div>
 </main>`
 function element<T extends HTMLElement>(selector: string) { return app.querySelector<T>(selector)! }
 const dungeon = element('.dungeon'), log = element('.log')
@@ -38,9 +41,25 @@ function renderMenu() {
   for (const button of menu.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.language === language))
 }
 function closeMenu(focus = false) { menuOpen = false; renderMenu(); if (focus) menuButton.focus() }
-function appendLog(message: LogEvent) {
-  const entry = document.createElement('p'); entry.textContent = translateLog(message, language); log.append(entry)
+function renderHistory() {
+  log.replaceChildren()
+  for (const entry of history) {
+    const line = document.createElement('p')
+    line.dataset.kind = entry.kind
+    line.textContent = entry.kind === 'command' ? commandText(entry.ids, language)
+      : entry.kind === 'message' ? t(entry.message, language) : translateLog(entry.event, language)
+    log.append(line)
+  }
+  const prompt = document.createElement('p')
+  prompt.className = 'prompt'
+  prompt.textContent = commandText(pendingCommand(ui), language)
+  log.append(prompt)
   log.scrollTop = log.scrollHeight
+}
+function facingDoor() {
+  const v = VECTORS[player.facing], target = { x: player.x + v.x, y: player.y + v.y }
+  return isFloor(DUNGEON_MAP, player.x, player.y) && isFloor(DUNGEON_MAP, target.x, target.y)
+    && !!doorBetween(DOORS, player, target)
 }
 function render() {
   document.documentElement.lang = language
@@ -48,59 +67,71 @@ function render() {
   dungeon.dataset.turn = String(game.turn); dungeon.dataset.gameOver = String(game.gameOver)
   dungeon.dataset.view = view
   dungeon.dataset.centerX = String(mapCenter.x); dungeon.dataset.centerY = String(mapCenter.y)
-  for (const button of app.querySelectorAll<HTMLButtonElement>('[data-action="a"]')) button.disabled = view === '2d'
-  element('[data-action="b"]').setAttribute('aria-label', t(view === '3d' ? 'showMap' : 'showDungeon', language))
-  element('[data-action="b"]').setAttribute('aria-pressed', String(view === '2d'))
   dungeon.dataset.x = String(player.x); dungeon.dataset.y = String(player.y); dungeon.dataset.facing = String(player.facing)
   dungeon.setAttribute('aria-label', `${t(view === '3d' ? 'dungeon' : 'map', language)} (${player.x}, ${player.y}) ${['N', 'E', 'S', 'W'][player.facing]}`)
   element('.direction-label').textContent = t('direction', language)
   element('.direction-value').textContent = t((['north', 'east', 'south', 'west'] as const)[player.facing], language)
   log.setAttribute('aria-label', t('log', language))
-  for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction]')) {
-    const key = view === '2d' ? `scroll${button.dataset.direction}` as Message : button.dataset.direction as Direction
-    button.setAttribute('aria-label', t(key, language)); button.title = t(key, language)
+  const controls = element('.controls')
+  controls.replaceChildren()
+  controls.dataset.menu = ui
+  for (const option of menuOptions(ui, facingDoor(), game.gameOver)) {
+    if (!option) { const blank = document.createElement('div'); blank.className = 'empty-slot'; controls.append(blank); continue }
+    const button = document.createElement('button')
+    button.dataset.command = option.id
+    button.textContent = t(option.id, language) + (option.parent ? ' >' : '')
+    button.disabled = !!option.disabled
+    button.addEventListener('click', () => choose(option.id))
+    controls.append(button)
   }
   renderMenu()
+  renderHistory()
 }
-function act(direction: Direction) {
-  if (view === '2d') {
-    mapCenter = scrollMap(DUNGEON_MAP, mapCenter, direction)
-    closeMenu(); render(); return
-  }
-  performTurn(direction)
-}
+function commit(ids: readonly CommandId[]) { history.push({ kind: 'command', ids: [...ids] }) }
 function performTurn(action: Direction | 'a') {
   const before = game
   game = advanceTurn(game, action)
-  if (game === before) return
-  recordMovement(visited, player, game.player)
+  if (game.turn !== before.turn) recordMovement(visited, player, game.player)
   player = game.player
-  game.logs.slice(before.logs.length).forEach(appendLog)
+  history.push(...game.logs.slice(before.logs.length).map(event => ({ kind: 'event' as const, event })))
+}
+function choose(id: CommandId) {
+  // Validate against the current menu, including game-over restrictions.
+  if (!menuOptions(ui, facingDoor(), game.gameOver).some(option => option?.id === id && !option.disabled)) return
+  if (ui === 'normal') ui = id === 'move' ? 'movement' : id === 'inspect' ? 'inspection' : 'inventory'
+  else if (id === 'back') ui = 'normal'
+  else if (ui === 'movement') {
+    commit(['move', id])
+    performTurn(({ forward: 'up', turnBack: 'down', turnLeft: 'left', turnRight: 'right' } as const)[id as 'forward' | 'turnBack' | 'turnLeft' | 'turnRight'])
+    ui = 'normal'
+  } else if (ui === 'inspection' && id === 'door') {
+    commit(['inspect', 'door'])
+    history.push({ kind: 'message', message: 'doorConfirmation' })
+    ui = 'confirmation'
+  } else if (ui === 'confirmation') {
+    commit([id])
+    if (id === 'yes' && !game.gameOver && facingDoor()) performTurn('a')
+    ui = 'normal'
+  } else if (ui === 'inventory' && id === 'itemMap') {
+    commit(['items', 'itemMap'])
+    mapCenter = clampMapCenter(DUNGEON_MAP, player)
+    view = '2d'; ui = 'map'
+  } else if (ui === 'map') {
+    commit(['items', 'itemMap', id])
+    if (id === 'close') { view = '3d'; ui = 'normal' }
+    else mapCenter = scrollMap(DUNGEON_MAP, mapCenter, ({ mapUp: 'up', mapDown: 'down', mapLeft: 'left', mapRight: 'right' } as const)[id as 'mapUp' | 'mapDown' | 'mapLeft' | 'mapRight'])
+  }
   closeMenu(); render()
 }
-for (const button of app.querySelectorAll<HTMLButtonElement>('[data-direction]')) button.addEventListener('click', () => act(button.dataset.direction as Direction))
-element('[data-action="a"]').addEventListener('click', () => {
-  if (view === '2d') return
-  performTurn('a')
-})
-element('[data-action="b"]').addEventListener('click', () => {
-  if (view === '3d') mapCenter = clampMapCenter(DUNGEON_MAP, player)
-  view = view === '3d' ? '2d' : '3d'
-  render()
-})
 menuButton.addEventListener('click', () => { menuOpen = !menuOpen; renderMenu() })
 for (const button of menu.querySelectorAll<HTMLButtonElement>('button')) button.addEventListener('click', () => {
   language = button.dataset.language as Language
-  closeMenu(true); render(); log.replaceChildren(); game.logs.forEach(appendLog)
+  closeMenu(true); render()
 })
 document.addEventListener('pointerdown', event => {
   if (menuOpen && event.target instanceof Node && !menu.contains(event.target) && !menuButton.contains(event.target)) closeMenu(menu.contains(document.activeElement))
 })
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && menuOpen) { event.preventDefault(); closeMenu(true); return }
-  if (menuOpen) return
-  const keys: Record<string, Direction> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' }
-  const direction = keys[event.key]
-  if (direction) { event.preventDefault(); act(direction) }
 })
-render(); appendLog('ready')
+render()
