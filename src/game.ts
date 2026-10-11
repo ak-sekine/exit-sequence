@@ -1,6 +1,6 @@
 import { character } from './character.ts'
 import type { Character } from './character.ts'
-import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor, locationKind } from './dungeon.ts'
+import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor, locationKind, facingDoor } from './dungeon.ts'
 import type { Direction, Door, DungeonMap } from './dungeon.ts'
 import { enemyTurn, INITIAL_ENEMY } from './enemy.ts'
 import type { Enemy } from './enemy.ts'
@@ -46,5 +46,10 @@ export function advanceTurn(state: GameState, action: Direction | 'a', random: (
     }
   }
   if (next.gameOver) logs.push('gameOver')
+  else {
+    // Only this turn's sensory results determine the rotation status.
+    if (action !== 'up' && action !== 'a' && detections.length === 0) logs.push('noEnemySign')
+    if (facingDoor(map, player, doors)) logs.push('doorAhead')
+  }
   return { ...next, enemies, logs, detections }
 }

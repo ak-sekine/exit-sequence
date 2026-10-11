@@ -55,6 +55,12 @@ function ahead(player: Player): Cell {
   const vector = VECTORS[player.facing]
   return { x: player.x + vector.x, y: player.y + vector.y }
 }
+// Shared by inspection choices and post-turn guidance; rendering is not consulted.
+export function facingDoor(map: DungeonMap, player: Player, doors: readonly Door[] = map === DUNGEON_MAP ? DOORS : []): boolean {
+  const target = ahead(player)
+  return isFloor(map, player.x, player.y) && isFloor(map, target.x, target.y)
+    && !!doorBetween(doors, player, target)
+}
 export function move(map: DungeonMap, player: Player, direction: Direction, doors: readonly Door[] = map === DUNGEON_MAP ? DOORS : []) {
   if (direction !== 'up') {
     const turn = { left: 3, right: 1, down: 2 }[direction]

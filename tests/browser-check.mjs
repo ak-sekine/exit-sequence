@@ -2,7 +2,7 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import { click, moveCommand, toggleMap, passDoorCommand } from './command-helpers.mjs'
-import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor, locationKind } from '../src/dungeon.ts'
+import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor, locationKind, facingDoor } from '../src/dungeon.ts'
 import { initialVisited, recordMovement, renderMap, clampMapCenter, scrollMap } from '../src/automap.ts'
 import { renderDungeon } from '../src/renderer.ts'
 import { explore } from './exploration.ts'
@@ -20,7 +20,7 @@ try {
    const response = await route.fetch()
    const body = (await response.text()).replace('let game = createGame();', 'let game = { ...createGame(), enemies: [] };')
    assert.ok(body.includes('enemies: []'))
-   await route.fulfill({ response, body: body + '\nwindow.snapshot = () => ({ game, history, visited: [...visited], ui });' })
+   await route.fulfill({ response, body: body + '\nwindow.snapshot = () => ({ game, history, visited: [...visited], ui, inspection: menuOptions("inspection", facingDoor(), game.gameOver) });' })
   })
   await page.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
   let language = locale, model = INITIAL_PLAYER, turn = 0
@@ -64,7 +64,14 @@ try {
    if (result.message !== 'blocked') turn++
    if (['blocked', 'enteredRoom', 'returnedCorridor'].includes(result.message)) history.push({ kind: 'event', event: result.message })
    if (moved) history.push({ kind: 'event', event: locationKind(DUNGEON_MAP, model) === 'room' ? 'inRoom' : 'inCorridor' })
+   if (result.message !== 'blocked') {
+    if (action !== 'up' && action !== 'a') history.push({ kind: 'event', event: 'noEnemySign' })
+    if (facingDoor(DUNGEON_MAP, model)) history.push({ kind: 'event', event: 'doorAhead' })
+   }
    await check()
+   const snapshot = await page.evaluate(() => window.snapshot())
+   assert.equal(snapshot.inspection.some(option => option.id === 'door'), facingDoor(DUNGEON_MAP, model))
+   assert.deepEqual(snapshot.game.logs, history.filter(entry => entry.kind === 'event').map(entry => entry.event))
    assert.equal(await page.locator('.controls').getAttribute('data-menu'), action === 'a' ? 'normal' : 'movement')
    assert.equal(await page.locator('.page-number').textContent(), '1 / 1')
   }

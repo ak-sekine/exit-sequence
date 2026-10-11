@@ -1,6 +1,6 @@
 import './style.css'
 import { DUNGEON_MAP } from './dungeon.ts'
-import { DOORS, VECTORS, doorBetween, isFloor } from './dungeon.ts'
+import { facingDoor as hasFacingDoor } from './dungeon.ts'
 import type { Cell, Direction } from './dungeon.ts'
 import { clampMapCenter, initialVisited, recordMovement, renderMap, scrollMap } from './automap.ts'
 import { renderDungeon } from './renderer.ts'
@@ -71,11 +71,7 @@ function renderHistory(preserveScroll = false) {
   log.append(prompt)
   log.scrollTop = preserveScroll ? scrollTop : log.scrollHeight
 }
-function facingDoor() {
-  const v = VECTORS[player.facing], target = { x: player.x + v.x, y: player.y + v.y }
-  return isFloor(DUNGEON_MAP, player.x, player.y) && isFloor(DUNGEON_MAP, target.x, target.y)
-    && !!doorBetween(DOORS, player, target)
-}
+function facingDoor() { return hasFacingDoor(DUNGEON_MAP, player) }
 function render(preserveScroll = false) {
   document.documentElement.lang = language
   dungeon.innerHTML = view === '3d' ? renderDungeon(DUNGEON_MAP, player) : renderMap(DUNGEON_MAP, player, visited, undefined, mapCenter, game.detections)

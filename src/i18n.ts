@@ -24,6 +24,8 @@ export const messages = {
   dungeon: text('3Dダンジョン', '3D dungeon'), log: text('ログ', 'Log'),
   inCorridor: text('通路にいる。', 'In a corridor.'),
   inRoom: text('部屋にいる。', 'In a room.'),
+  noEnemySign: text('敵の気配は感じない。', 'You sense no sign of an enemy.'),
+  doorAhead: text('正面に扉がある。', 'There is a door in front of you.'),
   ready: text('通路にいる。', 'In a corridor.'),
   enteredRoom: text('扉を開けて部屋に入った。', 'Opened the door and entered the room.'),
   returnedCorridor: text('扉を開けて通路に戻った。', 'Opened the door and returned to the corridor.'),

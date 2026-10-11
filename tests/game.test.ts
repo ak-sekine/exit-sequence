@@ -9,18 +9,18 @@ import { move, DUNGEON_MAP, INITIAL_PLAYER, isFloor } from '../src/dungeon.ts'
 import { translateLog } from '../src/i18n.ts'
 const enemy = (x: number, y: number, facing: 0 | 1 | 2 | 3 = 1) => ({ ...character({ x, y, facing }), id: 'e', destination: null })
 const fixture = (player = character({ x: 0, y: 0, facing: 1 }), e = enemy(3, 0)): GameState => ({ ...createGame(), player, enemies: [e] })
-test('forward movement describes its destination; rotations only advance turns', () => {
+test('forward movement describes its destination; rotations report sensory status', () => {
   let state = { ...fixture(), enemies: [] }
   for (const action of ['up', 'left', 'right', 'down'] as const) {
     const before = state
     state = advanceTurn(state, action, () => 0, ['###']) as typeof state
     assert.equal(state.turn, before.turn + 1)
     assert.deepEqual(state.player, { ...before.player, ...move(['###'], before.player, action).player })
-    assert.deepEqual(state.logs, ['ready', 'inCorridor'])
+    assert.deepEqual(state.logs.slice(before.logs.length), action === 'up' ? ['inCorridor'] : ['noEnemySign'])
   }
   assert.equal(state.player.x, 1)
   for (const language of ['ja', 'en'] as const) {
-    assert.deepEqual(state.logs.map(event => translateLog(event, language)), [translateLog('ready', language), translateLog('inCorridor', language)])
+    assert.deepEqual(state.logs.map(event => translateLog(event, language)), (['ready', 'inCorridor', 'noEnemySign', 'noEnemySign', 'noEnemySign'] as const).map(event => translateLog(event, language)))
   }
 })
 test('failed movement and both door passage events remain in history', () => {
@@ -34,7 +34,7 @@ test('failed movement and both door passage events remain in history', () => {
   assert.equal(state.player.x, 1); assert.equal(state.turn, 1)
   state = advanceTurn(state, 'down', () => 0, ['##'], door) as typeof state
   state = advanceTurn(state, 'a', () => 0, ['##'], door) as typeof state
-  assert.deepEqual(state.logs, ['ready', 'blocked', 'enteredRoom', 'inCorridor', 'returnedCorridor', 'inCorridor'])
+  assert.deepEqual(state.logs, ['ready', 'blocked', 'enteredRoom', 'inCorridor', 'noEnemySign', 'doorAhead', 'returnedCorridor', 'inCorridor'])
   assert.equal(state.player.x, 0); assert.equal(state.turn, 3)
   const wall = advanceTurn(state, 'up', () => 0, ['##'], door)
   assert.equal(wall.logs.at(-1), 'blocked'); assert.equal(wall.turn, 3)
@@ -131,7 +131,7 @@ test('hearing logs translate relative direction and distance without enemy facin
   assert.equal(translateLog({ ...event, direction: 'right', distance: 1 }, 'ja'), '右の方、近くで敵の音が聞こえる。')
   assert.equal(translateLog('gameOver', 'en'), 'Caught by the enemy. GAME OVER')
 })
-test('no detection adds no enemy log; doors block AI but not hearing', () => {
+test('undetected rotation reports no sign; doors block AI but not hearing', () => {
   const door = [{ from: { x: 1, y: 0 }, to: { x: 2, y: 0 } }]
   const e = { ...enemy(0, 0, 1), destination: { x: 2, y: 0 } }
   const p = character({ x: 2, y: 0, facing: 3 })
@@ -140,7 +140,7 @@ test('no detection adds no enemy log; doors block AI but not hearing', () => {
   const state = fixture(character({ x: 0, y: 0, facing: 1 }), enemy(3, 0, 1))
   const next = advanceTurn(state, 'down', () => .25, ['####'])
   assert.equal(next.logs.filter(e => typeof e !== 'string').length, 0)
-  assert.deepEqual(next.logs, ['ready'])
+  assert.deepEqual(next.logs, ['ready', 'noEnemySign'])
 })
 test('all sight distances and compass directions survive language changes', () => {
   for (const facing of [0, 1, 2, 3] as const) for (let distance = 1; distance <= 5; distance++) {
@@ -216,4 +216,52 @@ test('destination description precedes detection and capture without changing co
   assert.deepEqual(collision.logs, ['ready', 'inCorridor', 'gameOver'])
   assert.deepEqual(collision.detections, [])
   assert.equal(collision.enemies, occupied.enemies)
+})
+
+for (const action of ['left', 'right', 'down'] as const) test(`${action}: current senses only, one AI turn, no location, immutable input`, () => {
+  const state = fixture(character({ x: 0, y: 0, facing: 1 }), enemy(3, 0, 1))
+  const before = structuredClone(state)
+  let calls = 0
+  const next = advanceTurn(state, action, () => { calls++; return 0 }, ['####'])
+  assert.deepEqual(state, before)
+  assert.equal(calls, 2) // One idle action draws facing and destination once each.
+  assert.equal(next.turn, 1)
+  assert.deepEqual(next.logs, ['ready', 'noEnemySign'])
+  assert.deepEqual(next.detections, [])
+  assert.equal(translateLog('noEnemySign', 'ja'), '敵の気配は感じない。')
+  assert.equal(translateLog('noEnemySign', 'en'), 'You sense no sign of an enemy.')
+})
+
+test('guidance follows movement, rotation and passage events and rejects invalid boundaries', () => {
+  const map = ['####'], doors = [{ from: { x: 1, y: 0 }, to: { x: 2, y: 0 } }, { from: { x: 2, y: 0 }, to: { x: 3, y: 0 } }]
+  const state = { ...fixture(), enemies: [] }
+  assert.deepEqual(advanceTurn(state, 'up', () => 0, map, doors).logs, ['ready', 'inCorridor', 'doorAhead'])
+  const atDoor = { ...state, player: character({ x: 1, y: 0, facing: 3 }) }
+  assert.deepEqual(advanceTurn(atDoor, 'down', () => 0, map, doors).logs, ['ready', 'noEnemySign', 'doorAhead'])
+  assert.deepEqual(advanceTurn({ ...atDoor, player: { ...atDoor.player, facing: 1 as const } }, 'a', () => 0, map, doors).logs, ['ready', 'enteredRoom', 'inCorridor', 'doorAhead'])
+  for (const bad of [[], [{ from: { x: 0, y: 0 }, to: { x: 2, y: 0 } }], [{ from: { x: 0, y: 0 }, to: { x: 0, y: 1 } }]]) {
+    assert.deepEqual(advanceTurn(state, 'down', () => 0, map, bad).logs, ['ready', 'noEnemySign'])
+  }
+  assert.equal(translateLog('doorAhead', 'ja'), '正面に扉がある。')
+  assert.equal(translateLog('doorAhead', 'en'), 'There is a door in front of you.')
+})
+
+test('capture suppresses both guidance events, retains detection then game over and stops later AI', () => {
+  const state = fixture(character({ x: 0, y: 0, facing: 0 }), enemy(1, 0, 3))
+  const later = { ...enemy(2, 0, 1), id: 'later' }
+  const next = advanceTurn({ ...state, enemies: [...state.enemies, later] }, 'right', () => { assert.fail('later idle enemy must not run') }, ['###'])
+  assert.equal(next.gameOver, true)
+  assert.equal(next.enemies[1], later)
+  assert.deepEqual(next.logs.map(e => typeof e === 'string' ? e : e.kind), ['ready', 'hearing', 'sight', 'gameOver'])
+  const overlapping = advanceTurn({ ...state, enemies: [enemy(0, 0)] }, 'right', () => { assert.fail('AI must not run') }, ['##'], [{ from: { x: 0, y: 0 }, to: { x: 1, y: 0 } }])
+  assert.deepEqual(overlapping.logs, ['ready', 'gameOver'])
+})
+
+test('hearing precedes door guidance and suppresses no-sign even across a closed door', () => {
+  const state = fixture(character({ x: 1, y: 0, facing: 0 }), { ...enemy(3, 0, 3), destination: { x: 2, y: 0 } })
+  const next = advanceTurn(state, 'right', () => 0, ['####'], [{ from: { x: 1, y: 0 }, to: { x: 2, y: 0 } }])
+  assert.deepEqual(next.logs.map(e => typeof e === 'string' ? e : e.kind), ['ready', 'hearing', 'doorAhead'])
+  assert.equal(next.turn, 1)
+  assert.equal(next.enemies[0]!.x, 2)
+  assert.equal(next.detections.length, 1)
 })

@@ -95,3 +95,14 @@ test('location classification uses all five documented room bounds and rejects n
   assert.equal(locationKind(map, { x: 16, y: 2 }), null)
   assert.equal(locationKind(['###', '###', '###'], { x: 2, y: 2 }), 'corridor', 'custom floors must not inherit sample rooms')
 })
+
+test('inspection door predicate accepts only adjacent floor boundaries in front', async () => {
+  const { facingDoor } = await import('../src/dungeon.ts')
+  const map = ['###', '# #'], p = { x: 1, y: 0, facing: 1 as const }
+  const valid = [{ from: { x: 1, y: 0 }, to: { x: 2, y: 0 } }]
+  assert.equal(facingDoor(map, p, valid), true)
+  assert.equal(facingDoor(map, { ...p, facing: 3 }, valid), false)
+  assert.equal(facingDoor(map, { ...p, facing: 2 }, [{ from: p, to: { x: 1, y: 1 } }]), false)
+  assert.equal(facingDoor(map, p, [{ from: p, to: { x: 3, y: 0 } }]), false)
+  assert.equal(facingDoor(map, { x: 1, y: 1, facing: 0 }, [{ from: { x: 1, y: 1 }, to: p }]), false)
+})
