@@ -7,13 +7,14 @@ import { renderDungeon } from './renderer.ts'
 import { initialLanguage, t, translateLog } from './i18n.ts'
 import type { Language } from './i18n.ts'
 import { advanceTurn, createGame } from './game.ts'
-import { commandText, menuOptions, pendingCommand } from './commands.ts'
+import { commandText, menuOptions, pendingCommand, canGoBack, optionPage } from './commands.ts'
 import type { MenuState, CommandId, HistoryEntry } from './commands.ts'
 let game = createGame()
 let player = game.player
 let language: Language = initialLanguage()
 let menuOpen = false
 let ui: MenuState = 'normal'
+let currentPage = 0
 const history: HistoryEntry[] = game.logs.map(event => ({ kind: 'event', event }))
 let view: '3d' | '2d' = '3d'
 let mapCenter: Cell = clampMapCenter(DUNGEON_MAP, player)
@@ -30,6 +31,10 @@ app.innerHTML = `<main class="terminal">
   </div>
   <section class="log" role="log" aria-live="polite" aria-relevant="additions" tabindex="0"></section>
   <div class="controls"></div>
+  <div class="operation-row">
+    <button class="back-button" data-command="back"></button>
+    <nav class="pagination"><button class="previous-page">＜</button><span class="page-number"></span><button class="next-page">＞</button></nav>
+  </div>
 </main>`
 function element<T extends HTMLElement>(selector: string) { return app.querySelector<T>(selector)! }
 const dungeon = element('.dungeon'), log = element('.log')
@@ -41,7 +46,17 @@ function renderMenu() {
   for (const button of menu.querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.language === language))
 }
 function closeMenu(focus = false) { menuOpen = false; renderMenu(); if (focus) menuButton.focus() }
-function renderHistory() {
+let renderedHistoryLength = -1
+let renderedLanguage: Language | undefined
+function renderHistory(preserveScroll = false) {
+  // UI-only operations keep existing log nodes and their scroll position.
+  if (renderedHistoryLength === history.length && renderedLanguage === language) {
+    element('.prompt').textContent = commandText(pendingCommand(ui), language)
+    return
+  }
+  renderedHistoryLength = history.length
+  renderedLanguage = language
+  const scrollTop = log.scrollTop
   log.replaceChildren()
   for (const entry of history) {
     const line = document.createElement('p')
@@ -54,14 +69,14 @@ function renderHistory() {
   prompt.className = 'prompt'
   prompt.textContent = commandText(pendingCommand(ui), language)
   log.append(prompt)
-  log.scrollTop = log.scrollHeight
+  log.scrollTop = preserveScroll ? scrollTop : log.scrollHeight
 }
 function facingDoor() {
   const v = VECTORS[player.facing], target = { x: player.x + v.x, y: player.y + v.y }
   return isFloor(DUNGEON_MAP, player.x, player.y) && isFloor(DUNGEON_MAP, target.x, target.y)
     && !!doorBetween(DOORS, player, target)
 }
-function render() {
+function render(preserveScroll = false) {
   document.documentElement.lang = language
   dungeon.innerHTML = view === '3d' ? renderDungeon(DUNGEON_MAP, player) : renderMap(DUNGEON_MAP, player, visited, undefined, mapCenter, game.detections)
   dungeon.dataset.turn = String(game.turn); dungeon.dataset.gameOver = String(game.gameOver)
@@ -75,7 +90,9 @@ function render() {
   const controls = element('.controls')
   controls.replaceChildren()
   controls.dataset.menu = ui
-  for (const option of menuOptions(ui, facingDoor(), game.gameOver)) {
+  const page = optionPage(menuOptions(ui, facingDoor(), game.gameOver), currentPage)
+  currentPage = page.page
+  for (const option of page.slots) {
     if (!option) { const blank = document.createElement('div'); blank.className = 'empty-slot'; controls.append(blank); continue }
     const button = document.createElement('button')
     button.dataset.command = option.id
@@ -84,8 +101,18 @@ function render() {
     button.addEventListener('click', () => choose(option.id))
     controls.append(button)
   }
+  const back = element<HTMLButtonElement>('.back-button')
+  back.textContent = t('back', language)
+  back.disabled = !canGoBack(ui)
+  element('.page-number').textContent = `${page.page + 1} / ${page.totalPages}`
+  const previous = element<HTMLButtonElement>('.previous-page'), next = element<HTMLButtonElement>('.next-page')
+  previous.disabled = page.page === 0
+  next.disabled = page.page === page.totalPages - 1
+  previous.setAttribute('aria-label', t('previousPage', language))
+  next.setAttribute('aria-label', t('nextPage', language))
+  element('.pagination').setAttribute('aria-label', t('pages', language))
   renderMenu()
-  renderHistory()
+  renderHistory(preserveScroll)
 }
 function commit(ids: readonly CommandId[]) { history.push({ kind: 'command', ids: [...ids] }) }
 function performTurn(action: Direction | 'a') {
@@ -97,7 +124,8 @@ function performTurn(action: Direction | 'a') {
 }
 function choose(id: CommandId) {
   // Validate against the current menu, including game-over restrictions.
-  if (!menuOptions(ui, facingDoor(), game.gameOver).some(option => option?.id === id && !option.disabled)) return
+  if (id === 'back' ? !canGoBack(ui) : !optionPage(menuOptions(ui, facingDoor(), game.gameOver), currentPage).slots.some(option => option?.id === id && !option.disabled)) return
+  const previousMenu = ui, previousHistoryLength = history.length
   if (ui === 'normal') ui = id === 'move' ? 'movement' : id === 'inspect' ? 'inspection' : 'inventory'
   else if (id === 'back') ui = 'normal'
   else if (ui === 'movement') {
@@ -113,20 +141,26 @@ function choose(id: CommandId) {
     if (id === 'yes' && !game.gameOver && facingDoor()) performTurn('a')
     ui = 'normal'
   } else if (ui === 'inventory' && id === 'itemMap') {
-    commit(['items', 'itemMap'])
     mapCenter = clampMapCenter(DUNGEON_MAP, player)
     view = '2d'; ui = 'map'
   } else if (ui === 'map') {
-    commit(['items', 'itemMap', id])
     if (id === 'close') { view = '3d'; ui = 'normal' }
     else mapCenter = scrollMap(DUNGEON_MAP, mapCenter, ({ mapUp: 'up', mapDown: 'down', mapLeft: 'left', mapRight: 'right' } as const)[id as 'mapUp' | 'mapDown' | 'mapLeft' | 'mapRight'])
   }
-  closeMenu(); render()
+  if (ui !== previousMenu) currentPage = 0
+  closeMenu(); render(history.length === previousHistoryLength)
+}
+element('.back-button').addEventListener('click', () => choose('back'))
+for (const [selector, delta] of [['.previous-page', -1], ['.next-page', 1]] as const) {
+  element(selector).addEventListener('click', () => {
+    currentPage = optionPage(menuOptions(ui, facingDoor(), game.gameOver), currentPage + delta).page
+    render(true)
+  })
 }
 menuButton.addEventListener('click', () => { menuOpen = !menuOpen; renderMenu() })
 for (const button of menu.querySelectorAll<HTMLButtonElement>('button')) button.addEventListener('click', () => {
   language = button.dataset.language as Language
-  closeMenu(true); render()
+  closeMenu(true); render(true)
 })
 document.addEventListener('pointerdown', event => {
   if (menuOpen && event.target instanceof Node && !menu.contains(event.target) && !menuButton.contains(event.target)) closeMenu(menu.contains(document.activeElement))

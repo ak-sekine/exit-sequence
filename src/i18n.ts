@@ -2,6 +2,7 @@ import type { LogEvent } from './game.ts'
 export type Language = 'ja' | 'en'
 const text = (ja: string, en: string) => ({ ja, en })
 export const messages = {
+  previousPage: text('前のページ', 'Previous page'), nextPage: text('次のページ', 'Next page'), pages: text('ページ切り替え', 'Pagination'),
   move: text('移動', 'Move'), inspect: text('調べる', 'Inspect'), items: text('持ち物', 'Items'),
   forward: text('前進', 'Forward'), turnBack: text('後ろを向く', 'Turn around'),
   turnLeft: text('左を向く', 'Turn left'), turnRight: text('右を向く', 'Turn right'),
