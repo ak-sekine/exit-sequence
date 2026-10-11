@@ -131,7 +131,6 @@ function choose(id: CommandId) {
   else if (ui === 'movement') {
     commit(['move', id])
     performTurn(({ forward: 'up', turnBack: 'down', turnLeft: 'left', turnRight: 'right' } as const)[id as 'forward' | 'turnBack' | 'turnLeft' | 'turnRight'])
-    ui = 'normal'
   } else if (ui === 'inspection' && id === 'door') {
     commit(['inspect', 'door'])
     history.push({ kind: 'message', message: 'doorConfirmation' })

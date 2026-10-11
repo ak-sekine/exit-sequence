@@ -27,7 +27,7 @@ try {
   const visited = initialVisited(model), history = [{ kind: 'event', event: 'ready' }]
   const lines = () => history.map(e => e.kind === 'command' ? commandText(e.ids, language) : e.kind === 'message' ? t(e.message, language) : translateLog(e.event, language))
   const check = async () => {
-   assert.deepEqual(await page.locator('.log p').allTextContents(), [...lines(), '>'])
+   assert.deepEqual(await page.locator('.log p').allTextContents(), [...lines(), commandText((await page.locator('.controls').getAttribute('data-menu')) === 'movement' ? ['move'] : [], language)])
    assert.deepEqual(await page.locator('.dungeon').evaluate(el => [+el.dataset.x, +el.dataset.y, +el.dataset.facing, +el.dataset.turn]), [model.x, model.y, model.facing, turn])
    assert.equal(await page.locator('.direction-value').textContent(), (language === 'ja' ? ['北', '東', '南', '西'] : ['N', 'E', 'S', 'W'])[model.facing])
   }
@@ -63,10 +63,19 @@ try {
    if (result.message !== 'blocked') turn++
    if (['blocked', 'enteredRoom', 'returnedCorridor'].includes(result.message)) history.push({ kind: 'event', event: result.message })
    await check()
+   assert.equal(await page.locator('.controls').getAttribute('data-menu'), action === 'a' ? 'normal' : 'movement')
+   assert.equal(await page.locator('.page-number').textContent(), '1 / 1')
   }
   for (let i = 0; i < 3; i++) await perform('up')
   await perform('up') // blocked door
   const beforeDoor = await page.evaluate(() => window.snapshot())
+  const beforeBack = await page.evaluate(() => window.snapshot())
+  const backHistory = await page.locator('.log [data-kind]').allTextContents()
+  await changeLanguage(); await check(); await changeLanguage(); await check()
+  await click(page, 'back'); await check()
+  assert.deepEqual((await page.evaluate(() => window.snapshot())).game, beforeBack.game)
+  assert.deepEqual((await page.evaluate(() => window.snapshot())).visited, beforeBack.visited)
+  assert.deepEqual(await page.locator('.log [data-kind]').allTextContents(), backHistory)
   await click(page, 'inspect'); await click(page, 'door')
   commit(['inspect', 'door']); history.push({ kind: 'message', message: 'doorConfirmation' })
   assert.deepEqual(await page.locator('.controls button').evaluateAll(es => es.map(e => e.dataset.command)), ['yes', 'no'])
@@ -111,6 +120,8 @@ try {
   for (const size of [{ width: 320, height: 640 }, { width: 320, height: 320 }, { width: 320, height: 240 }, { width: 1280, height: 800 }]) { await page.setViewportSize(size); await layout() }
   await page.setViewportSize({ width: 320, height: 480 })
   await page.addStyleTag({ content: '.terminal { --safe-top:24px; --safe-right:16px; --safe-bottom:20px; --safe-left:16px; }' }); await layout()
+  if (await page.locator('.controls').getAttribute('data-menu') === 'movement') await click(page, 'back')
+  await check()
   await click(page, 'items'); await layout()
   assert.equal(await page.locator('.controls [data-command=back]').count(), 0)
   assert.equal(await page.locator('.back-button').isDisabled(), false)
@@ -185,11 +196,19 @@ window.snapshot = () => ({ game, history, visited: [...visited], ui, currentPage
  const afterPaging = await paging.evaluate(() => window.snapshot())
  assert.deepEqual({ ...afterPaging, currentPage: 0 }, frozenPaging)
  assert.equal(await paging.locator('.log').textContent(), pending)
+ await click(paging, 'turnBack')
+ assert.equal(await paging.locator('.controls').getAttribute('data-menu'), 'movement')
+ assert.equal(await paging.locator('.page-number').textContent(), '3 / 3')
+ assert.equal(await paging.locator('.prompt').textContent(), '> Move')
+ assert.equal((await paging.evaluate(() => window.snapshot())).currentPage, 2)
+ const beforePagingBack = await paging.evaluate(() => window.snapshot())
  await paging.locator('.previous-page').tap()
  assert.equal(await paging.locator('.page-number').textContent(), '2 / 3')
  await click(paging, 'back')
  assert.equal(await paging.locator('.page-number').textContent(), '1 / 1')
- assert.deepEqual((await paging.evaluate(() => window.snapshot())).game, frozenPaging.game)
+ assert.deepEqual((await paging.evaluate(() => window.snapshot())).game, beforePagingBack.game)
+ assert.deepEqual((await paging.evaluate(() => window.snapshot())).history, beforePagingBack.history)
+ assert.equal(await paging.locator('.prompt').textContent(), '>')
  await click(paging, 'move')
  assert.equal(await paging.locator('.page-number').textContent(), '1 / 3')
  await pagingContext.close()

@@ -40,7 +40,7 @@ try {
         const id = { up: 'forward', down: 'turnBack', left: 'turnLeft', right: 'turnRight' }[a]
         assert.deepEqual(await page.locator('.log p').allTextContents(), [
           ...beforeLines.slice(0, -1), commandText(['move', id], locale),
-          ...game.logs.slice(before.logs.length).map(e => translateLog(e, locale)), '>',
+          ...game.logs.slice(before.logs.length).map(e => translateLog(e, locale)), commandText(['move'], locale),
         ])
       } else assert.deepEqual(await page.locator('.log p').allTextContents(), beforeLines)
     }
@@ -67,13 +67,18 @@ try {
     assert.equal((await logs()).at(-1), translateLog('gameOver', locale))
     const frozen = await state(), count = (await logs()).length
     const endedHistory = await page.locator('.log').innerHTML()
-    for (const id of ['move', 'inspect']) {
+    assert.equal(await page.locator('.controls').getAttribute('data-menu'), 'movement')
+    for (const id of ['forward', 'turnBack', 'turnLeft', 'turnRight']) {
       const button = page.locator(`[data-command="${id}"]`)
       assert.ok(await button.isDisabled())
       await button.evaluate(el => el.dispatchEvent(new MouseEvent('click', { bubbles: true })))
     }
     assert.equal(await page.locator('.log').innerHTML(), endedHistory)
     for (const a of ['up', 'left', 'right', 'down', 'a']) await action(a)
+    await click(page, 'back')
+    assert.equal(await page.locator('.prompt').textContent(), '>')
+    assert.deepEqual(await state(), frozen)
+    assert.deepEqual(await page.locator('.log [data-kind=event]').allTextContents(), game.logs.map(e => translateLog(e, locale)))
     await toggleMap(page)
     assert.equal(await page.locator('[data-map-enemy]').count(), game.detections.length)
     for (const d of ['up', 'left', 'down', 'right']) await click(page, { up: 'mapUp', down: 'mapDown', left: 'mapLeft', right: 'mapRight' }[d])
