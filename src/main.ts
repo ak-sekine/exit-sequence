@@ -140,6 +140,7 @@ function choose(id: CommandId) {
     if (id === 'yes' && !game.gameOver && facingDoor()) performTurn('a')
     ui = 'normal'
   } else if (ui === 'inventory' && id === 'itemMap') {
+    commit(['items', 'itemMap'])
     mapCenter = clampMapCenter(DUNGEON_MAP, player)
     view = '2d'; ui = 'map'
   } else if (ui === 'map') {

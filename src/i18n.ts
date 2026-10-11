@@ -22,6 +22,8 @@ export const messages = {
   gameOver: text('敵に捕まった。GAME OVER', 'Caught by the enemy. GAME OVER'),
   menu: text('言語メニュー', 'Language menu'),
   dungeon: text('3Dダンジョン', '3D dungeon'), log: text('ログ', 'Log'),
+  inCorridor: text('通路にいる。', 'In a corridor.'),
+  inRoom: text('部屋にいる。', 'In a room.'),
   ready: text('通路にいる。', 'In a corridor.'),
   enteredRoom: text('扉を開けて部屋に入った。', 'Opened the door and entered the room.'),
   returnedCorridor: text('扉を開けて通路に戻った。', 'Opened the door and returned to the corridor.'),

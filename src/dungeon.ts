@@ -33,6 +33,20 @@ export type Direction = 'up' | 'left' | 'right' | 'down'
 export const INITIAL_PLAYER: Player = Object.freeze({ x: 2, y: 14, facing: 0 })
 export const VECTORS = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }] as const
 export const isFloor = (map: DungeonMap, x: number, y: number) => map[y]?.[x] === '#'
+// Inclusive room bounds from docs/dungeon-sample.md; only the sample map has room metadata.
+const ROOM_REGIONS = [
+  { minX: 1, maxX: 4, minY: 1, maxY: 3 },
+  { minX: 10, maxX: 14, minY: 1, maxY: 4 },
+  { minX: 6, maxX: 8, minY: 6, maxY: 8 },
+  { minX: 1, maxX: 4, minY: 8, maxY: 10 },
+  { minX: 10, maxX: 14, minY: 10, maxY: 13 },
+] as const
+export function locationKind(map: DungeonMap, cell: Cell): 'room' | 'corridor' | null {
+  if (!isFloor(map, cell.x, cell.y)) return null
+  return map === DUNGEON_MAP && ROOM_REGIONS.some(room =>
+    cell.x >= room.minX && cell.x <= room.maxX && cell.y >= room.minY && cell.y <= room.maxY)
+    ? 'room' : 'corridor'
+}
 const sameCell = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y
 export function doorBetween(doors: readonly Door[], a: Cell, b: Cell): Door | undefined {
   return doors.find(d => (sameCell(d.from, a) && sameCell(d.to, b)) || (sameCell(d.to, a) && sameCell(d.from, b)))

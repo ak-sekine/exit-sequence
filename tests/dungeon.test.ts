@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { DUNGEON_MAP as map, DOORS, INITIAL_PLAYER, move, isFloor, passDoor, doorBetween, VECTORS } from '../src/dungeon.ts'
+import { DUNGEON_MAP as map, DOORS, INITIAL_PLAYER, move, isFloor, passDoor, doorBetween, VECTORS, locationKind } from '../src/dungeon.ts'
 import { renderDungeon } from '../src/renderer.ts'
 import type { Facing } from '../src/dungeon.ts'
 import { explore } from './exploration.ts'
@@ -82,4 +82,16 @@ test('custom maps and door boundaries use common movement and rendering', () => 
     assert.ok(svg.includes('<polygon fill="var(--dungeon-background, #030806)"'))
     assert.ok(!/NaN|Infinity/.test(svg))
   }
+})
+
+
+test('location classification uses all five documented room bounds and rejects non-floor cells', () => {
+  const bounds = [[1, 4, 1, 3], [10, 14, 1, 4], [6, 8, 6, 8], [1, 4, 8, 10], [10, 14, 10, 13]]
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const expected = !isFloor(map, x, y) ? null : bounds.some(([x0, x1, y0, y1]) => x >= x0! && x <= x1! && y >= y0! && y <= y1!) ? 'room' : 'corridor'
+    assert.equal(locationKind(map, { x, y }), expected, `${x},${y}`)
+  }
+  assert.equal(locationKind(map, { x: -1, y: 2 }), null)
+  assert.equal(locationKind(map, { x: 16, y: 2 }), null)
+  assert.equal(locationKind(['###', '###', '###'], { x: 2, y: 2 }), 'corridor', 'custom floors must not inherit sample rooms')
 })

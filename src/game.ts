@@ -1,6 +1,6 @@
 import { character } from './character.ts'
 import type { Character } from './character.ts'
-import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor } from './dungeon.ts'
+import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor, locationKind } from './dungeon.ts'
 import type { Direction, Door, DungeonMap } from './dungeon.ts'
 import { enemyTurn, INITIAL_ENEMY } from './enemy.ts'
 import type { Enemy } from './enemy.ts'
@@ -17,8 +17,12 @@ export function advanceTurn(state: GameState, action: Direction | 'a', random: (
   if (!result) return state
   if (result.message === 'blocked') return { ...state, logs: [...state.logs, result.message] }
   const player = { ...state.player, ...result.player }, logs: LogEvent[] = [...state.logs]
-  // Only door events enter successful turn history; ordinary actions still run the full turn.
+  // Keep door passage events before the destination description.
   if (result.message === 'enteredRoom' || result.message === 'returnedCorridor') logs.push(result.message)
+  if (!sameCell(state.player, player)) {
+    const location = locationKind(map, player)
+    if (location) logs.push(location === 'room' ? 'inRoom' : 'inCorridor')
+  }
   let next: GameState = { ...state, player, turn: state.turn + 1, logs, detections: [] }
   const caught = (enemies: readonly Enemy[]) => enemies.some(enemy => sameCell(player, enemy))
   if (caught(state.enemies)) return { ...next, gameOver: true, logs: [...logs, 'gameOver'] }

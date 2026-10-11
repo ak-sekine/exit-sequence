@@ -9,18 +9,18 @@ import { move, DUNGEON_MAP, INITIAL_PLAYER, isFloor } from '../src/dungeon.ts'
 import { translateLog } from '../src/i18n.ts'
 const enemy = (x: number, y: number, facing: 0 | 1 | 2 | 3 = 1) => ({ ...character({ x, y, facing }), id: 'e', destination: null })
 const fixture = (player = character({ x: 0, y: 0, facing: 1 }), e = enemy(3, 0)): GameState => ({ ...createGame(), player, enemies: [e] })
-test('ordinary forward movement and every rotation advance turns without entering log history', () => {
+test('forward movement describes its destination; rotations only advance turns', () => {
   let state = { ...fixture(), enemies: [] }
   for (const action of ['up', 'left', 'right', 'down'] as const) {
     const before = state
     state = advanceTurn(state, action, () => 0, ['###']) as typeof state
     assert.equal(state.turn, before.turn + 1)
     assert.deepEqual(state.player, { ...before.player, ...move(['###'], before.player, action).player })
-    assert.deepEqual(state.logs, ['ready'])
+    assert.deepEqual(state.logs, ['ready', 'inCorridor'])
   }
   assert.equal(state.player.x, 1)
   for (const language of ['ja', 'en'] as const) {
-    assert.deepEqual(state.logs.map(event => translateLog(event, language)), [translateLog('ready', language)])
+    assert.deepEqual(state.logs.map(event => translateLog(event, language)), [translateLog('ready', language), translateLog('inCorridor', language)])
   }
 })
 test('failed movement and both door passage events remain in history', () => {
@@ -30,22 +30,22 @@ test('failed movement and both door passage events remain in history', () => {
   assert.deepEqual(state.logs, ['ready', 'blocked'])
   assert.equal(state.player.x, 0); assert.equal(state.turn, 0)
   state = advanceTurn(state, 'a', () => 0, ['##'], door) as typeof state
-  assert.deepEqual(state.logs, ['ready', 'blocked', 'enteredRoom'])
+  assert.deepEqual(state.logs, ['ready', 'blocked', 'enteredRoom', 'inCorridor'])
   assert.equal(state.player.x, 1); assert.equal(state.turn, 1)
   state = advanceTurn(state, 'down', () => 0, ['##'], door) as typeof state
   state = advanceTurn(state, 'a', () => 0, ['##'], door) as typeof state
-  assert.deepEqual(state.logs, ['ready', 'blocked', 'enteredRoom', 'returnedCorridor'])
+  assert.deepEqual(state.logs, ['ready', 'blocked', 'enteredRoom', 'inCorridor', 'returnedCorridor', 'inCorridor'])
   assert.equal(state.player.x, 0); assert.equal(state.turn, 3)
   const wall = advanceTurn(state, 'up', () => 0, ['##'], door)
   assert.equal(wall.logs.at(-1), 'blocked'); assert.equal(wall.turn, 3)
 })
-test('silent forward action still creates sound for enemy hearing and retains detection logs', () => {
+test('forward description precedes detection and still creates sound for enemy hearing and retains detection logs', () => {
   // Player walks east while the nearby enemy faces away from the player.
   const state = fixture(character({ x: 0, y: 0, facing: 1 }), enemy(3, 0, 1))
   const next = advanceTurn(state, 'up', () => 0, ['#####'])
   assert.deepEqual(next.enemies[0]!.destination, { x: 1, y: 0 })
   assert.equal(next.enemies[0]!.facing, 3); assert.equal(next.enemies[0]!.x, 3)
-  assert.deepEqual(next.logs.map(event => typeof event === 'string' ? event : event.kind), ['ready', 'sight'])
+  assert.deepEqual(next.logs.map(event => typeof event === 'string' ? event : event.kind), ['ready', 'inCorridor', 'sight'])
   assert.equal(next.turn, 1)
 })
 test('initial enemy valid, distinct and in accessible corridor', () => {
@@ -110,7 +110,7 @@ test('both collision phases end game, player collision prevents enemy action', (
   const b = advanceTurn(fixture(character({ x: 0, y: 0, facing: 0 }), enemy(1, 0, 3)), 'right', () => 0, ['##'])
   assert.ok(b.gameOver); assert.equal(b.enemies[0]!.x, 0)
   assert.equal(b.logs.at(-1), 'gameOver')
-  assert.deepEqual(a.logs, ['ready', 'gameOver'])
+  assert.deepEqual(a.logs, ['ready', 'inCorridor', 'gameOver'])
 })
 test('sight log wins over simultaneous movement sound, repeated detection logs are retained', () => {
   const state = fixture(character({ x: 0, y: 0, facing: 0 }), enemy(3, 0, 3))
@@ -181,4 +181,39 @@ for (const [reason, map, doors] of [
 test('blocked advance does not perform a new collision check', () => {
   const state = fixture(character({ x: 0, y: 0, facing: 1 }), enemy(0, 0))
   assert.deepEqual(advanceTurn(state, 'up', () => 0, ['#']), { ...state, logs: [...state.logs, 'blocked'] })
+})
+
+test('sample destinations use room metadata, preserve input, and translate both location events', () => {
+  for (const [start, action, events] of [
+    [{ x: 2, y: 14, facing: 0 }, 'up', ['inCorridor']],
+    [{ x: 2, y: 10, facing: 0 }, 'up', ['inRoom']],
+    [{ x: 2, y: 11, facing: 0 }, 'a', ['enteredRoom', 'inRoom']],
+    [{ x: 2, y: 10, facing: 2 }, 'a', ['returnedCorridor', 'inCorridor']],
+  ] as const) {
+    const state: GameState = { ...createGame(), player: character(start), enemies: [] }
+    const before = structuredClone(state)
+    const next = advanceTurn(state, action)
+    assert.deepEqual(state, before)
+    assert.equal(next.turn, 1)
+    assert.deepEqual(next.logs, ['ready', ...events])
+    assert.deepEqual(next.detections, [])
+    assert.equal(next.gameOver, false)
+  }
+  assert.equal(translateLog('inCorridor', 'ja'), '通路にいる。')
+  assert.equal(translateLog('inCorridor', 'en'), 'In a corridor.')
+  assert.equal(translateLog('inRoom', 'ja'), '部屋にいる。')
+  assert.equal(translateLog('inRoom', 'en'), 'In a room.')
+  assert.deepEqual(createGame().logs, ['ready'])
+})
+
+test('destination description precedes detection and capture without changing collision priority', () => {
+  const state = fixture(character({ x: 2, y: 14, facing: 0 }), enemy(2, 12, 2))
+  const next = advanceTurn(state, 'up', () => 0)
+  assert.equal(next.gameOver, true)
+  assert.deepEqual(next.logs.map(e => typeof e === 'string' ? e : e.kind), ['ready', 'inCorridor', 'hearing', 'gameOver'])
+  const occupied = { ...state, enemies: [enemy(2, 13, 2)] }
+  const collision = advanceTurn(occupied, 'up', () => { assert.fail('enemy must not act') })
+  assert.deepEqual(collision.logs, ['ready', 'inCorridor', 'gameOver'])
+  assert.deepEqual(collision.detections, [])
+  assert.equal(collision.enemies, occupied.enemies)
 })

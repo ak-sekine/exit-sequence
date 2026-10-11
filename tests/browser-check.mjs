@@ -2,7 +2,7 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import { click, moveCommand, toggleMap, passDoorCommand } from './command-helpers.mjs'
-import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor } from '../src/dungeon.ts'
+import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor, locationKind } from '../src/dungeon.ts'
 import { initialVisited, recordMovement, renderMap, clampMapCenter, scrollMap } from '../src/automap.ts'
 import { renderDungeon } from '../src/renderer.ts'
 import { explore } from './exploration.ts'
@@ -20,7 +20,7 @@ try {
    const response = await route.fetch()
    const body = (await response.text()).replace('let game = createGame();', 'let game = { ...createGame(), enemies: [] };')
    assert.ok(body.includes('enemies: []'))
-   await route.fulfill({ response, body: body + '\nwindow.snapshot = () => ({ game, visited: [...visited], ui });' })
+   await route.fulfill({ response, body: body + '\nwindow.snapshot = () => ({ game, history, visited: [...visited], ui });' })
   })
   await page.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
   let language = locale, model = INITIAL_PLAYER, turn = 0
@@ -59,9 +59,11 @@ try {
     commit(['move', { up: 'forward', down: 'turnBack', left: 'turnLeft', right: 'turnRight' }[action]])
     await moveCommand(page, action)
    }
+   const moved = model.x !== result.player.x || model.y !== result.player.y
    recordMovement(visited, model, result.player); model = result.player
    if (result.message !== 'blocked') turn++
    if (['blocked', 'enteredRoom', 'returnedCorridor'].includes(result.message)) history.push({ kind: 'event', event: result.message })
+   if (moved) history.push({ kind: 'event', event: locationKind(DUNGEON_MAP, model) === 'room' ? 'inRoom' : 'inCorridor' })
    await check()
    assert.equal(await page.locator('.controls').getAttribute('data-menu'), action === 'a' ? 'normal' : 'movement')
    assert.equal(await page.locator('.page-number').textContent(), '1 / 1')
@@ -126,9 +128,15 @@ try {
   assert.equal(await page.locator('.controls [data-command=back]').count(), 0)
   assert.equal(await page.locator('.back-button').isDisabled(), false)
   await page.locator('.log').evaluate(el => { el.scrollTop = 12 })
+  const beforeMap = await page.evaluate(() => window.snapshot())
+  await click(page, 'itemMap'); commit(['items', 'itemMap']); await check(); await layout()
+  const openedMap = await page.evaluate(() => window.snapshot())
+  assert.deepEqual(openedMap.history, [...beforeMap.history, { kind: 'command', ids: ['items', 'itemMap'] }])
+  assert.deepEqual(openedMap.game, beforeMap.game)
+  assert.deepEqual(openedMap.visited, beforeMap.visited)
+  assert.ok(await page.locator('.log').evaluate(el => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 1))
+  await page.locator('.log').evaluate(el => { el.scrollTop = 12 })
   const logScroll = await page.locator('.log').evaluate(el => el.scrollTop)
-  await click(page, 'itemMap'); await check(); await layout()
-  assert.equal(await page.locator('.log').evaluate(el => el.scrollTop), logScroll)
   assert.equal(await page.locator('.controls > :nth-child(5)').getAttribute('data-command'), 'close')
   const frozen = await page.evaluate(() => window.snapshot())
   let center = clampMapCenter(DUNGEON_MAP, model)
@@ -139,6 +147,7 @@ try {
    assert.equal(await page.locator('.log').evaluate(el => el.scrollTop), logScroll)
    const actual = await page.evaluate(() => window.snapshot())
    assert.deepEqual(actual.game, frozen.game); assert.deepEqual(actual.visited, frozen.visited)
+   assert.deepEqual(actual.history, frozen.history)
   }
   const expectedMap = renderMap(DUNGEON_MAP, model, visited, undefined, center)
   const normalized = await page.evaluate(svg => { const el = document.createElement('div'); el.innerHTML = svg; return el.innerHTML }, expectedMap)
@@ -146,8 +155,12 @@ try {
   await changeLanguage(); await check()
   assert.equal(await page.locator('.dungeon').innerHTML(), normalized)
   await page.screenshot({ path: `${artifacts}/${locale}-commands-map.png` })
+  const scrollBeforeClose = await page.locator('.log').evaluate(el => el.scrollTop)
   await click(page, 'close'); await check()
-  await toggleMap(page)
+  assert.equal(await page.locator('.log').evaluate(el => el.scrollTop), scrollBeforeClose)
+  assert.deepEqual((await page.evaluate(() => window.snapshot())).history, frozen.history)
+  await toggleMap(page); commit(['items', 'itemMap']); await check()
+  assert.ok(await page.locator('.log').evaluate(el => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 1))
   assert.deepEqual(await page.locator('.dungeon').evaluate(el => ({ x: +el.dataset.centerX, y: +el.dataset.centerY })), clampMapCenter(DUNGEON_MAP, model))
   await click(page, 'close')
   const status = await page.locator('.status').boundingBox()
