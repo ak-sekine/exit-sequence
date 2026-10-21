@@ -1,71 +1,75 @@
-import { DUNGEON_MAP, DOORS, doorBetween, isFloor, VECTORS } from './dungeon.ts'
-import type { Cell, Direction, Door, DungeonMap, Player } from './dungeon.ts'
+import { cellAt, cellKey, doorBetween, isFloor } from './dungeon.ts'
+import type { Door, DungeonMap, Player } from './dungeon.ts'
 import type { EnemyDetection } from './senses.ts'
 
-export const cellKey = (cell: Cell) => `${cell.x},${cell.y}`
-export const initialVisited = (player: Player): Set<string> => new Set([cellKey(player)])
-export function recordMovement(visited: Set<string>, before: Player, after: Player): void {
-  if (before.x !== after.x || before.y !== after.y) visited.add(cellKey(after))
+export const MAP_CELL_SIZE = 20
+export const MAP_VIEW_SIZE = 320
+export const initialVisited = (player: Player): Set<string> => new Set([cellKey(cellAt(player))])
+
+export function recordMovement(visited: ReadonlySet<string>, before: Player, after: Player): ReadonlySet<string> {
+  const beforeCell = cellAt(before), afterCell = cellAt(after)
+  if (beforeCell.x === afterCell.x && beforeCell.y === afterCell.y) return visited
+  return new Set([...visited, cellKey(afterCell)])
 }
 
-export const MAP_CELL_SIZE = 24
-export const MAP_VIEW_WIDTH = 320
-export const MAP_VIEW_HEIGHT = 200
-// Centers use world cell coordinates, independently of the player and history.
-export function clampMapCenter(map: DungeonMap, center: Cell): Cell {
-  const clampAxis = (value: number, cells: number, viewport: number) => {
-    if (cells * MAP_CELL_SIZE <= viewport) return (cells - 1) / 2
-    const half = viewport / (2 * MAP_CELL_SIZE)
-    return Math.max(half - .5, Math.min(cells - .5 - half, value))
-  }
-  return {
-    x: clampAxis(center.x, Math.max(0, ...map.map(row => row.length)), MAP_VIEW_WIDTH),
-    y: clampAxis(center.y, map.length, MAP_VIEW_HEIGHT),
-  }
-}
-export function scrollMap(map: DungeonMap, center: Cell, direction: Direction): Cell {
-  const delta = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } }[direction]
-  return clampMapCenter(map, { x: center.x + delta.x, y: center.y + delta.y })
+function esc(value: string): string {
+  return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
 }
 
-export function renderMap(map: DungeonMap, player: Player, visited: ReadonlySet<string>, doors: readonly Door[] = map === DUNGEON_MAP ? DOORS : [], center: Cell = clampMapCenter(map, player), detections: readonly EnemyDetection[] = []): string {
+export function renderMap(
+  map: DungeonMap,
+  player: Player,
+  visited: ReadonlySet<string>,
+  doors: readonly Door[] = [],
+  openDoors: readonly boolean[] = [],
+  detections: readonly EnemyDetection[] = [],
+): string {
   const size = MAP_CELL_SIZE
-  const explored = [...visited].map(key => key.split(',').map(Number)).filter(([x, y]) => Number.isInteger(x) && Number.isInteger(y) && isFloor(map, x!, y!))
-  const { x: centerX, y: centerY } = center
-  const cells: string[] = [], edges: string[] = [], seen = new Set<string>()
-  for (const [x, y] of explored) {
-    const px = 160 + (x! - centerX) * size, py = 100 + (y! - centerY) * size
-    if (px + size / 2 < 0 || px - size / 2 > 320 || py + size / 2 < 0 || py - size / 2 > 200) continue
-    const current = x === player.x && y === player.y
-    cells.push(`<g data-map-cell="${x},${y}"${current ? ' data-current="true"' : ''}><rect x="${px - 12}" y="${py - 12}" width="24" height="24" fill="${current ? '#245c38' : '#123c24'}"/></g>`)
-    for (const vector of VECTORS) {
-      const cell = { x: x!, y: y! }, target = { x: x! + vector.x, y: y! + vector.y }
-      const door = doorBetween(doors, cell, target)
-      if (!door && isFloor(map, target.x, target.y)) continue
-      const key = `${x! + vector.x / 2},${y! + vector.y / 2}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      const cx = px + vector.x * 12, cy = py + vector.y * 12
-      // Canonical orientation makes geometry identical from either adjacent cell.
-      const horizontal = vector.y !== 0
-      const point = (along: number, across = 0) => horizontal ? `${cx + along},${cy + across}` : `${cx + across},${cy + along}`
-      const d = door
-        ? [-2, 2].map(offset => `M${point(-10, offset)} L${point(-3, offset)} M${point(3, offset)} L${point(10, offset)}`).join(' ')
-        : `M${point(-12)} L${point(12)}`
-      edges.push(`<path data-map-${door ? 'door' : 'wall'}="${key}" d="${d}"/>`)
+  const explored = [...visited].map(key => key.split(',').map(Number))
+    .filter(([x, y]) => Number.isInteger(x) && Number.isInteger(y) && isFloor(map, x!, y!))
+  const cells: string[] = [], boundaries: string[] = [], drawnDoors = new Set<number>()
+  const known = new Set(explored.map(([x, y]) => `${x},${y}`))
+  for (const [xValue, yValue] of explored) {
+    const x = xValue!, y = yValue!, cell = { x, y }, px = x * size, py = y * size
+    const current = Math.floor(player.x) === x && Math.floor(player.y) === y
+    cells.push(`<rect data-map-cell="${x},${y}"${current ? ' data-current="true"' : ''} x="${px}" y="${py}" width="${size}" height="${size}" fill="${current ? '#245c38' : '#123c24'}"/>`)
+    const edges = [
+      { x: 0, y: -1, x1: px, y1: py, x2: px + size, y2: py },
+      { x: 1, y: 0, x1: px + size, y1: py, x2: px + size, y2: py + size },
+      { x: 0, y: 1, x1: px, y1: py + size, x2: px + size, y2: py + size },
+      { x: -1, y: 0, x1: px, y1: py, x2: px, y2: py + size },
+    ]
+    for (const edge of edges) {
+      const target = { x: x + edge.x, y: y + edge.y }
+      const doorIndex = doors.findIndex(door => doorBetween([door], cell, target) !== undefined)
+      if (doorIndex >= 0) {
+        const actualIndex = doors.indexOf(doors[doorIndex]!)
+        if (drawnDoors.has(actualIndex)) continue
+        drawnDoors.add(actualIndex)
+        const gap = edge.x === 0 ? `M${edge.x1 + 5},${edge.y1} L${edge.x1 + 15},${edge.y1}`
+          : edge.y === 0 ? `M${edge.x1},${edge.y1 + 5} L${edge.x1},${edge.y1 + 15}`
+            : edge.y1 === py ? `M${edge.x1 + 5},${edge.y1} L${edge.x1 + 15},${edge.y1}`
+              : `M${edge.x1},${edge.y1 + 5} L${edge.x1},${edge.y1 + 15}`
+        boundaries.push(`<path data-map-door="${actualIndex}" data-open="${!!openDoors[actualIndex]}" d="${gap}"/>`)
+      } else if (!isFloor(map, target.x, target.y) && !known.has(cellKey(target))) {
+        boundaries.push(`<path data-map-wall="${x},${y},${edge.x},${edge.y}" d="M${edge.x1},${edge.y1} L${edge.x2},${edge.y2}"/>`)
+      } else if (known.has(cellKey(target)) && !isFloor(map, target.x, target.y)) {
+        boundaries.push(`<path data-map-wall="${x},${y},${edge.x},${edge.y}" d="M${edge.x1},${edge.y1} L${edge.x2},${edge.y2}"/>`)
+      }
     }
   }
-  const px = 160 + (player.x - centerX) * size, py = 100 + (player.y - centerY) * size
+
   const markers = detections.map(detection => {
-    const x = 160 + (detection.position.x - centerX) * size, y = 100 + (detection.position.y - centerY) * size
-    if (x < 0 || x > 320 || y < 0 || y > 200) return ''
-    const id = detection.enemyId.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
-    const attributes = `data-map-enemy="${id}" data-detection="${detection.kind}"`
+    const x = detection.position.x * size, y = detection.position.y * size
+    const id = esc(detection.enemyId)
+    const attrs = `data-map-enemy="${id}" data-detection="${detection.kind}"`
     return detection.kind === 'sight'
-      ? `<path ${attributes} fill="#fb7185" d="M0,-8 L6,6 L0,3 L-6,6 Z" transform="translate(${x} ${y}) rotate(${detection.facing * 90})"/>`
-      : `<circle ${attributes} cx="${x}" cy="${y}" r="7" fill="none" stroke="#fb7185" stroke-width="2"/>`
+      ? `<path ${attrs} fill="#fb7185" d="M0,-7 L5,5 L0,2 L-5,5 Z" transform="translate(${x} ${y}) rotate(${detection.heading * 180 / Math.PI})"/>`
+      : `<circle ${attrs} cx="${x}" cy="${y}" r="6" fill="none" stroke="#fb7185" stroke-width="2"/>`
   }).join('')
-  const arrow = px >= 0 && px <= 320 && py >= 0 && py <= 200 && visited.has(cellKey(player)) && isFloor(map, player.x, player.y)
-    ? `<path data-map-arrow="${player.facing}" fill="#e5fff0" d="M0,-8 L6,6 L0,3 L-6,6 Z" transform="translate(${px} ${py}) rotate(${player.facing * 90})"/>` : ''
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" aria-hidden="true"><rect width="320" height="200" fill="#000"/><svg width="320" height="200" viewBox="0 0 320 200" overflow="hidden">${cells.join('')}<g fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="butt">${edges.join('')}</g>${markers}${arrow}</svg></svg>`
+  const playerCell = cellAt(player)
+  const playerArrow = known.has(cellKey(playerCell))
+    ? `<path data-map-player="true" fill="#e5fff0" d="M0,-8 L6,7 L0,4 L-6,7 Z" transform="translate(${player.x * size} ${player.y * size}) rotate(${player.heading * 180 / Math.PI})"/>`
+    : ''
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MAP_VIEW_SIZE} ${MAP_VIEW_SIZE}" aria-hidden="true"><rect width="${MAP_VIEW_SIZE}" height="${MAP_VIEW_SIZE}" fill="#000"/><g>${cells.join('')}</g><g fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="square">${boundaries.join('')}</g>${markers}${playerArrow}</svg>`
 }

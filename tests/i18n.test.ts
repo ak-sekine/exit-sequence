@@ -1,16 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { messages, t } from '../src/i18n.ts'
-test('all sample messages exist in Japanese and English', () => {
-  for (const key of Object.keys(messages) as (keyof typeof messages)[]) for (const lang of ['ja', 'en'] as const) assert.ok(t(key, lang).length)
-  assert.equal(t('ready', 'ja'), '通路にいる。')
-  assert.equal(t('blocked', 'ja'), 'これ以上進めない。')
+import { compass, initialLanguage, messages, t } from '../src/i18n.ts'
+
+test('all visible realtime messages exist in Japanese and English', () => {
+  for (const key of Object.keys(messages) as (keyof typeof messages)[]) {
+    assert.ok(t(key, 'ja').length, `Japanese ${key}`)
+    assert.ok(t(key, 'en').length, `English ${key}`)
+  }
+  assert.equal(t('doorOpened', 'ja'), '扉を開けた。')
+  assert.equal(t('enemySpotted', 'en'), 'The enemy spotted you.')
+  assert.equal(t('gameOver', 'ja'), '敵に捕まった。ゲームオーバー')
 })
 
-test('direction label and four compass values are translated', () => {
-  assert.equal(t('direction', 'ja'), '方角')
-  assert.equal(t('direction', 'en'), 'Direction')
-  const keys = ['north', 'east', 'south', 'west'] as const
-  assert.deepEqual(keys.map(key => t(key, 'ja')), ['北', '東', '南', '西'])
-  assert.deepEqual(keys.map(key => t(key, 'en')), ['N', 'E', 'S', 'W'])
+test('eight-way compass labels track continuous heading and language preference', () => {
+  assert.deepEqual([0, 1, 2, 3].map(i => compass(i * Math.PI / 2, 'en')), ['N', 'E', 'S', 'W'])
+  assert.deepEqual([0, 1, 2, 3].map(i => compass(i * Math.PI / 2, 'ja')), ['北', '東', '南', '西'])
+  assert.equal(compass(Math.PI / 4, 'en'), 'NE')
+  assert.equal(initialLanguage('ja-JP'), 'ja')
+  assert.equal(initialLanguage('en-US'), 'en')
 })

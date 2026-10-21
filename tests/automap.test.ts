@@ -1,130 +1,41 @@
-import { test } from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
-import { clampMapCenter, scrollMap, cellKey, initialVisited, recordMovement, renderMap } from '../src/automap.ts'
-import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor } from '../src/dungeon.ts'
+import { initialVisited, recordMovement, renderMap } from '../src/automap.ts'
+import { DUNGEON_MAP, DOORS, INITIAL_PLAYER } from '../src/dungeon.ts'
 
-test('history records successful movement and door passage once, never turns or failures', () => {
-  let player = INITIAL_PLAYER
-  const visited = initialVisited(player)
+test('automap reveals only visited floor cells and tracks continuous player cell changes', () => {
+  const visited = initialVisited(INITIAL_PLAYER)
   assert.deepEqual([...visited], ['2,14'])
-  const step = (direction: 'up' | 'left' | 'down' | 'right') => {
-    const result = move(DUNGEON_MAP, player, direction)
-    recordMovement(visited, player, result.player); player = result.player
-  }
-  step('left'); step('up'); step('right')
-  assert.equal(visited.size, 1)
-  step('up'); step('up'); step('up'); step('up')
-  assert.equal(visited.size, 4)
-  const result = passDoor(DUNGEON_MAP, player)!
-  recordMovement(visited, player, result.player); player = result.player
-  assert.equal(visited.size, 5); assert.ok(visited.has(cellKey(player)))
-  step('down')
-  const back = passDoor(DUNGEON_MAP, player)!
-  recordMovement(visited, player, back.player)
-  assert.equal(visited.size, 5)
+  const sameCell = recordMovement(visited, INITIAL_PLAYER, { x: 2.9, y: 14.1, heading: 1.3 })
+  assert.equal(sameCell, visited)
+  const next = recordMovement(visited, INITIAL_PLAYER, { x: 2.5, y: 13.5, heading: 1.3 })
+  assert.equal(next.has('2,13'), true)
+  assert.equal(visited.has('2,13'), false)
+
+  const svg = renderMap(DUNGEON_MAP, { x: 2.5, y: 13.5, heading: 0.55 }, next, DOORS, [])
+  assert.match(svg, /data-map-cell="2,14"/)
+  assert.match(svg, /data-map-cell="2,13" data-current="true"/)
+  assert.doesNotMatch(svg, /data-map-cell="2,12"/)
+  assert.match(svg, /data-map-player="true"[^>]*rotate\(31\.512/)
 })
 
-const count = (svg: string, kind: string) => (svg.match(new RegExp(`data-map-${kind}=`, 'g')) ?? []).length
-const edge = (svg: string, kind: string, key: string) => svg.match(new RegExp(`<path data-map-${kind}="${key}"[^>]*>`))?.[0]
-test('24px filled floors, black unknown space, no uniform borders and compact arrows', () => {
-  const svg = renderMap(DUNGEON_MAP, INITIAL_PLAYER, initialVisited(INITIAL_PLAYER))
-  assert.equal(count(svg, 'cell'), 1)
-  assert.ok(svg.includes('width="24" height="24" fill="#245c38"'))
-  assert.ok(svg.includes('width="320" height="200" fill="#000"'))
-  assert.equal(count(svg, 'wall'), 3); assert.equal(count(svg, 'door'), 0)
-  assert.equal(edge(svg, 'wall', '2,13.5'), undefined)
-  assert.ok(!/<rect[^>]*stroke=/.test(svg))
-  for (const facing of [0, 1, 2, 3] as const) {
-    assert.ok(renderMap(DUNGEON_MAP, { ...INITIAL_PLAYER, facing }, initialVisited(INITIAL_PLAYER), undefined, INITIAL_PLAYER).includes(`translate(160 100) rotate(${facing * 90})`))
-  }
-  const connected = renderMap(['##'], { x: 0, y: 0, facing: 0 }, new Set(['0,0', '1,0', '9,9']))
-  assert.equal(count(connected, 'cell'), 2); assert.equal(count(connected, 'wall'), 6)
-  assert.equal(edge(connected, 'wall', '0.5,0'), undefined)
-  assert.ok(connected.includes('fill="#123c24"'))
-})
-test('each wall follows actual floor boundaries including unknown neighbors and map edges', () => {
-  const svg = renderMap([' # ', '## ', '   '], { x: 1, y: 1, facing: 0 }, new Set(['1,1']))
-  assert.equal(count(svg, 'wall'), 2)
-  assert.ok(edge(svg, 'wall', '1.5,1')); assert.ok(edge(svg, 'wall', '1,1.5'))
-  assert.equal(count(svg, 'cell'), 1)
-  assert.equal(count(renderMap(['#'], { x: 0, y: 0, facing: 0 }, new Set(['0,0'])), 'wall'), 4)
-})
-test('doors are distinct, symmetric, deduplicated and discovered only next to visited floors', () => {
-  for (const [map, doors, key] of [
-    [['##'], [{ from: { x: 0, y: 0 }, to: { x: 1, y: 0 } }], '0.5,0'],
-    [['#', '#'], [{ from: { x: 0, y: 0 }, to: { x: 0, y: 1 } }], '0,0.5'],
-  ] as const) {
-    // Compare canonical geometry with either visited cell iterated first.
-    const a = doors[0].from, b = doors[0].to
-    const player = { ...a, facing: 0 } as const
-    const first = renderMap(map, player, new Set([cellKey(a)]), doors)
-    const second = renderMap(map, { ...b, facing: 0 }, new Set([cellKey(b)]), doors)
-    const normalize = (s: string) => s.match(/d="([^"]+)"/)![1]!.match(/M/g)?.length
-    assert.equal(normalize(edge(first, 'door', key)!), 4)
-    assert.equal(normalize(edge(second, 'door', key)!), 4)
-    const both = renderMap(map, player, new Set([cellKey(a), cellKey(b)]), doors)
-    assert.equal(count(both, 'door'), 1); assert.equal(edge(both, 'wall', key), undefined)
-    const reversed = renderMap(map, player, new Set([cellKey(b), cellKey(a)]), doors)
-    assert.equal(edge(both, 'door', key), edge(reversed, 'door', key))
-    assert.equal(count(first, 'cell'), 1)
-  }
-  const player = { x: 2, y: 11, facing: 0 } as const
-  const a = renderMap(DUNGEON_MAP, player, new Set(['2,11', '2,10']))
-  const b = renderMap(DUNGEON_MAP, player, new Set(['2,10', '2,11']))
-  assert.equal(edge(a, 'door', '2,10.5'), edge(b, 'door', '2,10.5'))
-  assert.equal(count(renderMap(DUNGEON_MAP, INITIAL_PLAYER, initialVisited(INITIAL_PLAYER)), 'door'), 0)
-})
-test('expanded history uses 24px coordinates and explicit centers position oversized axes', () => {
-  const map = Array.from({ length: 20 }, () => '#'.repeat(20))
-  const visited = new Set(Array.from({ length: 20 }, (_, i) => `${i},${i}`))
-  const svg = renderMap(map, { x: 10, y: 10, facing: 1 }, visited)
-  assert.ok(svg.includes('data-map-cell="10,10" data-current="true"><rect x="148" y="88"'))
-  assert.ok(svg.includes('data-map-cell="11,11"><rect x="172" y="112"'))
-  assert.ok(!svg.includes('data-map-cell="0,0"'))
-  assert.equal(visited.size, 20)
-})
-test('fully explored sample keeps history and accepts independent centers on both oversized axes at 24px', () => {
-  const visited = new Set(DUNGEON_MAP.flatMap((row, y) => [...row].flatMap((cell, x) => cell === '#' ? [`${x},${y}`] : [])))
-  for (const player of [{ x: 2, y: 2, facing: 0 }, { x: 12, y: 12, facing: 2 }] as const) {
-    const svg = renderMap(DUNGEON_MAP, player, visited, undefined, player)
-    assert.ok(svg.includes(`data-map-cell="${cellKey(player)}" data-current="true"><rect x="148" y="88"`))
-    assert.ok(count(svg, 'cell') < visited.size)
-    assert.ok(!svg.includes(`data-map-cell="${player.y === 2 ? '12,12' : '2,2'}"`))
-    assert.ok(count(svg, 'door') > 0)
-    assert.ok(!/NaN|Infinity/.test(svg))
-  }
-  assert.equal(visited.size, 112)
+test('map door marks include their current state without publishing unopened rooms', () => {
+  const approach = new Set(['2,11'])
+  const closed = renderMap(DUNGEON_MAP, INITIAL_PLAYER, approach, DOORS, Array(6).fill(false))
+  const open = renderMap(DUNGEON_MAP, INITIAL_PLAYER, approach, DOORS, [true, false, false, false, false, false])
+  assert.match(closed, /data-map-door="0" data-open="false"/)
+  assert.match(open, /data-map-door="0" data-open="true"/)
+  assert.doesNotMatch(closed, /data-map-cell="2,10"/)
+  assert.doesNotMatch(closed, /data-map-cell="1,10"/)
 })
 
-test('scroll directions move one cell, clamp to map bounds and freeze smaller axes', () => {
-  const map = Array.from({ length: 30 }, () => '#'.repeat(40))
-  const center = { x: 20, y: 15 }
-  for (const [direction, expected] of [['up', { x: 20, y: 14 }], ['down', { x: 20, y: 16 }], ['left', { x: 19, y: 15 }], ['right', { x: 21, y: 15 }]] as const) {
-    assert.deepEqual(scrollMap(map, center, direction), expected)
-  }
-  const min = clampMapCenter(map, { x: -100, y: -100 })
-  const max = clampMapCenter(map, { x: 100, y: 100 })
-  assert.equal(min.x * 24 + 12, 160); assert.equal(min.y * 24 + 12, 100)
-  assert.equal(max.x * 24 + 160, 40 * 24 - 12)
-  assert.equal(max.y * 24 + 100, 30 * 24 - 12)
-  assert.deepEqual(scrollMap(map, min, 'up'), min)
-  assert.deepEqual(scrollMap(map, min, 'left'), min)
-  assert.deepEqual(scrollMap(map, max, 'down'), max)
-  assert.deepEqual(scrollMap(map, max, 'right'), max)
-  const small = ['##', '##']
-  for (const direction of ['up', 'down', 'left', 'right'] as const) assert.deepEqual(scrollMap(small, { x: .5, y: .5 }, direction), { x: .5, y: .5 })
-  assert.equal(scrollMap(['#'.repeat(40)], { x: 20, y: 0 }, 'up').y, 0)
-})
-test('panning preserves history and player, hides offscreen arrows and unknown information', () => {
-  const map = Array.from({ length: 30 }, () => '#'.repeat(40))
-  const player = { x: 20, y: 15, facing: 2 } as const
-  const visited = initialVisited(player)
-  const center = scrollMap(map, player, 'up')
-  const svg = renderMap(map, player, visited, [], center)
-  assert.ok(svg.includes('translate(160 124) rotate(180)'))
-  const distant = renderMap(map, player, visited, [], { x: 7, y: 5 })
-  assert.equal(count(distant, 'arrow'), 0); assert.equal(count(distant, 'cell'), 0)
-  assert.equal(count(distant, 'wall'), 0); assert.equal(count(distant, 'door'), 0)
-  assert.ok(distant.includes('overflow="hidden"'))
-  assert.deepEqual([...visited], ['20,15']); assert.deepEqual(player, { x: 20, y: 15, facing: 2 })
+test('detected enemies are the only enemy markers; unseen map geometry stays hidden', () => {
+  const visited = new Set(['2,14'])
+  const detection = { enemyId: 'enemy-1', kind: 'sight', position: { x: 12.5, y: 10.5 }, heading: 1.2, distance: 5 } as const
+  const svg = renderMap(DUNGEON_MAP, INITIAL_PLAYER, visited, DOORS, Array(6).fill(false), [detection])
+  assert.match(svg, /data-map-enemy="enemy-1" data-detection="sight"/)
+  assert.match(svg, /data-map-enemy="enemy-1"[^>]*rotate\(68\.75493541569878\)/)
+  assert.doesNotMatch(svg, /data-map-cell="12,10"/)
+  assert.doesNotMatch(svg, /data-map-cell="11,10"/)
+  assert.equal((svg.match(/data-map-enemy=/g) ?? []).length, 1)
 })

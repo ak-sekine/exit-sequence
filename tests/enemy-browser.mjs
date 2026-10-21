@@ -1,125 +1,139 @@
-import { click, moveCommand, toggleMap, passDoorCommand } from './command-helpers.mjs'
 import { chromium } from 'playwright'
+import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
+
+const base = process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/'
 const artifacts = process.env.EXIT_SEQUENCE_ARTIFACTS ?? '/tmp/exit-sequence-browser'
 await mkdir(artifacts, { recursive: true })
-import assert from 'node:assert/strict'
-import { createGame, advanceTurn } from '../src/game.ts'
-import { character } from '../src/character.ts'
-import { commandText } from '../src/commands.ts'
-import { translateLog } from '../src/i18n.ts'
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium', args: ['--no-sandbox'] })
+
+async function openFixture(context, fixture) {
+  const page = await context.newPage(), errors = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.addInitScript(value => { window.__EXIT_SEQUENCE_FIXTURE__ = value }, fixture)
+  await page.route('**/src/main.ts*', async route => {
+    const response = await route.fetch()
+    let body = await response.text()
+    assert.ok(body.includes('let game = createGame();'), 'dev main module keeps the game factory boundary')
+    body = body.replace('let game = createGame();', 'let game = createGame(window.__EXIT_SEQUENCE_FIXTURE__);')
+    body += '\nwindow.readGameForTest = () => game;'
+    await route.fulfill({ response, body })
+  })
+  await page.goto(base)
+  await page.waitForFunction(() => !!document.querySelector('.scene-frame')?.dataset.time)
+  return { page, errors }
+}
+
 try {
-  for (const locale of ['ja', 'en']) for (const phase of ['player', 'enemy', 'hearing', 'sight']) {
-    const context = await browser.newContext({ viewport: { width: 320, height: 640 }, locale, isMobile: true, hasTouch: true })
-    const page = await context.newPage(), errors = []
-    page.on('pageerror', e => errors.push(e.message))
-    let game = createGame()
-    // Real map: south dead end, unobstructed corridor, deterministic chase.
-    const e = { ...character({ x: 2, y: phase === 'player' ? 13 : 12, facing: 2 }), id: 'fixture', destination: null }
-    game = { ...game, enemies: [e] }
-    if (phase === 'hearing') game = { ...game, player: character({ x: 2, y: 14, facing: 1 }) }
-    if (phase === 'sight') game = { ...game, player: character({ x: 2, y: 14, facing: 0 }), enemies: [{ ...e, y: 12, facing: 0, destination: { x: 2, y: 11 } }] }
-    const initial = game
-    await page.route('**/src/main.ts*', async route => {
-      const response = await route.fetch()
-      const body = (await response.text()).replace('let game = createGame();', `let game = ${JSON.stringify(initial)};`)
-      assert.ok(body.includes('fixture')); await route.fulfill({ response, body })
-    })
-    await page.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
-    const state = () => page.locator('.dungeon').evaluate(el => ({ x: +el.dataset.x, y: +el.dataset.y, facing: +el.dataset.facing, turn: +el.dataset.turn, gameOver: el.dataset.gameOver === 'true' }))
-    const logs = () => page.locator('.log [data-kind=event]').allTextContents()
-    const action = async a => {
-      const before = game
-      const beforeLines = await page.locator('.log p').allTextContents()
-      game = advanceTurn(game, a, () => 0)
-      if (a === 'a') await passDoorCommand(page); else await moveCommand(page, a)
-      assert.deepEqual(await state(), { ...{ x: game.player.x, y: game.player.y, facing: game.player.facing }, turn: game.turn, gameOver: game.gameOver })
-      assert.deepEqual(await logs(), game.logs.map(e => translateLog(e, locale)))
-      if (a !== 'a' && !before.gameOver) {
-        const id = { up: 'forward', down: 'turnBack', left: 'turnLeft', right: 'turnRight' }[a]
-        assert.deepEqual(await page.locator('.log p').allTextContents(), [
-          ...beforeLines.slice(0, -1), commandText(['move', id], locale),
-          ...game.logs.slice(before.logs.length).map(e => translateLog(e, locale)), commandText(['move'], locale),
-        ])
-      } else assert.deepEqual(await page.locator('.log p').allTextContents(), beforeLines)
-    }
-    await action('a'); assert.equal(game.turn, 0)
-    await action(phase === 'player' ? 'up' : phase === 'sight' ? 'up' : 'right')
-    if (phase === 'sight') {
-      assert.equal(game.logs.at(-1).kind, 'sight')
-      assert.match((await logs()).at(-1), locale === 'ja' ? /敵は南/ : /facing south/)
-      await action('up')
-      // Enemy now at the destination; turn south and walk to the player.
-      for (const a of ['up', 'up', 'up', 'up']) { if (!game.gameOver) await action(a) }
-    } else if (phase === 'hearing') {
-      assert.equal(game.logs.at(-1).kind, 'hearing')
-      assert.match((await logs()).at(-1), locale === 'ja' ? /音が聞こえる/ : /hear an enemy/)
-      await action('left')
-    } else if (phase === 'enemy') {
-      assert.equal(game.logs.at(-1).kind, 'hearing')
-      await action('left')
-    }
-    assert.ok(game.gameOver)
-    const ordinary = /前進した。|左を向いた。|右を向いた。|後ろを向いた。|Moved forward\.|Turned left\.|Turned right\.|Turned around\./
-    assert.doesNotMatch((await logs()).join('\n'), ordinary)
-    await page.screenshot({ path: `${artifacts}/${locale}-enemy-${phase}.png` })
-    assert.equal((await logs()).at(-1), translateLog('gameOver', locale))
-    const frozen = await state(), count = (await logs()).length
-    const endedHistory = await page.locator('.log').innerHTML()
-    assert.equal(await page.locator('.controls').getAttribute('data-menu'), 'movement')
-    for (const id of ['forward', 'turnBack', 'turnLeft', 'turnRight']) {
-      const button = page.locator(`[data-command="${id}"]`)
-      assert.ok(await button.isDisabled())
-      await button.evaluate(el => el.dispatchEvent(new MouseEvent('click', { bubbles: true })))
-    }
-    assert.equal(await page.locator('.log').innerHTML(), endedHistory)
-    for (const a of ['up', 'left', 'right', 'down', 'a']) await action(a)
-    await click(page, 'back')
-    assert.equal(await page.locator('.prompt').textContent(), '>')
-    assert.deepEqual(await state(), frozen)
-    assert.deepEqual(await page.locator('.log [data-kind=event]').allTextContents(), game.logs.map(e => translateLog(e, locale)))
-    await toggleMap(page)
-    assert.equal(await page.locator('[data-map-enemy]').count(), game.detections.length)
-    for (const d of ['up', 'left', 'down', 'right']) await click(page, { up: 'mapUp', down: 'mapDown', left: 'mapLeft', right: 'mapRight' }[d])
-    assert.deepEqual(await state(), frozen)
-    const center = await page.locator('.dungeon').getAttribute('data-center-y')
-    await page.locator('.menu-toggle').tap()
-    const other = locale === 'ja' ? 'en' : 'ja'
-    await page.locator(`[data-language="${other}"]`).tap()
-    assert.deepEqual(await logs(), game.logs.map(e => translateLog(e, other)))
-    assert.doesNotMatch((await logs()).join('\n'), ordinary)
-    assert.equal((await logs()).length, count); assert.deepEqual(await state(), frozen)
-    assert.equal(await page.locator('.dungeon').getAttribute('data-center-y'), center)
-    await toggleMap(page)
-    assert.equal(await page.locator('.dungeon').getAttribute('data-view'), '3d')
-    assert.deepEqual(await state(), frozen)
+  const doorEnemy = {
+    id: 'door-guard', x: 2.5, y: 10.5, heading: Math.PI,
+    vision: 6, hearing: 5, destination: null, route: [], alerted: false,
+  }
+  const doorFixture = { player: { x: 2.5, y: 11.5, heading: 0 }, enemies: [doorEnemy] }
+
+  // A look pointer that starts in the event strip remains a look pointer over A.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true })
+    const { page, errors } = await openFixture(context, doorFixture)
+    const log = await page.locator('.event-log').boundingBox(), action = await page.locator('.action-button').boundingBox()
+    await page.mouse.move(log.x + 25, log.y + log.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(action.x + action.width / 2, action.y + action.height / 2, { steps: 10 })
+    await page.mouse.up()
+    await page.waitForTimeout(50)
+    assert.equal(await page.locator('.scene-frame').getAttribute('data-open-doors'), '000000')
+    assert.notEqual(Number(await page.locator('.scene-frame').getAttribute('data-heading')), 0)
     assert.deepEqual(errors, [])
     await context.close()
   }
-  // Unmodified production integration: deterministic RNG and actual initial enemy.
-  const context = await browser.newContext({ viewport: { width: 320, height: 640 }, locale: 'ja', hasTouch: true })
-  await context.addInitScript(() => { Math.random = () => 0 })
-  const page = await context.newPage()
-  await page.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
-  let game = createGame()
-  const turnBefore = await page.locator('.dungeon').getAttribute('data-turn')
-  const logBefore = await page.locator('.log [data-kind=event]').allTextContents()
-  await toggleMap(page)
-  for (const d of ['up', 'right', 'down', 'left']) await click(page, { up: 'mapUp', down: 'mapDown', left: 'mapLeft', right: 'mapRight' }[d])
-  await page.locator('.menu-toggle').tap()
-  await page.locator('[data-language="en"]').tap()
-  assert.equal(await page.locator('.dungeon').getAttribute('data-turn'), turnBefore)
-  await page.locator('.menu-toggle').tap()
-  await page.locator('[data-language="ja"]').tap()
-  assert.deepEqual(await page.locator('.log [data-kind=event]').allTextContents(), logBefore)
-  await toggleMap(page)
-  for (const action of ['up', 'up', 'up', 'right', 'up', 'up', 'up', 'left', 'up', 'right']) {
-    game = advanceTurn(game, action, () => 0)
-    await moveCommand(page, action)
-    assert.equal(await page.locator('.dungeon').getAttribute('data-turn'), String(game.turn))
-    assert.deepEqual(await page.locator('.log [data-kind=event]').allTextContents(), game.logs.map(e => translateLog(e, 'ja')))
+
+  // Three simultaneous touch pointers move, turn, and operate A independently.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true })
+    const { page, errors } = await openFixture(context, doorFixture)
+    await page.evaluate(() => {
+      window.__pointerEvents = []
+      for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture']) {
+        document.addEventListener(type, event => window.__pointerEvents.push({ type, id: event.pointerId, target: event.target.className ?? event.target.tagName }), true)
+      }
+    })
+    const stick = await page.locator('.joystick').boundingBox()
+    const status = await page.locator('.status').boundingBox()
+    const action = await page.locator('.action-button').boundingBox()
+    const stickPoint = { x: stick.x + stick.width / 2, y: stick.y + stick.height / 2 }
+    const lookPoint = { x: status.x + 30, y: status.y + status.height / 2 }
+    const actionPoint = { x: action.x + action.width / 2, y: action.y + action.height / 2 }
+    const touch = await context.newCDPSession(page)
+    const points = [
+      { ...stickPoint, id: 1 }, { ...lookPoint, id: 2 }, { ...actionPoint, id: 3 },
+    ]
+    const before = await page.locator('.scene-frame').evaluate(element => ({ x: +element.dataset.x, y: +element.dataset.y, heading: +element.dataset.heading }))
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points })
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [
+      { x: stickPoint.x, y: stickPoint.y - 35, id: 1 },
+      { x: lookPoint.x + 55, y: lookPoint.y + 35, id: 2 },
+      { ...actionPoint, id: 3 },
+    ] })
+    await page.waitForTimeout(180)
+    const during = await page.locator('.scene-frame').evaluate(element => ({
+      x: +element.dataset.x, y: +element.dataset.y, heading: +element.dataset.heading,
+      doors: element.dataset.openDoors,
+    }))
+    assert.equal(during.doors[0], '1', 'A opens the door in range')
+    assert.ok(Math.hypot(during.x - before.x, during.y - before.y) > 0.1, 'stick keeps moving while other pointers act')
+    assert.ok(Math.abs(during.heading - before.heading) > 0.5, 'view drag runs at the same time as movement and A')
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
+    await page.waitForTimeout(35)
+    const released = await page.locator('.scene-frame').evaluate(element => ({ x: +element.dataset.x, y: +element.dataset.y }))
+    await page.waitForTimeout(120)
+    const stopped = await page.locator('.scene-frame').evaluate(element => ({ x: +element.dataset.x, y: +element.dataset.y }))
+    assert.ok(Math.hypot(stopped.x - released.x, stopped.y - released.y) < 0.03, 'pointercancel stops movement after the release frame')
+    const cancelled = await page.evaluate(() => window.__pointerEvents.filter(event => event.type === 'pointercancel').length)
+    assert.equal(cancelled, 3, 'each touch pointer receives its own pointercancel')
+    assert.deepEqual(errors, [])
+    await context.close()
   }
-  await context.close()
-  console.log('PASS: actual initial AI integration; ja/en mobile taps, both collision phases, sight/hearing, active and ended turn freeze, map scroll/toggle and history retranslation')
-} finally { await browser.close() }
+
+  // A closed door occludes the guard. Opening it reveals the sprite and lets the guard chase.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true })
+    const { page, errors } = await openFixture(context, doorFixture)
+    await page.waitForTimeout(80)
+    assert.equal(await page.locator('.scene-frame').getAttribute('data-visible-enemies'), '')
+    await page.locator('.action-button').click()
+    assert.equal((await page.locator('.scene-frame').getAttribute('data-open-doors'))[0], '1')
+    await page.waitForFunction(() => document.querySelector('.scene-frame').dataset.visibleEnemies.includes('door-guard'))
+    await page.screenshot({ path: `${artifacts}/door-open-enemy-visible.png` })
+
+    await page.locator('.menu-toggle').click()
+    const beforePause = await page.locator('.scene-frame').evaluate(element => ({ time: element.dataset.time, y: element.dataset.y }))
+    await page.waitForTimeout(280)
+    const duringPause = await page.locator('.scene-frame').evaluate(element => ({ time: element.dataset.time, y: element.dataset.y }))
+    assert.deepEqual(duringPause, beforePause, 'enemy decisions and movement stop while menu is open')
+    await page.locator('.resume-button').click()
+    await page.waitForFunction(() => document.querySelector('.scene-frame').dataset.gameOver === 'true', { timeout: 2500 })
+    assert.equal(await page.locator('.game-over-screen').isVisible(), true)
+    assert.equal(await page.locator('.scene-frame').evaluate(element => element.dataset.gameOver), 'true')
+    assert.deepEqual(errors, [])
+    await context.close()
+  }
+
+  // A wall hides a 2D billboard behind it in the raycaster depth buffer.
+  {
+    const wallFixture = {
+      player: { x: 7.5, y: 6.5, heading: Math.PI / 2 },
+      enemies: [{ ...doorEnemy, id: 'behind-wall', x: 12.5, y: 6.5, heading: Math.PI * 1.5 }],
+    }
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    const { page, errors } = await openFixture(context, wallFixture)
+    await page.waitForTimeout(40)
+    assert.equal(await page.locator('.scene-frame').getAttribute('data-visible-enemies'), '')
+    await page.screenshot({ path: `${artifacts}/wall-occlusion.png` })
+    assert.deepEqual(errors, [])
+    await context.close()
+  }
+
+  console.log('PASS: independent multitouch movement/look/A, pointer start classification, closed-door visibility, door opening, continuous enemy chase and capture, menu pause, and wall occlusion')
+} finally {
+  await browser.close()
+}

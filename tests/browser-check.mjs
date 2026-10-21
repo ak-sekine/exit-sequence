@@ -1,236 +1,154 @@
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
-import { click, moveCommand, toggleMap, passDoorCommand } from './command-helpers.mjs'
-import { DUNGEON_MAP, INITIAL_PLAYER, move, passDoor, locationKind, facingDoor } from '../src/dungeon.ts'
-import { initialVisited, recordMovement, renderMap, clampMapCenter, scrollMap } from '../src/automap.ts'
-import { renderDungeon } from '../src/renderer.ts'
-import { explore } from './exploration.ts'
-import { commandText } from '../src/commands.ts'
-import { t, translateLog } from '../src/i18n.ts'
+
+const base = process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/'
 const artifacts = process.env.EXIT_SEQUENCE_ARTIFACTS ?? '/tmp/exit-sequence-browser'
 await mkdir(artifacts, { recursive: true })
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium', args: ['--no-sandbox'] })
 try {
- for (const locale of ['ja', 'en']) {
-  const context = await browser.newContext({ viewport: { width: 320, height: 640 }, locale, hasTouch: true })
-  const page = await context.newPage(), errors = []
-  page.on('pageerror', e => errors.push(e.message))
-  await page.route('**/src/main.ts*', async route => {
-   const response = await route.fetch()
-   const body = (await response.text()).replace('let game = createGame();', 'let game = { ...createGame(), enemies: [] };')
-   assert.ok(body.includes('enemies: []'))
-   await route.fulfill({ response, body: body + '\nwindow.snapshot = () => ({ game, history, visited: [...visited], ui, inspection: menuOptions("inspection", facingDoor(), game.gameOver) });' })
-  })
-  await page.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
-  let language = locale, model = INITIAL_PLAYER, turn = 0
-  const visited = initialVisited(model), history = [{ kind: 'event', event: 'ready' }]
-  const lines = () => history.map(e => e.kind === 'command' ? commandText(e.ids, language) : e.kind === 'message' ? t(e.message, language) : translateLog(e.event, language))
-  const check = async () => {
-   assert.deepEqual(await page.locator('.log p').allTextContents(), [...lines(), commandText((await page.locator('.controls').getAttribute('data-menu')) === 'movement' ? ['move'] : [], language)])
-   assert.deepEqual(await page.locator('.dungeon').evaluate(el => [+el.dataset.x, +el.dataset.y, +el.dataset.facing, +el.dataset.turn]), [model.x, model.y, model.facing, turn])
-   assert.equal(await page.locator('.direction-value').textContent(), (language === 'ja' ? ['北', '東', '南', '西'] : ['N', 'E', 'S', 'W'])[model.facing])
+  const layouts = [
+    { width: 320, height: 640, mobile: true },
+    { width: 375, height: 812, mobile: true },
+    { width: 390, height: 844, mobile: true },
+    { width: 1280, height: 800, mobile: false },
+    { width: 812, height: 375, mobile: true },
+  ]
+  for (const layout of layouts) {
+    const context = await browser.newContext({
+      viewport: { width: layout.width, height: layout.height },
+      deviceScaleFactor: 1,
+      hasTouch: layout.mobile,
+      isMobile: layout.mobile,
+    })
+    const page = await context.newPage(), errors = []
+    page.setDefaultTimeout(5000)
+    console.log(`browser layout ${layout.width}×${layout.height}`)
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(base)
+    await page.waitForFunction(() => !!document.querySelector('.scene-frame')?.dataset.time)
+    const measurements = await page.evaluate(() => {
+      const frame = document.querySelector('.scene-frame').getBoundingClientRect()
+      return {
+        frame: { x: frame.x, y: frame.y, width: frame.width, height: frame.height },
+        scrollWidth: document.documentElement.scrollWidth,
+        scrollHeight: document.documentElement.scrollHeight,
+        viewport: { width: innerWidth, height: innerHeight },
+        controls: document.querySelector('.controls').getBoundingClientRect().toJSON(),
+      }
+    })
+    assert.ok(Math.abs(measurements.frame.width - measurements.frame.height) <= 1, `square scene at ${layout.width}×${layout.height}: ${JSON.stringify(measurements.frame)}`)
+    assert.ok(measurements.frame.width <= layout.width, `scene fits width at ${layout.width}px`)
+    assert.equal(measurements.scrollWidth, layout.width, `no horizontal scrolling at ${layout.width}px`)
+    assert.equal(measurements.scrollHeight, layout.height, `no page scrolling at ${layout.width}×${layout.height}`)
+    assert.ok(measurements.controls.y + measurements.controls.height <= layout.height, `controls remain visible at ${layout.width}×${layout.height}`)
+    assert.ok(await page.locator('.game-canvas').evaluate(canvas => canvas.getContext('2d') !== null))
+
+    if (layout.width === 320) {
+      await page.addStyleTag({ content: '.shell { --safe-top: 24px; --safe-right: 14px; --safe-bottom: 22px; --safe-left: 14px; }' })
+      const safe = await page.locator('.shell').evaluate(element => ({
+        top: getComputedStyle(element).paddingTop,
+        right: getComputedStyle(element).paddingRight,
+        bottom: getComputedStyle(element).paddingBottom,
+        left: getComputedStyle(element).paddingLeft,
+      }))
+      assert.deepEqual(safe, { top: '24px', right: '14px', bottom: '22px', left: '14px' })
+      const safeFrame = await page.locator('.scene-frame').boundingBox()
+      assert.ok(Math.abs(safeFrame.width - safeFrame.height) <= 1)
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320)
+    }
+
+    if (layout.width === 390) {
+      await page.locator('.menu-toggle').click()
+      assert.equal(await page.locator('.scene-frame').getAttribute('data-paused'), 'true')
+      const beforeMenu = await page.locator('.scene-frame').getAttribute('data-time')
+      await page.waitForTimeout(250)
+      assert.equal(await page.locator('.scene-frame').getAttribute('data-time'), beforeMenu)
+      await page.locator('[data-language="en"]').click()
+      assert.equal(await page.locator('.status-direction').textContent().then(text => text.startsWith('Direction')), true)
+      await page.locator('.map-button').click()
+      assert.equal(await page.locator('.scene-frame').getAttribute('data-paused'), 'true')
+      assert.equal(await page.locator('.map-screen').isVisible(), true)
+      await page.screenshot({ path: `${artifacts}/map-paused-390.png` })
+      console.log('  map pause and language: ok')
+      await page.locator('.map-close').click()
+      assert.equal(await page.locator('.scene-frame').getAttribute('data-paused'), 'false')
+
+      const initialY = Number(await page.locator('.scene-frame').getAttribute('data-y'))
+      const stick = await page.locator('.joystick').boundingBox()
+      const center = { x: stick.x + stick.width / 2, y: stick.y + stick.height / 2 }
+      await page.mouse.move(center.x, center.y)
+      await page.mouse.down()
+      await page.mouse.move(center.x, center.y - 40, { steps: 4 })
+      await page.waitForTimeout(220)
+      await page.mouse.move(layout.width + 24, center.y - 40, { steps: 4 })
+      await page.waitForTimeout(100)
+      await page.mouse.up()
+      const movedY = Number(await page.locator('.scene-frame').getAttribute('data-y'))
+      assert.ok(movedY < initialY - 0.2, `stick moves while captured: ${initialY} -> ${movedY}`)
+      await page.waitForTimeout(220)
+      const stoppedY = Number(await page.locator('.scene-frame').getAttribute('data-y'))
+      assert.ok(Math.abs(stoppedY - movedY) < 0.025, 'release stops movement immediately')
+      console.log('  joystick capture and release: ok')
+
+      let heading = Number(await page.locator('.scene-frame').getAttribute('data-heading'))
+      const status = await page.locator('.status').boundingBox()
+      await page.mouse.move(status.x + 35, status.y + status.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(status.x + 225, status.y + status.height / 2, { steps: 12 })
+      await page.mouse.up()
+      await page.waitForTimeout(50)
+      const turned = Number(await page.locator('.scene-frame').getAttribute('data-heading'))
+      let delta = ((turned - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI
+      assert.ok(Math.abs(delta) > 2.8, `horizontal drag allows a near 180 degree turn: ${delta}`)
+      console.log('  view rotation: ok')
+
+      heading = turned
+      await page.mouse.move(status.x + 80, status.y + status.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(status.x + 80, status.y + status.height / 2 + 60, { steps: 6 })
+      await page.mouse.up()
+      await page.waitForTimeout(40)
+      assert.equal(await page.locator('.scene-frame').getAttribute('data-heading'), heading.toFixed(4), 'vertical drag does not rotate')
+      const log = await page.locator('.event-log').boundingBox()
+      const action = await page.locator('.action-button').boundingBox()
+      await page.mouse.move(log.x + 20, log.y + log.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(action.x + action.width / 2, action.y + action.height / 2, { steps: 8 })
+      await page.mouse.up()
+      await page.waitForTimeout(40)
+      assert.equal(await page.locator('.scene-frame').getAttribute('data-open-doors'), '000000', 'look pointer moving over A does not activate A')
+      const afterOverButton = Number(await page.locator('.scene-frame').getAttribute('data-heading'))
+      delta = Math.abs(((afterOverButton - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI)
+      assert.ok(delta > 0.4, 'look gesture continues while the pointer passes over a button')
+      console.log('  pointer origin stays fixed over A: ok')
+
+      await page.screenshot({ path: `${artifacts}/realtime-390.png` })
+      await page.keyboard.down('w')
+      const beforeKey = await page.locator('.scene-frame').evaluate(element => ({ x: Number(element.dataset.x), y: Number(element.dataset.y) }))
+      await page.waitForTimeout(150)
+      await page.keyboard.up('w')
+      const afterKey = await page.locator('.scene-frame').evaluate(element => ({ x: Number(element.dataset.x), y: Number(element.dataset.y) }))
+      assert.ok(Math.hypot(afterKey.x - beforeKey.x, afterKey.y - beforeKey.y) > 0.15, 'WASD works in the browser')
+
+      await page.keyboard.press('Escape')
+      assert.equal(await page.locator('.scene-frame').getAttribute('data-paused'), 'true')
+      const beforeHidden = await page.locator('.scene-frame').getAttribute('data-time')
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await page.waitForTimeout(120)
+      assert.equal(await page.locator('.scene-frame').getAttribute('data-time'), beforeHidden)
+      await page.evaluate(() => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+    }
+    assert.deepEqual(errors, [], `no browser exceptions at ${layout.width}×${layout.height}`)
+    await context.close()
   }
-  const commit = ids => history.push({ kind: 'command', ids })
-  const changeLanguage = async () => {
-   language = language === 'ja' ? 'en' : 'ja'
-   await page.locator('.menu-toggle').tap(); await page.locator(`[data-language="${language}"]`).tap()
-  }
-  await check()
-  const initial = await page.evaluate(() => window.snapshot())
-  await click(page, 'move')
-  assert.deepEqual(await page.locator('.log p').allTextContents(), [...lines(), commandText(['move'], language)])
-  assert.deepEqual((await page.evaluate(() => window.snapshot())).game, initial.game)
-  await changeLanguage()
-  assert.equal(await page.locator('.prompt').textContent(), commandText(['move'], language))
-  assert.equal(await page.locator('.controls').getAttribute('data-menu'), 'movement')
-  await click(page, 'back'); await check(); await changeLanguage()
-  await click(page, 'inspect'); assert.equal(await page.locator('[data-command=door]').count(), 0)
-  await click(page, 'back'); await check()
-  await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowRight'); await check()
-  assert.equal(await page.locator('[data-direction], [data-action]').count(), 0)
-  async function perform(action) {
-   const result = action === 'a' ? passDoor(DUNGEON_MAP, model) : move(DUNGEON_MAP, model, action)
-   if (action === 'a') {
-    assert.ok(result)
-    commit(['inspect', 'door']); history.push({ kind: 'message', message: 'doorConfirmation' }); commit(['yes'])
-    await passDoorCommand(page)
-   } else {
-    commit(['move', { up: 'forward', down: 'turnBack', left: 'turnLeft', right: 'turnRight' }[action]])
-    await moveCommand(page, action)
-   }
-   const moved = model.x !== result.player.x || model.y !== result.player.y
-   recordMovement(visited, model, result.player); model = result.player
-   if (result.message !== 'blocked') turn++
-   if (['blocked', 'enteredRoom', 'returnedCorridor'].includes(result.message)) history.push({ kind: 'event', event: result.message })
-   if (moved) history.push({ kind: 'event', event: locationKind(DUNGEON_MAP, model) === 'room' ? 'inRoom' : 'inCorridor' })
-   if (result.message !== 'blocked') {
-    if (action !== 'up' && action !== 'a') history.push({ kind: 'event', event: 'noEnemySign' })
-    if (facingDoor(DUNGEON_MAP, model)) history.push({ kind: 'event', event: 'doorAhead' })
-   }
-   await check()
-   const snapshot = await page.evaluate(() => window.snapshot())
-   assert.equal(snapshot.inspection.some(option => option.id === 'door'), facingDoor(DUNGEON_MAP, model))
-   assert.deepEqual(snapshot.game.logs, history.filter(entry => entry.kind === 'event').map(entry => entry.event))
-   assert.equal(await page.locator('.controls').getAttribute('data-menu'), action === 'a' ? 'normal' : 'movement')
-   assert.equal(await page.locator('.page-number').textContent(), '1 / 1')
-  }
-  for (let i = 0; i < 3; i++) await perform('up')
-  await perform('up') // blocked door
-  const beforeDoor = await page.evaluate(() => window.snapshot())
-  const beforeBack = await page.evaluate(() => window.snapshot())
-  const backHistory = await page.locator('.log [data-kind]').allTextContents()
-  await changeLanguage(); await check(); await changeLanguage(); await check()
-  await click(page, 'back'); await check()
-  assert.deepEqual((await page.evaluate(() => window.snapshot())).game, beforeBack.game)
-  assert.deepEqual((await page.evaluate(() => window.snapshot())).visited, beforeBack.visited)
-  assert.deepEqual(await page.locator('.log [data-kind]').allTextContents(), backHistory)
-  await click(page, 'inspect'); await click(page, 'door')
-  commit(['inspect', 'door']); history.push({ kind: 'message', message: 'doorConfirmation' })
-  assert.deepEqual(await page.locator('.controls button').evaluateAll(es => es.map(e => e.dataset.command)), ['yes', 'no'])
-  await changeLanguage()
-  assert.equal(await page.locator('.controls').getAttribute('data-menu'), 'confirmation')
-  await click(page, 'no'); commit(['no']); await check()
-  assert.deepEqual((await page.evaluate(() => window.snapshot())).game, beforeDoor.game)
-  await perform('a'); await perform('down'); await perform('a')
-  while (visited.size < 112) {
-   const next = [...explore(DUNGEON_MAP, model).routes].find(([key]) => !visited.has(key))
-   assert.ok(next)
-   for (const action of next[1]) await perform(action)
-  }
-  const layout = async () => {
-   const data = await page.evaluate(() => {
-    const rect = selector => document.querySelector(selector).getBoundingClientRect().toJSON()
-    const slots = [...document.querySelector('.controls').children].map(e => e.getBoundingClientRect().toJSON())
-    return { back: rect('.back-button'), operations: rect('.operation-row'), pagination: rect('.pagination'), slots, controls: rect('.controls'), dungeon: rect('.dungeon'), status: rect('.status'), log: rect('.log'), terminal: rect('.terminal'), w: innerWidth, h: innerHeight, sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight }
-   })
-   assert.equal(data.slots.length, 6)
-   assert.equal(await page.locator('.page-number').textContent(), '1 / 1')
-   assert.ok(await page.locator('.previous-page').isDisabled())
-   assert.ok(await page.locator('.next-page').isDisabled())
-   assert.equal(data.back.x, data.operations.x)
-   assert.ok(data.controls.bottom <= data.operations.y)
-   assert.ok(data.back.right <= data.pagination.x)
-   assert.ok(Math.abs((data.pagination.x + data.pagination.width / 2) - (data.operations.x + data.operations.width / 2)) < 1)
-   assert.ok(data.operations.bottom <= data.h)
-   assert.ok(data.back.height >= 44)
-   for (let i = 0; i < 6; i++) {
-    assert.ok(data.slots[i].height >= 44)
-    assert.equal(data.slots[i].x, data.slots[i % 2].x)
-    assert.equal(data.slots[i].y, data.slots[i - i % 2].y)
-    assert.ok(data.slots[i].right <= data.w && data.slots[i].bottom <= data.h)
-   }
-   assert.equal(data.sw, data.w); assert.equal(data.sh, data.h)
-   assert.ok(data.terminal.width <= 440)
-   assert.ok(Math.abs(data.dungeon.width / data.status.width - 2) < .02)
-   assert.equal(data.dungeon.height, data.status.height)
-   assert.ok(data.dungeon.bottom <= data.log.y && data.log.bottom <= data.controls.y)
-  }
-  for (const size of [{ width: 320, height: 640 }, { width: 320, height: 320 }, { width: 320, height: 240 }, { width: 1280, height: 800 }]) { await page.setViewportSize(size); await layout() }
-  await page.setViewportSize({ width: 320, height: 480 })
-  await page.addStyleTag({ content: '.terminal { --safe-top:24px; --safe-right:16px; --safe-bottom:20px; --safe-left:16px; }' }); await layout()
-  if (await page.locator('.controls').getAttribute('data-menu') === 'movement') await click(page, 'back')
-  await check()
-  await click(page, 'items'); await layout()
-  assert.equal(await page.locator('.controls [data-command=back]').count(), 0)
-  assert.equal(await page.locator('.back-button').isDisabled(), false)
-  await page.locator('.log').evaluate(el => { el.scrollTop = 12 })
-  const beforeMap = await page.evaluate(() => window.snapshot())
-  await click(page, 'itemMap'); commit(['items', 'itemMap']); await check(); await layout()
-  const openedMap = await page.evaluate(() => window.snapshot())
-  assert.deepEqual(openedMap.history, [...beforeMap.history, { kind: 'command', ids: ['items', 'itemMap'] }])
-  assert.deepEqual(openedMap.game, beforeMap.game)
-  assert.deepEqual(openedMap.visited, beforeMap.visited)
-  assert.ok(await page.locator('.log').evaluate(el => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 1))
-  await page.locator('.log').evaluate(el => { el.scrollTop = 12 })
-  const logScroll = await page.locator('.log').evaluate(el => el.scrollTop)
-  assert.equal(await page.locator('.controls > :nth-child(5)').getAttribute('data-command'), 'close')
-  const frozen = await page.evaluate(() => window.snapshot())
-  let center = clampMapCenter(DUNGEON_MAP, model)
-  for (const d of ['up', 'down', 'left', 'right']) for (let i = 0; i < 20; i++) {
-   const id = { up: 'mapUp', down: 'mapDown', left: 'mapLeft', right: 'mapRight' }[d]
-   await click(page, id); center = scrollMap(DUNGEON_MAP, center, d)
-   await check()
-   assert.equal(await page.locator('.log').evaluate(el => el.scrollTop), logScroll)
-   const actual = await page.evaluate(() => window.snapshot())
-   assert.deepEqual(actual.game, frozen.game); assert.deepEqual(actual.visited, frozen.visited)
-   assert.deepEqual(actual.history, frozen.history)
-  }
-  const expectedMap = renderMap(DUNGEON_MAP, model, visited, undefined, center)
-  const normalized = await page.evaluate(svg => { const el = document.createElement('div'); el.innerHTML = svg; return el.innerHTML }, expectedMap)
-  assert.equal(await page.locator('.dungeon').innerHTML(), normalized)
-  await changeLanguage(); await check()
-  assert.equal(await page.locator('.dungeon').innerHTML(), normalized)
-  await page.screenshot({ path: `${artifacts}/${locale}-commands-map.png` })
-  const scrollBeforeClose = await page.locator('.log').evaluate(el => el.scrollTop)
-  await click(page, 'close'); await check()
-  assert.equal(await page.locator('.log').evaluate(el => el.scrollTop), scrollBeforeClose)
-  assert.deepEqual((await page.evaluate(() => window.snapshot())).history, frozen.history)
-  await toggleMap(page); commit(['items', 'itemMap']); await check()
-  assert.ok(await page.locator('.log').evaluate(el => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 1))
-  assert.deepEqual(await page.locator('.dungeon').evaluate(el => ({ x: +el.dataset.centerX, y: +el.dataset.centerY })), clampMapCenter(DUNGEON_MAP, model))
-  await click(page, 'close')
-  const status = await page.locator('.status').boundingBox()
-  await page.locator('.log').evaluate(el => { el.scrollTop = 0 })
-  assert.deepEqual(await page.locator('.status').boundingBox(), status)
-  await perform('right')
-  assert.ok(await page.locator('.log').evaluate(el => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 1))
-  await page.screenshot({ path: `${artifacts}/${locale}-commands-safe-area.png` })
-  await page.setViewportSize({ width: 1280, height: 800 }); await layout()
-  await page.screenshot({ path: `${artifacts}/${locale}-commands-desktop.png` })
-  const image = async (map, doors = []) => {
-   await page.locator('.dungeon').evaluate((el, svg) => { el.innerHTML = svg }, renderDungeon(map, { x: 1, y: 2, facing: 0 }, doors))
-   return page.locator('.dungeon').screenshot()
-  }
-  assert.ok((await image(['   ', '   ', ' # '])).equals(await image(['###', '   ', ' # '])))
-  assert.ok((await image([' #  ', ' #  ', ' #  '])).equals(await image([' # #', ' # #', ' # #'])))
-  assert.ok(!(await image([' #  ', ' #  ', ' #  '])).equals(await image([' #  ', ' ## ', ' #  '])))
-  assert.deepEqual(errors, [])
-  await context.close()
- }
- // Inject extra choices only into the development response to exercise actual UI paging.
- const pagingContext = await browser.newContext({ viewport: { width: 320, height: 640 }, locale: 'en', hasTouch: true })
- const paging = await pagingContext.newPage()
- await paging.route('**/src/main.ts*', async route => {
-  const response = await route.fetch()
-  const body = (await response.text()).replaceAll('menuOptions(ui, facingDoor(), game.gameOver)', 'testOptions(ui)')
-  await route.fulfill({ response, body: body + `
-function testOptions(state) {
-  return state === 'movement' ? [...menuOptions(state, true, false), {id:'forward'}, {id:'turnRight'}, {id:'forward'}, {id:'turnRight'}, {id:'turnBack'}, {id:'turnLeft'}, {id:'forward'}, {id:'turnRight'}, {id:'turnBack'}] : menuOptions(state, true, false);
+  console.log('PASS: square 2.5D canvas, 320/375/390 phone widths, PC and landscape layout, safe-area padding, no scroll, menu/map pause, language switch, stick capture/release, view drag, WASD, and Escape pause')
+} finally {
+  await browser.close()
 }
-window.snapshot = () => ({ game, history, visited: [...visited], ui, currentPage });` })
- })
- await paging.goto(process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/')
- await click(paging, 'move')
- const frozenPaging = await paging.evaluate(() => window.snapshot())
- const pending = await paging.locator('.log').textContent()
- assert.equal(await paging.locator('.page-number').textContent(), '1 / 3')
- assert.ok(await paging.locator('.previous-page').isDisabled())
- await paging.locator('.next-page').tap()
- assert.equal(await paging.locator('.page-number').textContent(), '2 / 3')
- assert.deepEqual(await paging.locator('.controls button').evaluateAll(es => es.map(e => e.dataset.command)), ['forward', 'turnRight', 'turnBack', 'turnLeft', 'forward', 'turnRight'])
- await paging.locator('.next-page').tap()
- assert.equal(await paging.locator('.page-number').textContent(), '3 / 3')
- assert.ok(await paging.locator('.next-page').isDisabled())
- assert.deepEqual(await paging.locator('.controls button').evaluateAll(es => es.map(e => e.dataset.command)), ['turnBack'])
- const afterPaging = await paging.evaluate(() => window.snapshot())
- assert.deepEqual({ ...afterPaging, currentPage: 0 }, frozenPaging)
- assert.equal(await paging.locator('.log').textContent(), pending)
- await click(paging, 'turnBack')
- assert.equal(await paging.locator('.controls').getAttribute('data-menu'), 'movement')
- assert.equal(await paging.locator('.page-number').textContent(), '3 / 3')
- assert.equal(await paging.locator('.prompt').textContent(), '> Move')
- assert.equal((await paging.evaluate(() => window.snapshot())).currentPage, 2)
- const beforePagingBack = await paging.evaluate(() => window.snapshot())
- await paging.locator('.previous-page').tap()
- assert.equal(await paging.locator('.page-number').textContent(), '2 / 3')
- await click(paging, 'back')
- assert.equal(await paging.locator('.page-number').textContent(), '1 / 1')
- assert.deepEqual((await paging.evaluate(() => window.snapshot())).game, beforePagingBack.game)
- assert.deepEqual((await paging.evaluate(() => window.snapshot())).history, beforePagingBack.history)
- assert.equal(await paging.locator('.prompt').textContent(), '>')
- await click(paging, 'move')
- assert.equal(await paging.locator('.page-number').textContent(), '1 / 3')
- await pagingContext.close()
- console.log('PASS: ja/en structured chronological commands, pending/back/language, door yes/no, all 112 floors, rotations and failed turns, map bounds/recenter/state freeze, six fixed slots, 320px/PC/short viewport/simulated Safe Area, log-only scroll, legacy input removed, 3D occlusion')
-} finally { await browser.close() }

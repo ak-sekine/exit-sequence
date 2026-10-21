@@ -1,57 +1,45 @@
-import type { LogEvent } from './game.ts'
 export type Language = 'ja' | 'en'
 const text = (ja: string, en: string) => ({ ja, en })
-export const messages = {
-  previousPage: text('前のページ', 'Previous page'), nextPage: text('次のページ', 'Next page'), pages: text('ページ切り替え', 'Pagination'),
-  move: text('移動', 'Move'), inspect: text('調べる', 'Inspect'), items: text('持ち物', 'Items'),
-  forward: text('前進', 'Forward'), turnBack: text('後ろを向く', 'Turn around'),
-  turnLeft: text('左を向く', 'Turn left'), turnRight: text('右を向く', 'Turn right'),
-  door: text('扉', 'Door'), itemMap: text('マップ', 'Map'), back: text('戻る', 'Back'),
-  mapUp: text('上', 'Up'), mapDown: text('下', 'Down'), mapLeft: text('左', 'Left'), mapRight: text('右', 'Right'),
-  close: text('閉じる', 'Close'), yes: text('はい', 'Yes'), no: text('いいえ', 'No'),
-  doorConfirmation: text('鍵はかかっていない。扉を開けて中に入りますか？', 'The door is unlocked. Open it and go through?'),
-  scrollup: text('マップを北へスクロール', 'Scroll map north'),
-  scrolldown: text('マップを南へスクロール', 'Scroll map south'),
-  scrollleft: text('マップを西へスクロール', 'Scroll map west'),
-  scrollright: text('マップを東へスクロール', 'Scroll map east'),
-  direction: text('方角', 'Direction'),
-  north: text('北', 'N'), east: text('東', 'E'), south: text('南', 'S'), west: text('西', 'W'),
-  map: text('2Dマップ', '2D map'),
-  showMap: text('2Dマップを表示', 'Show 2D map'),
-  showDungeon: text('3Dダンジョンを表示', 'Show 3D dungeon'),
-  gameOver: text('敵に捕まった。GAME OVER', 'Caught by the enemy. GAME OVER'),
-  menu: text('言語メニュー', 'Language menu'),
-  dungeon: text('3Dダンジョン', '3D dungeon'), log: text('ログ', 'Log'),
-  inCorridor: text('通路にいる。', 'In a corridor.'),
-  inRoom: text('部屋にいる。', 'In a room.'),
-  noEnemySign: text('敵の気配は感じない。', 'You sense no sign of an enemy.'),
-  doorAhead: text('正面に扉がある。', 'There is a door in front of you.'),
-  ready: text('通路にいる。', 'In a corridor.'),
-  enteredRoom: text('扉を開けて部屋に入った。', 'Opened the door and entered the room.'),
-  returnedCorridor: text('扉を開けて通路に戻った。', 'Opened the door and returned to the corridor.'),
-  moved: text('前進した。', 'Moved forward.'),
-  blocked: text('これ以上進めない。', 'Cannot go further.'),
-  left: text('左を向いた。', 'Turned left.'), right: text('右を向いた。', 'Turned right.'),
-  down: text('後ろを向いた。', 'Turned around.'), up: text('前進', 'Move forward'),
-}
-export type Message = keyof typeof messages
-export const t = (key: Message, language: Language) => messages[key][language]
-export function initialLanguage(): Language { return navigator.language.startsWith('ja') ? 'ja' : 'en' }
 
-export function translateLog(event: LogEvent, language: Language): string {
-  if (typeof event === 'string') return t(event, language)
-  if (event.kind === 'sight') {
-    const ja = ['', '目の前に敵がいる。', 'すぐ近くに敵がいる。', '近くに敵が見える。', '遠くに敵が見える。', 'すごく遠くに敵が見える。']
-    const en = ['', 'An enemy is right in front of you.', 'An enemy is very close.', 'An enemy is visible nearby.', 'An enemy is visible far away.', 'An enemy is visible very far away.']
-    const facing = (language === 'ja' ? ['北', '東', '南', '西'] : ['north', 'east', 'south', 'west'])[event.facing]
-    return language === 'ja' ? `${ja[event.distance]}敵は${facing}を向いている。` : `${en[event.distance]} The enemy is facing ${facing}.`
-  }
-  const directions = {
-    front: ['前', 'ahead'], frontRight: ['右斜め前', 'ahead to the right'], right: ['右', 'to the right'],
-    backRight: ['右斜め後ろ', 'behind to the right'], back: ['後ろ', 'behind'], backLeft: ['左斜め後ろ', 'behind to the left'],
-    left: ['左', 'to the left'], frontLeft: ['左斜め前', 'ahead to the left'],
-  }
-  return language === 'ja'
-    ? `${directions[event.direction][0]}の方、${event.distance <= 1 ? '近く' : '遠く'}で敵の音が聞こえる。`
-    : `You hear an enemy ${directions[event.direction][1]}, ${event.distance <= 1 ? 'nearby' : 'far away'}.`
+export const messages = {
+  menu: text('メニュー', 'Menu'),
+  resume: text('再開', 'Resume'),
+  showMap: text('マップ', 'Map'),
+  closeMap: text('マップを閉じる', 'Close map'),
+  language: text('言語', 'Language'),
+  paused: text('一時停止中', 'Paused'),
+  direction: text('方向', 'Direction'),
+  coordinates: text('位置', 'Position'),
+  corridor: text('通路', 'Corridor'),
+  room: text('部屋', 'Room'),
+  action: text('A', 'A'),
+  joystick: text('移動スティック', 'Movement stick'),
+  log: text('イベントログ', 'Event log'),
+  dungeon: text('ダンジョン', 'Dungeon'),
+  mapLabel: text('探索マップ', 'Explored map'),
+  gameOver: text('敵に捕まった。ゲームオーバー', 'Caught by the enemy. GAME OVER'),
+  ready: text('探索を開始。', 'Exploration started.'),
+  doorAhead: text('正面に扉がある。', 'There is a door ahead.'),
+  doorOpened: text('扉を開けた。', 'Door opened.'),
+  doorClosed: text('扉を閉めた。', 'Door closed.'),
+  doorJammed: text('敵が近くにいて、扉を閉められない。', 'The door is blocked by someone nearby.'),
+  enemySpotted: text('敵に発見された。', 'The enemy spotted you.'),
+  enemyDetected: text('敵の姿を捉えた。', 'Enemy spotted.'),
+  heardMovement: text('近くで物音が聞こえる。', 'You hear movement nearby.'),
+} as const
+
+export type Message = keyof typeof messages
+export const t = (key: Message, language: Language): string => messages[key][language]
+export function initialLanguage(preferred = typeof navigator === 'undefined' ? 'en' : navigator.language): Language {
+  return preferred.toLowerCase().startsWith('ja') ? 'ja' : 'en'
+}
+
+const COMPASS = {
+  ja: ['北', '北東', '東', '南東', '南', '南西', '西', '北西'],
+  en: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'],
+} as const
+
+export function compass(heading: number, language: Language): string {
+  const index = Math.round((((heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI / 4)) % 8
+  return COMPASS[language][index]!
 }
