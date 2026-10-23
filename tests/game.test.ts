@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { character } from '../src/character.ts'
+import { doorAnimationProgress } from '../src/animation.ts'
 import { ENEMY_RADIUS, INITIAL_ENEMY } from '../src/enemy.ts'
 import { DOORS, INITIAL_PLAYER, PLAYER_SPEED, wrapAngle } from '../src/dungeon.ts'
 import { createGame, interact, rotatePlayer, stepGame } from '../src/game.ts'
@@ -90,9 +91,12 @@ test('A toggles an in-range forward door and state controls movement collision',
   const start = createGame({ player: { x: 0.5, y: 0.5, heading: Math.PI / 2 }, enemies: [], doors })
   const open = interact(start, map, doors)
   assert.deepEqual(open.openDoors, [true])
+  assert.deepEqual(open.doorMotions[0], { fromOpen: false, startedAt: 0 })
+  assert.equal(doorAnimationProgress(open.openDoors[0]!, open.doorMotions[0], open.time), 0)
   assert.equal(open.events.at(-1)?.key, 'doorOpened')
   const closed = interact(open, map, doors)
   assert.deepEqual(closed.openDoors, [false])
+  assert.deepEqual(closed.doorMotions[0], { fromOpen: true, startedAt: 0 })
   assert.equal(closed.events.at(-1)?.key, 'doorClosed')
   assert.equal(interact(start, map, doors).player.x, 0.5)
 

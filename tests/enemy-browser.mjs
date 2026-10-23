@@ -107,13 +107,18 @@ try {
 
     await page.locator('.menu-toggle').click()
     const beforePause = await page.locator('.scene-frame').evaluate(element => ({ time: element.dataset.time, y: element.dataset.y }))
+    const pausedCanvas = await page.locator('.game-canvas').evaluate(canvas => canvas.toDataURL())
     await page.waitForTimeout(280)
     const duringPause = await page.locator('.scene-frame').evaluate(element => ({ time: element.dataset.time, y: element.dataset.y }))
     assert.deepEqual(duringPause, beforePause, 'enemy decisions and movement stop while menu is open')
+    assert.equal(await page.locator('.game-canvas').evaluate(canvas => canvas.toDataURL()), pausedCanvas, 'enemy, door, and light animation stop with the game clock')
     await page.locator('.resume-button').click()
     await page.waitForFunction(() => document.querySelector('.scene-frame').dataset.gameOver === 'true', { timeout: 2500 })
     assert.equal(await page.locator('.game-over-screen').isVisible(), true)
     assert.equal(await page.locator('.scene-frame').evaluate(element => element.dataset.gameOver), 'true')
+    const overCanvas = await page.locator('.game-canvas').evaluate(canvas => canvas.toDataURL())
+    await page.waitForTimeout(120)
+    assert.equal(await page.locator('.game-canvas').evaluate(canvas => canvas.toDataURL()), overCanvas, 'animations stay frozen after game over')
     assert.deepEqual(errors, [])
     await context.close()
   }
@@ -129,6 +134,40 @@ try {
     await page.waitForTimeout(40)
     assert.equal(await page.locator('.scene-frame').getAttribute('data-visible-enemies'), '')
     await page.screenshot({ path: `${artifacts}/wall-occlusion.png` })
+    assert.deepEqual(errors, [])
+    await context.close()
+  }
+
+  // Two world-space billboards keep their independent poses and correct depth order.
+  {
+    const multiFixture = {
+      player: { x: 11.5, y: 2.5, heading: Math.PI / 2 },
+      enemies: [
+        { id: 'near-mutant', x: 12.65, y: 2.5, heading: Math.PI * 1.5, vision: 6, hearing: 5, destination: null, route: [], alerted: false },
+        { id: 'far-mutant', x: 13.65, y: 2.72, heading: Math.PI * 1.5, vision: 6, hearing: 5, destination: null, route: [], alerted: false },
+      ],
+    }
+    const context = await browser.newContext({ viewport: { width: 320, height: 640 }, deviceScaleFactor: 1, hasTouch: true, isMobile: true })
+    const { page, errors } = await openFixture(context, multiFixture)
+    await page.waitForFunction(() => {
+      const visible = document.querySelector('.scene-frame').dataset.visibleEnemies.split(',')
+      return visible.includes('near-mutant') && visible.includes('far-mutant')
+    })
+    await page.screenshot({ path: `${artifacts}/multiple-enemies-320.png` })
+    const frameIntervals = await page.evaluate(() => new Promise(resolve => {
+      const samples = []
+      let previous
+      function sample(timestamp) {
+        if (previous !== undefined) samples.push(timestamp - previous)
+        previous = timestamp
+        if (samples.length === 45) resolve(samples)
+        else requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    }))
+    const averageFrameMs = frameIntervals.reduce((sum, value) => sum + value, 0) / frameIntervals.length
+    console.log(`  320px two-enemy frame cadence: ${averageFrameMs.toFixed(1)}ms average`)
+    assert.ok(averageFrameMs < 50, `320px two-enemy rendering stays above 20fps: ${averageFrameMs.toFixed(1)}ms`)
     assert.deepEqual(errors, [])
     await context.close()
   }

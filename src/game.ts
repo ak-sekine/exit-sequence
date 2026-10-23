@@ -1,5 +1,6 @@
 import { character } from './character.ts'
 import type { Character } from './character.ts'
+import type { DoorMotion } from './animation.ts'
 import { angleDifference, cellAt, cellKey, DOORS, DOOR_INTERACT_ANGLE, DOOR_INTERACT_DISTANCE, DUNGEON_MAP, headingTo, INITIAL_PLAYER, moveWithCollision, PLAYER_RADIUS, PLAYER_SPEED, sameCell, wrapAngle } from './dungeon.ts'
 import type { Cell, Door, DungeonMap, Player, Point } from './dungeon.ts'
 import { ENEMY_RADIUS, ENEMY_SPEED, ENEMY_THINK_INTERVAL, INITIAL_ENEMY } from './enemy.ts'
@@ -28,6 +29,7 @@ export type GameState = Readonly<{
   player: Character
   enemies: readonly Enemy[]
   openDoors: readonly boolean[]
+  doorMotions: readonly DoorMotion[]
   visited: ReadonlySet<string>
   detections: readonly EnemyDetection[]
   time: number
@@ -68,6 +70,7 @@ export function createGame(options: GameOptions = {}): GameState {
     player,
     enemies: options.enemies ?? [INITIAL_ENEMY],
     openDoors: [...opened],
+    doorMotions: opened.map(fromOpen => ({ fromOpen, startedAt: 0 })),
     visited: new Set([cellKey(cellAt(player))]),
     detections: [],
     time: 0,
@@ -121,6 +124,7 @@ export function interact(state: GameState, map: DungeonMap = DUNGEON_MAP, doors:
   const target = doorTarget(state.player, doors)
   if (!target) return state
   const openDoors = [...state.openDoors]
+  const doorMotions = [...(state.doorMotions ?? state.openDoors.map(fromOpen => ({ fromOpen, startedAt: state.time })))]
   const opening = !openDoors[target.index]
   if (!opening) {
     const [a, b] = doorSegment(doors[target.index]!)
@@ -129,9 +133,11 @@ export function interact(state: GameState, map: DungeonMap = DUNGEON_MAP, doors:
     if (occupied) return addEvent(state, 'doorJammed')
   }
   openDoors[target.index] = opening
+  doorMotions[target.index] = { fromOpen: !opening, startedAt: state.time }
   const next = {
     ...state,
     openDoors,
+    doorMotions,
     playerNoise: { sourceId: 'player', position: { x: state.player.x, y: state.player.y } },
     playerNoiseTime: PLAYER_NOISE_DURATION,
   }

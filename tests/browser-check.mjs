@@ -44,6 +44,10 @@ try {
     assert.ok(measurements.controls.y + measurements.controls.height <= layout.height, `controls remain visible at ${layout.width}×${layout.height}`)
     assert.ok(await page.locator('.game-canvas').evaluate(canvas => canvas.getContext('2d') !== null))
 
+    if (layout.width === 390 || layout.width === 1280) {
+      await page.screenshot({ path: `${artifacts}/initial-${layout.width}.png` })
+    }
+
     if (layout.width === 320) {
       await page.addStyleTag({ content: '.shell { --safe-top: 24px; --safe-right: 14px; --safe-bottom: 22px; --safe-left: 14px; }' })
       const safe = await page.locator('.shell').evaluate(element => ({
