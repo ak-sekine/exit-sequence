@@ -41,4 +41,4 @@ git diff --check
 
 ブラウザテストはChromiumを使用します。既定の実行ファイルは `/usr/bin/chromium` で、別のChromiumを使う場合は `CHROMIUM_PATH` を指定してください。iPhone Safariの実機検証はこのリポジトリの自動テストに含まれません。
 
-参考画像に基づく描画の再調整、修正前後の画像、性能測定は [描画検証レポート](docs/visual-review/README.md) を参照してください。
+黒背景と緑の簡素なワイヤーフレーム、敵の透過PNGスプライト、修正前後の画像、性能測定は [描画検証レポート](docs/visual-review/README.md) を参照してください。

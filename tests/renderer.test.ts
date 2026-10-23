@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { projectWorldPlanePoint } from '../src/renderer.ts'
+import { mutantSpriteFrameIndex, projectWorldPlanePoint } from '../src/renderer.ts'
 
 test('floor and ceiling grid projection follows world position and camera heading', () => {
   const worldPoint = { x: 2.5, y: 13.5 }
@@ -18,4 +18,17 @@ test('floor and ceiling grid projection follows world position and camera headin
   const turned = projectWorldPlanePoint({ ...camera, heading: Math.PI / 6 }, worldPoint, 320, 160, 220, 'floor')!
   assert.ok(turned)
   assert.notEqual(turned.x, floor.x, 'a fixed world point shifts across the view as the player turns')
+})
+
+test('sprite animation selects cached frames from game time for all three modes', () => {
+  assert.equal(mutantSpriteFrameIndex('idle', 0), 0)
+  assert.equal(mutantSpriteFrameIndex('idle', 0.5), 1)
+  assert.equal(mutantSpriteFrameIndex('idle', 1), 2)
+  assert.equal(mutantSpriteFrameIndex('walk', 0), 0)
+  assert.equal(mutantSpriteFrameIndex('walk', 1 / 9), 1)
+  assert.equal(mutantSpriteFrameIndex('walk', 4 / 9), 0)
+  assert.equal(mutantSpriteFrameIndex('chase', 1 / 11), 1)
+  assert.equal(mutantSpriteFrameIndex('chase', 4 / 11), 0)
+  assert.equal(mutantSpriteFrameIndex('chase', 1.25), mutantSpriteFrameIndex('chase', 1.25), 'a frozen game clock keeps the same frame')
+  assert.equal(mutantSpriteFrameIndex('idle', -1), 0)
 })

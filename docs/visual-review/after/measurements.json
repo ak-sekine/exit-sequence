@@ -3,40 +3,48 @@
     "viewport": 320,
     "canvasWidth": 302,
     "canvasHeight": 302,
-    "mean": 14.146666666667443,
-    "p95": 28.399999999906868,
-    "crate": 1.698076844215393,
-    "air": 2.259999990463257,
-    "behindWall": false
+    "cssWidth": 302,
+    "mean": 2.933333333333333,
+    "p95": 2.300000000046566,
+    "visibleEnemies": [
+      "bench-b",
+      "bench-a"
+    ]
   },
   {
     "viewport": 375,
     "canvasWidth": 357,
     "canvasHeight": 357,
-    "mean": 15.38833333333411,
-    "p95": 25.799999999813735,
-    "crate": 1.698076844215393,
-    "air": 2.259999990463257,
-    "behindWall": false
+    "cssWidth": 357,
+    "mean": 6.346666666667443,
+    "p95": 5.900000000139698,
+    "visibleEnemies": [
+      "bench-b",
+      "bench-a"
+    ]
   },
   {
     "viewport": 390,
     "canvasWidth": 372,
     "canvasHeight": 372,
-    "mean": 15.181666666665114,
-    "p95": 25,
-    "crate": 1.698076844215393,
-    "air": 2.259999990463257,
-    "behindWall": false
+    "cssWidth": 372,
+    "mean": 8.23666666666589,
+    "p95": 3.699999999953434,
+    "visibleEnemies": [
+      "bench-b",
+      "bench-a"
+    ]
   },
   {
     "viewport": 1280,
     "canvasWidth": 622,
     "canvasHeight": 622,
-    "mean": 26.928333333328677,
-    "p95": 39.5,
-    "crate": 1.698076844215393,
-    "air": 2.259999990463257,
-    "behindWall": false
+    "cssWidth": 622,
+    "mean": 13.523333333327901,
+    "p95": 168.60000000009313,
+    "visibleEnemies": [
+      "bench-b",
+      "bench-a"
+    ]
   }
 ]

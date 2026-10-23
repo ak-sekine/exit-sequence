@@ -1,99 +1,56 @@
-# 参考画像に基づく描画再調整
+# 描画簡素化とミュータントスプライト
 
-## 参考画像の確認
+## 変更
 
-チャットに添付された参考画像を視覚的に確認し、その造形を基準に調整した。黒地と鮮明な緑の細線、連続する多角形の装甲フレーム、壁から天井への面取り、天井通気口、左手前のコンテナ、右壁の円筒照明と配管、床の透視格子が特徴だった。敵には縦に裂けた大きな口、上下の鋭い歯、張り出した肩、長い腕と湾曲爪、不規則な骨格・筋繊維、非対称な脚が見られた。
+- 背景を黒に統一し、床・天井は2セル間隔の暗い格子、壁は距離に応じて暗くなる外周・境界線と少数のパネル線に整理した。
+- 既存のレイキャスト、不透明な壁、閉じた扉の遮蔽、開閉論理と0.26秒の線の移動は維持した。立体装飾用の別深度バッファを取り除いた。
+- `src/facility.ts` と `drawFacility()` を削除した。撤去した描画物は、多角形の補強フレーム、天井通気口、コンテナ、円筒照明、配管、および立体メッシュに属する補助線と黒い遮蔽面。
+- 敵のCanvas Path形状生成を廃止し、透明PNGをキャッシュして `drawImage()` で表示する。敵は奥から手前へ描き、列ごとの壁深度で壁と閉じた扉の後ろを隠す。画像の透明部分は後方の描画を通す。
+- `getImageData()`、不透明列マスク、敵用Canvas生成を削除した。レイの深度・交差配列をCanvasごとに再利用し、devicePixelRatioは最大2に制限する。
 
-参考画像ファイルは実行環境内では取得できていない。ユーザーがその取得条件を解除したため、チャット上で視覚認識した画像を参照した。参考画像と実装画像のピクセル単位の比較や、両者を並べた画像は作成していない。添付する比較シートは実装の修正前／修正後である。
+## 敵画像
 
-## 修正前との差分
+すべて `src/assets/mutant/` 内の独立した透過PNGで、黒背景に映える明るい緑の線画。大きく縦に開いた歯のある口、張り出した肩、前傾姿勢、長い腕と湾曲した爪、非対称な脚、骨格・筋繊維の内部線を持つ同じキャラクターを使用する。
 
-| 観点 | 修正前の画面 | 調整後 |
+| 状態 | フレーム | 内容 |
 | --- | --- | --- |
-| 施設の立体感 | 壁面模様が中心で、補強部材の張り出しがない | 奥行きと開口を持つ多角形フレーム、縁取り、床上コンテナ、円筒照明を追加 |
-| 線画の密度 | 壁の縦線が点状で、輪郭が接続していない | 投影された縦線を接続し、通気口とパネル枠を復元 |
-| ディテールの種類 | 壁面と床天井の平面模様 | コンテナの蓋・面板・交差補強、照明の端環・発光管・配管、天井ルーバー |
-| 遠近感 | ワールド投影はあるが、壁と床の中央が暗い | 同一カメラの投影で立体装飾を配置し、連続する床の中心格子を強調 |
-| 敵のシルエット | 小さい口、直立姿勢、短い爪、左右ほぼ同じ形 | 縦長の大口、長い湾曲爪、非対称な腕・脚、追跡時の頭部張り出し |
-| 敵の内部構造 | 粗い肋骨と単純な関節 | 不規則な頭蓋輪郭、歯列、重なる肋骨、筋繊維、突起、関節の細線 |
-| 線の明るさ | 太くにじんだ淡緑の敵と暗い施設 | 鮮緑の細い輪郭、暗い内部線、距離に応じて暗くなる装飾 |
-| 黒背景とのコントラスト | 黒緑の面とぼかしが中心 | 黒い遮蔽面と緑の線画。大口と胴体の黒い面で背景線を遮る |
+| idle | `idle-1.png`–`idle-4.png` | 呼吸と肩・頭の微動 |
+| walk | `walk-1.png`–`walk-4.png` | 左右の腕と脚が交互に移る歩行周期 |
+| chase | `chase-1.png`–`chase-4.png` | 強い前傾と爪を伸ばす追跡周期 |
 
-## 実装
+各フレームの一覧：[mutant-frames.png](after/mutant-frames.png)
 
-- Canvas 2Dと既存レイキャストを維持。ゲーム、敵AI、移動速度、当たり判定、マップ、扉の論理状態を変更していない。
-- `facility.ts` に描画専用メッシュを分離。狭い通路の一部にだけ装飾を置き、ワールド座標への固定、近接面クリップ、透視投影、距離減衰を行う。
-- 壁深度に加えて画素ごとの装飾深度を使用。補強枠やコンテナに敵が隠れ、開口やコンテナの上の空間は通して見える。装飾には衝突判定を追加しない。
-- 装飾メッシュと深度配列を再利用。黒い面は投影三角形の縦スパン内だけを走査する。
-- 敵Canvasを112×176から224×352へ拡大。ゲーム内の表示寸法は維持し、主線と内部線を分け、ぼかしを除去。
-- 胴体・肩・腰を共通変換で接続して呼吸と前傾を表現。爪は付け根を固定して湾曲を変形し、追跡時は口・頭部・腕・爪の動きを強める。ゲーム時刻を唯一のアニメーション時刻とする。
+## 比較画像
 
-## スクリーンショット
+- [背景と敵の修正前後比較](after/before-after.png)
+- 背景：[修正前](before/corridor.png) / [修正後](after/corridor.png)、[曲がり角・修正前](before/corner.png) / [修正後](after/corner.png)
+- 敵：[近距離・修正前](before/enemy-near.png) / [修正後](after/enemy-near.png)、[中距離・修正前](before/enemy-middle.png) / [修正後](after/enemy-middle.png)、[追跡・修正前](before/enemy-chase.png) / [修正後](after/enemy-chase.png)
+- 実ゲーム画面：[スマートフォン390px](after/game-enemy-390.png) / [PC幅](after/game-enemy-1280.png)
+- 敵の距離と複数表示：[近距離](after/enemy-near.png)、[中距離](after/enemy-middle.png)、[遠距離](after/enemy-far.png)、[2体](after/enemy-multiple.png)
+- 扉：[閉状態](after/door-closed.png)、[開く途中](after/door-opening.png)、[閉じる途中](after/door-closing.png)
+- 画面幅：[320px](after/responsive-320.png)、[375px](after/responsive-375.png)、[390px](after/responsive-390.png)、[PC](after/responsive-1280.png)
 
-Chromiumで実際のゲームCanvasを描画した。比較用に更新ループだけを検証側で停止し、実マップ、全扉開、プレイヤー位置(2.5, 14.5)、ゲーム時刻1.25秒を固定した。AIの動作・追跡・捕獲は別の既存ブラウザテストで確認している。
+修正前画像はこの変更の直前、`main` の `038dc2b` を同じワールド位置・カメラで撮影したもの。比較撮影では更新ループを止め、実ゲームのレイキャストへ固定した `GameState` を渡している。画面幅の確認ではChromium上のゲームCanvasを撮影した。
 
-- [修正前／修正後・5場面の比較シート](after/before-after.png)
-- [SF通路](after/corridor.png)
-- [壁面装飾](after/wall.png)
-- [敵・近距離正面](after/mutant-front.png)
-- [敵・中距離](after/mutant-middle.png)
-- [敵・追跡ポーズ](after/mutant-chase.png)
-- [320px・敵2体](after/chase-320.png)、[375px](after/chase-375.png)、[390px](after/chase-390.png)、[PC](after/chase-1280.png)
+## 性能
 
-初回修正後の画像を確認し、太い帯状になった壁パネル端、背景が透過する胴体、暗い床中心線、単純すぎるコンテナ・照明、正面から厚みのない補強枠を順に修正した。最終画像もChromiumの撮影結果を視覚確認した。
+Chromium、deviceScaleFactor=1、開いた通路、追跡中の敵2体で65回描画し、最初の5回を除いてCanvas描画のCPU時間を測定した。変更前と変更後で幅・Canvas寸法・敵位置・測定回数をそろえた。数値は[変更前](before/measurements.json)と[変更後](after/measurements.json)。
+
+| 画面幅 | Canvas幅 | 変更前 平均 / p95 | 変更後 平均 / p95 |
+| ---: | ---: | ---: | ---: |
+| 320px | 302px | 14.1 / 28.4ms | 2.9 / 2.3ms |
+| 375px | 357px | 15.4 / 25.8ms | 6.3 / 5.9ms |
+| 390px | 372px | 15.2 / 25.0ms | 8.2 / 3.7ms |
+| PC幅 | 622px | 26.9 / 39.5ms | 13.5 / 168.6ms |
+
+平均描画時間は全幅で短くなった。PC幅の変更後p95には長いフレームが残ったため、安定した60fpsを保証しない。ブラウザーや端末ごとの実FPSとは異なるCPU時間の計測で、iPhone Safariと実機スマートフォンは未確認。
 
 ## 検証
 
-- `npm test`：27件成功。床・天井のワールド座標投影、移動・AI・扉・時刻固定のアニメーションを含む。
-- `npm run build`：成功。
-- `npm run test:browser`：成功。320・375・390px、PC、横画面、Safe Area、操作、扉開閉・通過、壁と扉の敵遮蔽、メニュー／マップ停止、ゲームオーバー後のCanvas停止を確認。
+- `npm test`：28件成功。ワールド投影、敵状態の選択、ゲーム時刻からのフレーム選択、扉アニメーションを含む。
+- `npm run build`：成功。PNGはViteがローカルの配信アセットとして出力する。
+- `npm run test:browser`：Chromiumで320/375/390px、PC、横画面、高DPI上限、扉開閉、壁・扉遮蔽、複数敵、メニュー／マップ停止、ゲームオーバー停止を確認。
+- `node tests/visual-review.mjs docs/visual-review/after docs/visual-review/before`：比較画像、距離別表示、アニメーション状態、画面幅、性能測定を生成し、施設メッシュと`getImageData()`がないことを確認。
 - `git diff --check`：成功。
-- 追加の `node tests/visual-review.mjs docs/visual-review/after docs/visual-review/before`：装飾本体の深度、装飾上部の空間、手前の壁による装飾の遮蔽を検証し、固定時刻の5場面と4幅の画像を生成。
 
-再撮影には、別ターミナルで `npm run dev -- --host 127.0.0.1` を起動してから上記スクリプトを実行する。既定は `/usr/bin/chromium`、変更する場合は `CHROMIUM_PATH` を指定する。比較元の `before/` は780a233の実装で撮影した保存済み画像。
-
-## 残る差分と限界
-
-参考画像と同一の描き込み量・形状には達していない。敵の生体組織はまだ幾何学的で、肉の細かな裂け目、機械部品との融合、局所的な表面傷、首の奥行きは簡略化している。スプライトは正面を向く2D線画で、立体モデルではない。施設のフレームと小物は既存マップに合わせた限定配置で、参考画像の広い画角・長い通路・すべての配線をそのまま再現したものではない。
-
-参考画像ファイルとの直接比較、実機スマートフォン、iPhone Safariの性能・外観確認は行っていない。PCでも常時60fpsを保証する結果ではなく、描画量を増やした分の負荷はある。
-
-## 性能測定
-
-Chromium、deviceScaleFactor=1、開いた通路・敵2体で、5回のウォームアップ後に60回の `renderDungeon` の実行時間を測定した。これは描画CPU時間であり、実機のFPSではない。数値の元データは [measurements.json](after/measurements.json)。
-
-| 画面幅 | Canvas幅 | 平均描画時間 | 95パーセンタイル |
-| --- | --- | --- | --- |
-| 320px | 302px | 14.1ms | 28.4ms |
-| 375px | 357px | 15.4ms | 25.8ms |
-| 390px | 372px | 15.2ms | 25.0ms |
-| 1280px | 622px | 26.9ms | 39.5ms |
-
-既存の320px・敵2体テストでは45フレームの平均間隔16.7ms。上表の通路用固定描画とは異なるシーン・測定方式であり、単純比較はできない。PCを含む高負荷時の60fpsは保証しない。iPhone Safariと実機スマートフォンは未検証。
-
-## 変更ファイル一覧
-
-- `README.md`
-- `docs/dungeon-sample.md`
-- `docs/enemy-ai.md`
-- `docs/visual-review/README.md`
-- `docs/visual-review/after/before-after.png`
-- `docs/visual-review/after/chase-1280.png`
-- `docs/visual-review/after/chase-320.png`
-- `docs/visual-review/after/chase-375.png`
-- `docs/visual-review/after/chase-390.png`
-- `docs/visual-review/after/corridor.png`
-- `docs/visual-review/after/measurements.json`
-- `docs/visual-review/after/mutant-chase.png`
-- `docs/visual-review/after/mutant-front.png`
-- `docs/visual-review/after/mutant-middle.png`
-- `docs/visual-review/after/wall.png`
-- `docs/visual-review/before/corridor.png`
-- `docs/visual-review/before/mutant-chase.png`
-- `docs/visual-review/before/mutant-front.png`
-- `docs/visual-review/before/mutant-middle.png`
-- `docs/visual-review/before/wall.png`
-- `src/animation.ts`
-- `src/facility.ts`
-- `src/renderer.ts`
-- `tests/visual-review.mjs`
+再撮影時はViteを起動してからvisual reviewスクリプトを実行する。操作・AI・移動・衝突・マップ・扉の論理状態に変更はない。

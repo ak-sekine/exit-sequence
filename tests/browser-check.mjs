@@ -152,7 +152,29 @@ try {
     assert.deepEqual(errors, [], `no browser exceptions at ${layout.width}×${layout.height}`)
     await context.close()
   }
-  console.log('PASS: square 2.5D canvas, 320/375/390 phone widths, PC and landscape layout, safe-area padding, no scroll, menu/map pause, language switch, stick capture/release, view drag, WASD, and Escape pause')
+  {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      deviceScaleFactor: 3,
+      hasTouch: true,
+      isMobile: true,
+    })
+    const page = await context.newPage(), errors = []
+    page.on('pageerror', error => errors.push(error.message))
+    await page.goto(base)
+    await page.waitForFunction(() => !!document.querySelector('.scene-frame')?.dataset.time)
+    const canvas = await page.locator('.game-canvas').evaluate(element => ({
+      width: element.width,
+      height: element.height,
+      cssWidth: element.getBoundingClientRect().width,
+      cssHeight: element.getBoundingClientRect().height,
+    }))
+    assert.ok(canvas.width <= Math.ceil(canvas.cssWidth * 2), 'high-DPI render scale stays capped at 2×')
+    assert.ok(canvas.width >= Math.ceil(canvas.cssWidth * 1.9), 'high-DPI canvas uses the capped 2× resolution')
+    assert.deepEqual(errors, [])
+    await context.close()
+  }
+  console.log('PASS: square 2.5D canvas, 320/375/390 phone widths, PC and landscape layout, safe-area padding, high-DPI cap, no scroll, menu/map pause, language switch, stick capture/release, view drag, WASD, and Escape pause')
 } finally {
   await browser.close()
 }
