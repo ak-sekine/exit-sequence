@@ -18,6 +18,7 @@ export type MutantPose = Readonly<{
   rightLeg: number
   lean: number
   reach: number
+  clawFlex: number
   mouth: number
 }>
 
@@ -45,6 +46,7 @@ export function mutantPose(mode: MutantAnimationMode, gameTime: number, seed = 0
     rightLeg: walking ? stride * (aggressive ? 0.34 : 0.3) : Math.sin(t * 1.1 + seed + 1) * 0.03,
     lean: aggressive ? 0.14 : walking ? 0.045 : 0,
     reach: aggressive ? 0.12 + (0.5 + 0.5 * Math.sin(cycle)) * 0.12 : 0,
+    clawFlex: Math.sin(t * (aggressive ? 8.2 : 2.4) + seed) * (aggressive ? 1.8 : 0.55),
     mouth: aggressive ? 0.76 + (0.5 + 0.5 * Math.sin(cycle * 0.7)) * 0.24 : 0.18 + (0.5 + 0.5 * Math.sin(t * 1.7 + seed)) * 0.16,
   }
 }

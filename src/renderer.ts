@@ -1,3 +1,4 @@
+import { drawFacility } from './facility.ts'
 import { doorAnimationProgress, mutantAnimationMode, mutantPose } from './animation.ts'
 import { DOORS, DUNGEON_MAP, doorSegment, isFloor } from './dungeon.ts'
 import type { Door, DungeonMap, Point } from './dungeon.ts'
@@ -8,11 +9,11 @@ import { castRay } from './raycast.ts'
 const FIELD_OF_VIEW = Math.PI * 0.4
 const WALL_HEIGHT = 1
 const CAMERA_HEIGHT = 0.5
-const BACKGROUND = '#010302'
+const BACKGROUND = '#000000'
 const NEAR_PLANE = 0.12
 const MAX_RENDER_DISTANCE = 24
-const MUTANT_WIDTH = 112
-const MUTANT_HEIGHT = 176
+const MUTANT_WIDTH = 224
+const MUTANT_HEIGHT = 352
 
 type PlaneFeature = Readonly<{ x: number; y: number; kind: 'hatch' | 'grate' | 'light'; seed: number }>
 type ProjectedLine = Readonly<{ ax: number; ay: number; bx: number; by: number; depth: number }>
@@ -166,20 +167,20 @@ function drawPlaneGrid(
     add({ x, y: y + 1 }, { x: x + 1, y: y + 1 })
     if (!isFloor(map, x - 1, y)) add({ x, y }, { x, y: y + 1 })
     if (!isFloor(map, x, y - 1)) add({ x, y }, { x: x + 1, y })
-    add({ x: x + 0.5, y: y + 0.08 }, { x: x + 0.5, y: y + 0.92 }, true)
-    add({ x: x + 0.08, y: y + 0.5 }, { x: x + 0.92, y: y + 0.5 }, true)
+    add({ x: x + 0.5, y }, { x: x + 0.5, y: y + 1 }, true)
+    add({ x, y: y + 0.5 }, { x: x + 1, y: y + 0.5 }, true)
   }
 
   context.save()
   context.lineWidth = plane === 'ceiling' ? 0.8 : 1
   context.lineCap = 'square'
   for (let index = 0; index < buckets.length; index++) {
-    const alpha = plane === 'floor' ? [0.3, 0.22, 0.15, 0.1, 0.06][index]! : [0.18, 0.13, 0.09, 0.062, 0.04][index]!
-    context.strokeStyle = `rgba(53, 205, 118, ${alpha})`
+    const alpha = plane === 'floor' ? [0.72, 0.5, 0.32, 0.18, 0.1][index]! : [0.42, 0.3, 0.18, 0.1, 0.05][index]!
+    context.strokeStyle = `rgba(32, 255, 52, ${alpha})`
     context.beginPath()
     for (const line of buckets[index]!) { context.moveTo(line.ax, line.ay); context.lineTo(line.bx, line.by) }
     context.stroke()
-    context.strokeStyle = `rgba(47, 178, 105, ${plane === 'floor' ? [0.16, 0.11, 0.075, 0.048, 0.028][index]! : [0.09, 0.065, 0.045, 0.03, 0.02][index]!})`
+    context.strokeStyle = `rgba(32, 235, 55, ${plane === 'floor' ? [0.6, 0.4, 0.24, 0.14, 0.07][index]! : [0.09, 0.065, 0.045, 0.03, 0.02][index]!})`
     context.lineWidth = 0.7
     context.beginPath()
     for (const line of minorBuckets[index]!) { context.moveTo(line.ax, line.ay); context.lineTo(line.bx, line.by) }
@@ -292,7 +293,7 @@ function drawWallDetails(
   const u = Math.max(0, Math.min(1, offset))
   const pattern = wallPattern(cell.x, cell.y, side)
   const fade = Math.max(0.08, 1 - depth * 0.048)
-  const seamColor = '80, 232, 148'
+  const seamColor = '33, 255, 57'
   const brightColor = '127, 255, 174'
   const verticalSeams = [
     [0.055, 0.085, 0.17, 0.5, 0.83, 0.915, 0.945],
@@ -306,9 +307,10 @@ function drawWallDetails(
     [0.1, 0.28, 0.72, 0.9],
     [0.12, 0.2, 0.8, 0.88],
   ][pattern]!
-  for (const seam of verticalSeams) if (Math.abs(u - seam) < 0.013) {
+  for (const seam of verticalSeams) if (Math.abs(u - seam) < 0.65 / h) {
     const inset = seam === 0.055 || seam === 0.945 ? 0 : h * 0.06
-    fillDetail(context, x, top + inset, 0.52 * fade, seamColor)
+    context.fillStyle = `rgba(${seamColor}, ${0.7 * fade})`
+    context.fillRect(x, top + inset, 1, h - 2 * inset)
     if (seam === 0.085 || seam === 0.915) fillDetail(context, x, top + inset + 2, 0.3 * fade, seamColor)
     if (seam === 0.5 && pattern === 0) fillDetail(context, x, top + inset, 0.65 * fade, brightColor)
   }
@@ -328,9 +330,9 @@ function drawWallDetails(
         const y = top + h * (0.31 + bar * 0.035 + normalizedU * 0.008)
         fillDetail(context, x, y, 0.38 * fade, '61, 194, 117')
       }
-      if (Math.abs(u - left) < 0.014 || Math.abs(u - right) < 0.014) {
-        fillDetail(context, x, top + h * 0.29, 0.48 * fade)
-        fillDetail(context, x, top + h * 0.47, 0.48 * fade)
+      if (Math.abs(u - left) < 0.65 / h || Math.abs(u - right) < 0.65 / h) {
+        context.fillStyle = `rgba(32, 235, 60, ${0.65 * fade})`
+        context.fillRect(x, top + h * 0.29, 1, h * 0.18)
       }
     }
   }
@@ -340,9 +342,9 @@ function drawWallDetails(
   const hatchHalfWidth = pattern === 2 ? 0.14 : 0.075
   const hatchTop = pattern === 2 ? 0.26 : 0.58
   const hatchBottom = pattern === 2 ? 0.74 : 0.77
-  if (Math.abs(u - (hatchCenter - hatchHalfWidth)) < 0.013 || Math.abs(u - (hatchCenter + hatchHalfWidth)) < 0.013) {
-    fillDetail(context, x, top + h * hatchTop, 0.55 * fade)
-    fillDetail(context, x, top + h * hatchBottom, 0.55 * fade)
+  if (Math.abs(u - (hatchCenter - hatchHalfWidth)) < 0.65 / h || Math.abs(u - (hatchCenter + hatchHalfWidth)) < 0.65 / h) {
+    context.fillStyle = `rgba(32, 235, 60, ${0.6 * fade})`
+    context.fillRect(x, top + h * hatchTop, 1, h * (hatchBottom - hatchTop))
   }
   if (u >= hatchCenter - hatchHalfWidth && u <= hatchCenter + hatchHalfWidth) {
     const across = (u - hatchCenter) / hatchHalfWidth
@@ -472,61 +474,40 @@ function drawOpenDoorFrames(
   }
 }
 
+function ink(context: CanvasRenderingContext2D, path: string, detail = false): void {
+  context.strokeStyle = detail ? '#239d38' : '#48ff51'
+  context.lineWidth = detail ? 0.48 : 0.78
+  const shape = new Path2D(path)
+  if (!detail && path.includes('Z')) { context.fillStyle = '#000'; context.fill(shape) }
+  context.stroke(shape)
+}
+
 function drawHead(context: CanvasRenderingContext2D, pose: ReturnType<typeof mutantPose>): void {
   context.save()
-  context.translate(51, 27 + pose.headNod)
+  context.translate(50, 30 + pose.headNod)
   context.rotate(pose.headTilt)
-  context.strokeStyle = '#47ec91'
-  context.lineWidth = 1.5
+  context.scale(1 + pose.lean * 0.5, 1 + pose.lean * 0.35)
+  // The muzzle projects over the chest, with an uneven cranial shell and exposed jaw.
+  ink(context, 'M-17 10 L-20 0 -17 -7 -18 -12 -12 -15 -10 -22 -5 -21 -2 -25 3 -23 8 -24 12 -18 17 -16 17 -9 21 -5 18 3 20 10 15 19 10 25 0 28 -10 23 -17 10 Z M-10 -21 L-13 -28 -16 -26 -14 -18 M4 -23 L9 -33 12 -32 9 -21 M17 -13 L24 -17 22 -10')
+  ink(context, 'M-16 -9 L-10 -13 -6 -10 -2 -15 3 -10 8 -15 13 -11 M-19 1 L-14 -4 -9 -3 -6 -7 M9 -6 L14 -5 17 0 M-16 7 L-12 10 -13 18 M13 8 L17 11 13 18 M-9 -20 L-6 -16 -2 -20 M2 -18 L6 -20 9 -17', true)
+  ink(context, 'M-14 -2 L-12 -7 -7 -6 -6 -2 -10 0 Z M7 -3 L8 -8 13 -7 15 -3 11 0 Z M-2 -6 L-5 2 0 4 3 0 Z')
+  const jaw = 15 + pose.mouth * 10
+  context.save(); context.translate(0, 7); context.scale(1, jaw / 20)
+  const mouth = new Path2D('M-12 0 Q-11 -8 -3 -9 Q7 -11 12 -2 L13 9 9 22 4 27 -4 27 -11 21 -14 9 Z')
+  context.fillStyle = '#000'; context.fill(mouth); context.strokeStyle = '#55ff60'; context.lineWidth = 0.85; context.stroke(mouth)
+  ink(context, 'M-15 0 Q-19 14 -9 26 Q0 35 11 27 L17 12 M-10 -5 Q0 -15 10 -5 M-10 24 Q0 30 9 23', true)
   context.beginPath()
-  context.moveTo(-12, 4); context.lineTo(-15, -7); context.lineTo(-10, -13)
-  context.lineTo(-8, -23); context.lineTo(-3, -18); context.lineTo(0, -28)
-  context.lineTo(4, -20); context.lineTo(10, -24); context.lineTo(11, -15)
-  context.lineTo(16, -8); context.lineTo(14, 5); context.lineTo(10, 13)
-  context.lineTo(2, 17); context.lineTo(-8, 13); context.closePath(); context.stroke()
-  context.strokeStyle = 'rgba(31, 170, 102, 0.9)'
-  context.lineWidth = 0.8
-  context.beginPath()
-  context.moveTo(-9, -13); context.lineTo(-4, -8); context.lineTo(0, -11); context.lineTo(5, -7); context.lineTo(11, -13)
-  context.moveTo(-13, -4); context.lineTo(-7, -1); context.moveTo(13, -2); context.lineTo(8, 1)
-  context.moveTo(-6, 13); context.lineTo(-2, 7); context.lineTo(5, 13)
-  context.stroke()
-
-  context.strokeStyle = '#79ffb4'
-  context.lineWidth = 1.2
-  context.beginPath()
-  context.moveTo(-8, -4); context.lineTo(-3, -2)
-  context.moveTo(5, -2); context.lineTo(10, -5)
-  context.stroke()
-  context.fillStyle = '#75ffad'
-  context.fillRect(-5, -3, 2.2, 1.5)
-  context.fillRect(7, -4, 2.2, 1.5)
-
-  const mouthOpen = 3 + pose.mouth * 7
-  context.fillStyle = '#010302'
-  context.strokeStyle = '#40d783'
-  context.lineWidth = 1.1
-  context.beginPath()
-  context.moveTo(-7, 4); context.quadraticCurveTo(0, 3 - mouthOpen, 8, 3)
-  context.lineTo(5, 8 + mouthOpen * 0.4); context.quadraticCurveTo(0, 11 + mouthOpen * 0.45, -6, 8)
-  context.closePath(); context.fill(); context.stroke()
-  context.fillStyle = '#a3ffc7'
-  context.beginPath()
-  for (let tooth = 0; tooth < 5; tooth++) {
-    const tx = -5 + tooth * 2.4
-    context.moveTo(tx, 4); context.lineTo(tx + 1.1, 4); context.lineTo(tx + 0.55, 4 + 2.7 + pose.mouth * 1.2); context.closePath()
+  for (let i=0;i<8;i++) {
+    const x=-10+i*2.8, y=-4-Math.sin(i/7*Math.PI)*3
+    context.moveTo(x,y);context.lineTo(x+0.8,y+5+(i%3));context.lineTo(x+1.8,y)
+    const bottom=23+Math.sin(i/7*Math.PI)*2
+    context.moveTo(x,bottom);context.lineTo(x+1,bottom-5-i%2);context.lineTo(x+2,bottom)
   }
-  for (let tooth = 0; tooth < 4; tooth++) {
-    const tx = -4 + tooth * 2.6
-    context.moveTo(tx, 8 + mouthOpen * 0.35); context.lineTo(tx + 1.1, 8 + mouthOpen * 0.35); context.lineTo(tx + 0.55, 6 + mouthOpen * 0.17); context.closePath()
+  context.strokeStyle='#72ff76'; context.lineWidth=0.6; context.stroke();context.restore()
+  for(let i=0;i<7;i++) {
+    const x=-15+i*4.7
+    ink(context, `M${x} -15 l-2 -3 2 -3 3 1 -1 3 M${x} -12 l1 3 -2 3`, true)
   }
-  context.fill()
-  context.strokeStyle = 'rgba(104, 255, 170, 0.8)'
-  context.beginPath()
-  context.moveTo(-12, -15); context.lineTo(-19, -22); context.lineTo(-17, -13)
-  context.moveTo(10, -18); context.lineTo(17, -25); context.lineTo(14, -14)
-  context.moveTo(1, -21); context.lineTo(5, -31); context.lineTo(7, -20)
-  context.stroke()
   context.restore()
 }
 
@@ -535,13 +516,13 @@ function drawTorso(context: CanvasRenderingContext2D, pose: ReturnType<typeof mu
   context.translate(49, 74 + pose.bob)
   context.rotate(pose.lean)
   context.scale(1, pose.breath)
-  context.strokeStyle = '#42d982'
-  context.lineWidth = 1.5
+  context.strokeStyle = '#35ee43'
+  context.lineWidth = 0.85
   context.beginPath()
   context.moveTo(-17, -19); context.lineTo(-8, -29); context.lineTo(2, -27); context.lineTo(13, -22)
   context.lineTo(18, -10); context.lineTo(13, 4); context.lineTo(11, 20); context.lineTo(7, 31)
   context.lineTo(-7, 30); context.lineTo(-12, 19); context.lineTo(-15, 6); context.lineTo(-19, -6); context.closePath()
-  context.stroke()
+  context.fillStyle = '#000'; context.fill(); context.stroke()
   context.strokeStyle = 'rgba(29, 155, 93, 0.96)'
   context.lineWidth = 0.9
   context.beginPath()
@@ -554,7 +535,7 @@ function drawTorso(context: CanvasRenderingContext2D, pose: ReturnType<typeof mu
   context.moveTo(0, -20); context.lineTo(0, 23); context.moveTo(4, -14); context.lineTo(9, -5); context.lineTo(5, 5)
   context.moveTo(-6, 4); context.lineTo(-10, 11); context.lineTo(-5, 20)
   context.stroke()
-  context.strokeStyle = '#63f5a0'
+  context.strokeStyle = '#65ff68'
   context.lineWidth = 1.2
   context.beginPath()
   context.moveTo(-12, -27); context.lineTo(-22, -25); context.lineTo(-25, -18)
@@ -563,17 +544,25 @@ function drawTorso(context: CanvasRenderingContext2D, pose: ReturnType<typeof mu
   context.stroke()
   context.fillStyle = '#54f49a'
   context.fillRect(-2, -5, 3, 3)
+  ink(context, 'M-18 -18 Q-30 -26 -25 -33 L-18 -30 -13 -36 -7 -29 M12 -22 Q22 -31 26 -19 L21 -12 17 -8 M-15 10 L-20 15 -15 22 -11 20 M11 18 L18 22 13 27 8 26')
+  for(let i=0;i<8;i++) {
+    const y=-16+i*4.5, span=16-i*0.8
+    ink(context, `M-2 ${y} Q${-span} ${y-4} ${-span} ${y+2} M3 ${y+1} Q${span+3} ${y-3} ${span} ${y+4}`, true)
+  }
+  ink(context, 'M-6 -23 L-3 -16 -5 -8 -2 0 -4 8 -1 16 -3 23 M3 -21 L6 -13 4 -5 7 3 4 12 7 19 M-22 -23 L-27 -19 -24 -12 -19 -9 M18 -20 L23 -17 21 -10', true)
   context.restore()
 }
 
-function drawArm(context: CanvasRenderingContext2D, side: -1 | 1, angle: number, reach: number): void {
-  const shoulder = side < 0 ? 33 : 65
+function drawArm(context: CanvasRenderingContext2D, side: -1 | 1, angle: number, reach: number, flex: number): void {
+  const shoulder = side < 0 ? 31 : 66
   context.save()
   context.translate(shoulder, 51)
   context.rotate(angle)
-  context.scale(side, 1)
-  context.strokeStyle = '#40d47f'
-  context.lineWidth = 2
+  context.scale(side, side < 0 ? 1.06 : 0.94)
+  context.fillStyle = '#000'
+  context.fill(new Path2D('M0 0 L6 -4 15 17 18 41 21 60 12 65 10 44 8 22 Z'))
+  context.strokeStyle = '#32ed43'
+  context.lineWidth = 0.85
   context.beginPath()
   context.moveTo(0, 0); context.lineTo(11, 21); context.lineTo(14, 44); context.lineTo(13 + reach * 16, 61 + reach * 8)
   context.moveTo(4, 3); context.lineTo(15, 17); context.lineTo(18, 41); context.lineTo(18 + reach * 13, 57 + reach * 8)
@@ -587,21 +576,27 @@ function drawArm(context: CanvasRenderingContext2D, side: -1 | 1, angle: number,
   context.moveTo(10, 28); context.lineTo(4, 39); context.moveTo(16, 42); context.lineTo(22, 48)
   context.moveTo(7, 14); context.lineTo(2, 25); context.lineTo(9, 31)
   context.stroke()
-  context.strokeStyle = '#63f4a0'
-  context.lineWidth = 1.5
+  context.strokeStyle = '#65ff68'
+  context.lineWidth = 0.85
   context.beginPath()
   context.ellipse(14, 43, 5, 3.5, 0.2, 0, Math.PI * 2)
   context.moveTo(14, 44); context.lineTo(14 + reach * 16, 60 + reach * 8)
   context.stroke()
   const clawX = 13 + reach * 16, clawY = 61 + reach * 8
-  context.lineWidth = 1.35
-  context.beginPath()
-  context.moveTo(clawX, clawY); context.quadraticCurveTo(clawX + 8, clawY + 3, clawX + 10, clawY + 14)
-  context.quadraticCurveTo(clawX + 4, clawY + 11, clawX + 3, clawY + 5)
-  context.moveTo(clawX, clawY + 1); context.quadraticCurveTo(clawX - 8, clawY + 4, clawX - 10, clawY + 15)
-  context.quadraticCurveTo(clawX - 4, clawY + 12, clawX - 3, clawY + 6)
-  context.moveTo(clawX + 1, clawY + 3); context.lineTo(clawX + 1, clawY + 13)
-  context.stroke()
+  context.lineWidth = 0.7
+  for (let finger=0;finger<4;finger++) {
+    const root=clawX-4+finger*2.8, spread=(finger-1.3)*(side<0?4.4:3.3)
+    const curl=3+reach*12+flex, length=17+(finger%2)*5
+    context.beginPath();context.moveTo(root,clawY)
+    context.bezierCurveTo(root+spread,clawY+4,root+spread+curl,clawY+length,root+spread-curl,clawY+length+5)
+    context.bezierCurveTo(root+spread+1,clawY+length-2,root+spread-2,clawY+7,root+1,clawY+3)
+    context.stroke()
+  }
+  for(let i=0;i<8;i++) {
+    const y=8+i*5
+    ink(context, `M${7+i*0.9} ${y} l4 3 -2 5 M${10+i*0.8} ${y} l4 -2 2 4`, true)
+  }
+  ink(context,'M0 0 Q-5 -8 4 -9 L10 -5 14 2 12 10 7 14 M3 1 L7 5 8 13 M12 17 L20 14 19 22 15 25 M17 32 L24 29 21 37',true)
   context.restore()
 }
 
@@ -610,8 +605,10 @@ function drawLeg(context: CanvasRenderingContext2D, side: -1 | 1, angle: number,
   context.translate(side < 0 ? 44 : 55, 101 + bob * 0.35)
   context.rotate(angle)
   context.scale(side, 1)
-  context.strokeStyle = '#3ccf78'
-  context.lineWidth = 2
+  context.fillStyle = '#000'
+  context.fill(new Path2D('M0 0 L6 3 12 16 8 38 12 50 7 52 3 39 5 17 Z'))
+  context.strokeStyle = '#32e643'
+  context.lineWidth = 0.85
   context.beginPath()
   context.moveTo(0, 0); context.lineTo(5, 17); context.lineTo(3, 39); context.lineTo(7, 52)
   context.moveTo(6, 3); context.lineTo(12, 16); context.lineTo(8, 38); context.lineTo(12, 50)
@@ -622,13 +619,15 @@ function drawLeg(context: CanvasRenderingContext2D, side: -1 | 1, angle: number,
   context.moveTo(1, 6); context.lineTo(10, 12); context.lineTo(4, 19); context.lineTo(11, 25)
   context.moveTo(3, 21); context.lineTo(-2, 31); context.lineTo(8, 37); context.moveTo(4, 40); context.lineTo(11, 46)
   context.stroke()
-  context.strokeStyle = '#5df29a'
-  context.lineWidth = 1.4
+  context.strokeStyle = '#65ff68'
+  context.lineWidth = 0.8
   context.beginPath()
   context.ellipse(4, 38, 5, 3, 0, 0, Math.PI * 2)
   context.moveTo(7, 52); context.lineTo(15, 57); context.lineTo(19, 54)
   context.moveTo(8, 52); context.lineTo(11, 61); context.lineTo(15, 59)
   context.stroke()
+  for(let i=0;i<6;i++) { const y=3+i*7; ink(context,`M3 ${y} Q-2 ${y+4} 7 ${y+9} M8 ${y} l4 4 -3 4`,true) }
+  ink(context,'M0 0 Q-8 4 -2 11 L4 19 0 25 M9 8 L16 12 12 20 M2 37 L-3 40 1 44 M7 51 L2 57 0 61 5 59 M11 52 L20 57 20 62 17 59',true)
   context.restore()
 }
 
@@ -647,16 +646,21 @@ function drawMutantTexture(texture: SpriteTexture, pose: ReturnType<typeof mutan
   const context = texture.context
   context.clearRect(0, 0, MUTANT_WIDTH, MUTANT_HEIGHT)
   context.save()
-  context.translate(7, 6)
+  context.scale(2, 2)
+  context.translate(7, 11)
   context.lineCap = 'round'
   context.lineJoin = 'round'
   context.shadowColor = 'rgba(36, 255, 125, 0.19)'
-  context.shadowBlur = 1.2
-  drawLeg(context, -1, pose.leftLeg, pose.bob)
-  drawLeg(context, 1, pose.rightLeg, pose.bob)
-  drawArm(context, -1, pose.leftArm, pose.reach)
-  drawArm(context, 1, pose.rightArm, pose.reach)
-  drawTorso(context, pose)
+  context.shadowBlur = 0
+  context.translate(49, 74 + pose.bob)
+  context.rotate(pose.lean)
+  context.scale(1, pose.breath)
+  context.translate(-49, -74)
+  drawLeg(context, -1, pose.leftLeg + 0.24, 0)
+  drawLeg(context, 1, pose.rightLeg - 0.15, 0)
+  drawArm(context, -1, pose.leftArm + 0.2, pose.reach, pose.clawFlex)
+  drawArm(context, 1, pose.rightArm - 0.18, pose.reach, -pose.clawFlex)
+  drawTorso(context, { ...pose, bob: 0, lean: 0, breath: 1 })
   drawHead(context, pose)
   context.restore()
 
@@ -679,6 +683,7 @@ function drawSprite(
   zBuffer: Float32Array,
   width: number,
   screenHeight: number,
+  geometryDepth: Float32Array,
 ): boolean {
   const left = centerX - spriteWidth / 2, right = centerX + spriteWidth / 2
   const first = Math.max(0, Math.floor(left)), last = Math.min(width - 1, Math.ceil(right))
@@ -688,8 +693,14 @@ function drawSprite(
   for (let x = first; x <= last; x++) {
     const sourceX = Math.max(0, Math.min(opaqueColumns.length - 1, Math.floor((x + 0.5 - left) / spriteWidth * opaqueColumns.length)))
     if (zBuffer[x]! <= forward || !opaqueColumns[sourceX]) continue
-    context.rect(x, 0, 1, screenHeight)
-    visible = true
+    let start = -1
+    const firstY = Math.max(0, Math.floor(top))
+    const lastY = Math.min(Math.ceil(screenHeight) - 1, Math.ceil(top + spriteHeight))
+    for (let y = firstY; y <= lastY + 1; y++) {
+      const clear = y <= lastY && geometryDepth[y * Math.ceil(width) + x]! > forward
+      if (clear && start < 0) start = y
+      if (!clear && start >= 0) { context.rect(x, start, 1, y - start); start = -1; visible = true }
+    }
   }
   if (visible) {
     context.clip()
@@ -722,6 +733,7 @@ function drawEnemySprites(
   horizon: number,
   focal: number,
   wallDepth: Float32Array,
+  geometryDepth: Float32Array,
 ): string[] {
   const player = state.player
   const sprites = state.enemies.map(enemy => {
@@ -748,7 +760,7 @@ function drawEnemySprites(
     const bottom = horizon + focal * CAMERA_HEIGHT / item.forward
     const top = bottom - spriteHeight
     if (centerX + spriteWidth / 2 < 0 || centerX - spriteWidth / 2 > width) continue
-    if (drawSprite(context, texture.canvas, texture.opaqueColumns, centerX, top, spriteWidth, spriteHeight, item.forward, spriteDepth, Math.ceil(width), height)) {
+    if (drawSprite(context, texture.canvas, texture.opaqueColumns, centerX, top, spriteWidth, spriteHeight, item.forward, spriteDepth, Math.ceil(width), height, geometryDepth)) {
       visible.push(item.enemy.id)
       const first = Math.max(0, Math.floor(centerX - spriteWidth / 2))
       const last = Math.min(Math.ceil(width) - 1, Math.ceil(centerX + spriteWidth / 2))
@@ -798,8 +810,7 @@ export function renderDungeon(
     const top = horizon - wallHeight * 0.5
     const bottom = horizon + wallHeight * 0.5
     tops[x] = top; bottoms[x] = bottom
-    if (hit.kind === 'door') context.fillStyle = 'rgba(2, 12, 7, 0.995)'
-    else context.fillStyle = `rgba(2, 8, 5, ${Math.max(0.88, 0.98 - distance * 0.002)})`
+    context.fillStyle = '#000000'
     context.fillRect(x, top, 1.15, wallHeight)
   }
 
@@ -840,5 +851,6 @@ export function renderDungeon(
     } else drawWallDetails(context, x, tops[x]!, bottoms[x]!, zBuffer[x]!, hit.offset, hit.cell, hit.side, state.time)
   }
   drawOpenDoorFrames(context, state.player, doors, state, w, horizon, focal, zBuffer)
-  return drawEnemySprites(context, state, w, h, horizon, focal, zBuffer)
+  const geometryDepth = drawFacility(context, map, state.player, w, h, horizon, focal, zBuffer)
+  return drawEnemySprites(context, state, w, h, horizon, focal, zBuffer, geometryDepth)
 }
