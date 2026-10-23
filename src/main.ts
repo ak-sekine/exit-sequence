@@ -1,4 +1,5 @@
 import './style.css'
+import { ConsoleOutput, type OutputHooks } from './console-output.ts'
 import {
   createGame,
   createSeededRandom,
@@ -8,12 +9,52 @@ import {
   toGameView,
   TOTAL_TILES,
 } from './game.ts'
-import type { GameView } from './game.ts'
+import type { ActionView, GameView } from './game.ts'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
+app.innerHTML = `
+  <main class="terminal-shell">
+    <header class="status-bar" aria-label="ゲーム状態">
+      <div class="wordmark">EXIT SEQUENCE</div>
+      <div class="status-values">
+        <span id="status-position">[POSITION] 01 / ${TOTAL_TILES}</span>
+        <span id="status-power">[POWER] 20 / 20</span>
+      </div>
+    </header>
+    <section class="console-window" aria-label="コンソールログをクリックすると文字送りをスキップします">
+      <div id="transcript" class="transcript" role="log" aria-live="off" aria-relevant="additions"></div>
+      <button id="latest-log" class="latest-log" type="button" hidden>最新ログへ ↓</button>
+    </section>
+    <footer id="command-dock" class="command-dock" aria-label="コマンド選択">
+      <div id="command-list" class="command-list"></div>
+      <div id="command-prompt" class="command-prompt" hidden aria-hidden="true"><span>&gt;</span><i></i></div>
+      <div id="restart-command" class="restart-command" hidden></div>
+    </footer>
+  </main>`
+
+const transcript = app.querySelector<HTMLDivElement>('#transcript')!
+const consoleWindow = app.querySelector<HTMLElement>('.console-window')!
+const positionOutput = app.querySelector<HTMLSpanElement>('#status-position')!
+const powerOutput = app.querySelector<HTMLSpanElement>('#status-power')!
+const commandList = app.querySelector<HTMLDivElement>('#command-list')!
+const commandPrompt = app.querySelector<HTMLDivElement>('#command-prompt')!
+const restartCommand = app.querySelector<HTMLDivElement>('#restart-command')!
+const latestLogButton = app.querySelector<HTMLButtonElement>('#latest-log')!
+
 let seed = seedFromAddress()
 let random = createSeededRandom(seed)
 let game = createGame(random, seed)
+let followTail = true
+let inputReady = false
+let phase: 'event-log' | 'choices' | 'end-log' | 'idle' = 'idle'
+let activeChoiceButtons: HTMLButtonElement[] = []
+const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
+
+const output = new ConsoleOutput({
+  delayMs: 10,
+  reducedMotion: motionPreference.matches,
+  onIdle: outputBecameIdle,
+})
 
 function seedFromAddress(): number {
   const supplied = new URLSearchParams(window.location.search).get('seed')
@@ -26,143 +67,255 @@ function signed(value: number): string {
   return `${value > 0 ? '+' : ''}${value}`
 }
 
-function routeMarkup(view: GameView): string {
-  return Array.from({ length: TOTAL_TILES }, (_, index) => {
-    const tile = index + 1
-    const completed = view.history.some(entry => entry.tile === tile)
-    const current = tile === view.position && view.status === 'playing'
-    const zoneBreak = tile === 6 || tile === 11 ? ' zone-break' : ''
-    const state = completed ? 'done' : current ? 'current' : 'future'
-    return `<li class="route-tile ${state}${zoneBreak}" aria-label="${tile}">${String(tile).padStart(2, '0')}</li>`
-  }).join('')
-}
-
-function logMarkup(view: GameView): string {
-  if (view.history.length === 0) return '<p class="empty-log">まだ記録はありません。</p>'
-  return `<ol class="event-log">${[...view.history].reverse().map(entry => `
-    <li class="log-entry">
-      <div class="log-heading"><span>区画 ${entry.zone} · ${String(entry.tile).padStart(2, '0')}</span><strong class="${entry.success ? 'text-good' : 'text-bad'}">${entry.success ? '成功' : '失敗'}</strong></div>
-      <p class="log-event">${entry.title} — ${entry.actionLabel}</p>
-      <p class="log-observation">観測: ${entry.observationText}</p>
-      <p class="log-power">電力 ${entry.powerBefore} → ${entry.powerAfter} <span>(${signed(entry.powerChange)})</span></p>
-    </li>`).join('')}</ol>`
-}
-
-function resultMarkup(view: GameView): string {
-  if (view.status === 'won') {
-    return `<section class="run-result success" aria-live="polite"><span class="result-mark">[ CLEAR ]</span><p>地上の出口に到達。残存電力 <strong>${view.power}</strong></p></section>`
+function appendTranscriptLines(lines: readonly string[]): void {
+  let activeText: Text | null = null
+  const hooks: OutputHooks = {
+    onLineStart(text) {
+      const row = document.createElement('div')
+      row.className = `console-line${text.startsWith('[SUCCESS]') || text.startsWith('[CLEAR]') ? ' line-good' : ''}${text.startsWith('[FAILED]') || text.startsWith('[GAME OVER]') ? ' line-bad' : ''}`
+      activeText = document.createTextNode('')
+      row.append(activeText)
+      transcript.append(row)
+      scrollIfFollowing()
+    },
+    onCharacter(character) {
+      activeText?.appendData(character)
+      scrollIfFollowing()
+    },
   }
-  if (view.status === 'lost') {
-    return `<section class="run-result failure" aria-live="polite"><span class="result-mark">[ POWER 0 ]</span><p>電力が尽きた。区画 ${view.currentEvent.zone} · ${String(view.position).padStart(2, '0')} マスで停止。</p></section>`
+  output.enqueue(lines, hooks)
+}
+
+function appendCommandLines(actions: readonly ActionView[]): void {
+  commandList.replaceChildren()
+  commandPrompt.hidden = true
+  restartCommand.replaceChildren()
+  restartCommand.hidden = true
+  activeChoiceButtons = []
+
+  let currentText: Text | null = null
+  let currentButton: HTMLButtonElement | null = null
+  const lines = ['[SELECT ACTION]']
+  for (let index = 0; index < actions.length; index++) {
+    const action = actions[index]!
+    const successDelta = displayedPowerDelta(game.power, action.successDelta)
+    const failureDelta = displayedPowerDelta(game.power, action.failureDelta)
+    lines.push(`[${index + 1}] ${action.label}`)
+    lines.push(`    ${action.detail} · 成功 ${signed(successDelta)} / 失敗 ${signed(failureDelta)}`)
   }
-  const result = view.lastResult
-  if (!result) return '<section class="run-result waiting" aria-live="polite">選択して突破してください。</section>'
-  return `<section class="run-result ${result.success ? 'success' : 'failure'}" aria-live="polite">
-    <span class="result-mark">${result.success ? '[ ACTION OK ]' : '[ ACTION FAILED ]'}</span>
-    <p>${result.title} · ${result.actionLabel} · 電力 ${result.powerBefore} → <strong>${result.powerAfter}</strong> (${signed(result.powerChange)})</p>
-  </section>`
+
+  const hooks: OutputHooks = {
+    onLineStart(_text, lineIndex) {
+      if (lineIndex === 0) {
+        const label = document.createElement('div')
+        label.className = 'command-heading'
+        currentText = document.createTextNode('')
+        label.append(currentText)
+        commandList.append(label)
+        return
+      }
+      if (lineIndex % 2 === 1) {
+        const actionIndex = (lineIndex - 1) / 2
+        currentButton = document.createElement('button')
+        currentButton.type = 'button'
+        currentButton.className = 'action-command'
+        currentButton.dataset.actionIndex = String(actionIndex)
+        currentButton.disabled = true
+        currentButton.setAttribute('aria-label', `${actionIndex + 1}: ${actions[actionIndex]!.label}`)
+        const number = document.createElement('span')
+        number.className = 'command-number'
+        currentText = document.createTextNode('')
+        number.append(currentText)
+        currentButton.append(number)
+        activeChoiceButtons.push(currentButton)
+        commandList.append(currentButton)
+      } else {
+        const detail = document.createElement('span')
+        detail.className = 'command-detail'
+        currentText = document.createTextNode('')
+        detail.append(currentText)
+        currentButton?.append(detail)
+      }
+    },
+    onCharacter(character) {
+      currentText?.appendData(character)
+    },
+  }
+  phase = 'choices'
+  output.enqueue(lines, hooks)
 }
 
-function actionMarkup(view: GameView): string {
-  if (view.status !== 'playing') return ''
-  return `<div class="action-list">${view.currentEvent.actions.map((action, index) => {
-    const successDelta = displayedPowerDelta(view.power, action.successDelta)
-    const failureDelta = displayedPowerDelta(view.power, action.failureDelta)
-    const stopWarning = view.power + action.failureDelta <= 0 ? '<span class="stop-note">失敗時は停止</span>' : ''
-    return `<button class="action-button" type="button" data-action-index="${index}" aria-label="${index + 1}: ${action.label}; 成功時 電力 ${signed(successDelta)}、失敗時 電力 ${signed(failureDelta)}">
-      <span class="action-number">${index + 1}</span>
-      <span class="action-copy"><strong>${action.label}</strong><small>${action.detail}</small></span>
-      <span class="action-cost"><span>成功 <b>${signed(successDelta)}</b></span><span>失敗 <b>${signed(failureDelta)}</b></span>${stopWarning}</span>
-    </button>`
-  }).join('')}</div>`
+function appendRestartCommand(): void {
+  restartCommand.replaceChildren()
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'restart-button'
+  button.dataset.restart = ''
+  button.textContent = '[R] 新しいシーケンスを開始'
+  restartCommand.append(button)
+  restartCommand.hidden = false
 }
 
-function render(): void {
-  const view = toGameView(game)
+function outputBecameIdle(): void {
+  if (phase === 'event-log') {
+    appendCommandLines(toGameView(game).currentEvent.actions)
+    return
+  }
+  if (phase === 'choices') {
+    phase = 'idle'
+    inputReady = true
+    activeChoiceButtons.forEach(button => { button.disabled = false })
+    commandPrompt.hidden = false
+    return
+  }
+  if (phase === 'end-log') {
+    phase = 'idle'
+    appendRestartCommand()
+  }
+}
+
+function scrollIfFollowing(): void {
+  if (followTail) consoleWindow.scrollTop = consoleWindow.scrollHeight
+}
+
+function updateStatus(view: GameView): void {
+  positionOutput.textContent = `[POSITION] ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}`
+  powerOutput.textContent = `[POWER] ${view.power} / 20`
+}
+
+function eventLines(view: GameView): string[] {
   const event = view.currentEvent
-  const statusLabel = view.status === 'won' ? '脱出成功' : view.status === 'lost' ? '電力枯渇' : '進行中'
-  const powerBlocks = Array.from({ length: 20 }, (_, index) => `<i class="${index < view.power ? 'charged' : ''}"></i>`).join('')
-  const progress = Math.round((view.history.length / TOTAL_TILES) * 100)
+  return [
+    `[EVENT] ${event.title}`,
+    event.description,
+    `観測：${event.observationText}`,
+  ]
+}
 
-  app.innerHTML = `<main class="terminal-shell">
-    <header class="topbar">
-      <a class="wordmark" href="./" aria-label="EXIT SEQUENCE はじめから"><span class="prompt">&gt;</span> EXIT SEQUENCE</a>
-      <span class="system-state"><i></i>${statusLabel}</span>
-    </header>
+function beginRunOutput(): void {
+  transcript.replaceChildren()
+  commandList.replaceChildren()
+  commandPrompt.hidden = true
+  restartCommand.replaceChildren()
+  restartCommand.hidden = true
+  activeChoiceButtons = []
+  followTail = true
+  consoleWindow.scrollTop = 0
+  const view = toGameView(game)
+  updateStatus(view)
+  phase = 'event-log'
+  appendTranscriptLines([
+    '[SYSTEM] 脱出シーケンス開始',
+    `[STATUS] 電力 ${view.power} / 20`,
+    `[POSITION] ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}`,
+    ...eventLines(view),
+  ])
+}
 
-    <section class="overview" aria-label="進行状況と電力">
-      <div class="position-block">
-        <div class="section-label">進行 ROUTE</div>
-        <ol class="route" aria-label="15マスの進行状況">${routeMarkup(view)}</ol>
-        <div class="route-caption"><span>${view.status === 'playing' ? `現在 ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}` : `到達 ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}`}</span><span>区画 ${event.zone} / 3</span></div>
-      </div>
-      <div class="power-block">
-        <div class="power-heading"><span class="section-label">電力 POWER</span><strong><span>${view.power}</span><small> / 20</small></strong></div>
-        <div class="power-meter" role="meter" aria-label="電力" aria-valuemin="0" aria-valuemax="20" aria-valuenow="${view.power}">${powerBlocks}</div>
-      </div>
-    </section>
+function resultLines(view: GameView, action: ActionView): string[] {
+  const result = view.lastResult!
+  const expectedDelta = result.success ? action.successDelta : action.failureDelta
+  const capNote = result.powerChange !== expectedDelta && expectedDelta > 0 && result.powerAfter === 20
+    ? '（上限20）'
+    : result.powerChange !== expectedDelta && expectedDelta < 0 && result.powerAfter === 0
+      ? '（最低値0）'
+      : ''
+  const lines = [
+    `[ACTION] ${action.label}`,
+    `[${result.success ? 'SUCCESS' : 'FAILED'}] 電力 ${signed(result.powerChange)}${capNote}`,
+    `[STATUS] 電力 ${view.power} / 20`,
+  ]
+  if (view.status === 'lost') {
+    lines.push(`[GAME OVER] 電力が尽きた。${String(view.position).padStart(2, '0')} / ${TOTAL_TILES} で停止。`)
+  } else if (view.status === 'won') {
+    lines.push(`[CLEAR] 脱出成功。残存電力 ${view.power} / 20`)
+  } else {
+    lines.push(`[MOVE] ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}`)
+    lines.push(...eventLines(view))
+  }
+  return lines
+}
 
-    <div class="progress-track" role="progressbar" aria-label="脱出までの進行" aria-valuemin="0" aria-valuemax="15" aria-valuenow="${view.history.length}"><span style="width:${progress}%"></span></div>
+function selectAction(index: number): void {
+  if (!inputReady || output.isBusy || game.status !== 'playing') return
+  const before = toGameView(game)
+  const action = before.currentEvent.actions[index]
+  if (!action) return
 
-    <section class="event-panel" aria-labelledby="event-title">
-      <div class="event-kicker"><span>EVENT ${String(event.tile).padStart(2, '0')} / ${TOTAL_TILES}</span><span>ZONE ${event.zone}</span></div>
-      <h1 id="event-title">${event.title}</h1>
-      <p class="event-description">${event.description}</p>
-      <p class="observation"><span>観測 //</span> ${event.observationText}</p>
-    </section>
-
-    <section class="decision-panel" aria-labelledby="decision-title">
-      <div class="decision-heading"><h2 id="decision-title">行動を選択</h2><span>KEY [ 1 ] [ 2 ] [ 3 ]</span></div>
-      ${actionMarkup(view)}
-      ${view.status !== 'playing' ? `<button class="restart-button" type="button" data-restart>新しいランを開始</button>` : ''}
-    </section>
-
-    ${resultMarkup(view)}
-
-    <details class="history-panel">
-      <summary><span>イベントログ</span><span>${view.history.length} / ${TOTAL_TILES} <b>＋</b></span></summary>
-      ${logMarkup(view)}
-    </details>
-
-    <footer class="footer-line"><span>FACILITY EXIT PROTOCOL</span><span>電力が 0 でシステム停止</span></footer>
-  </main>`
+  inputReady = false
+  phase = 'idle'
+  activeChoiceButtons.forEach(button => { button.disabled = true })
+  commandList.replaceChildren()
+  commandPrompt.hidden = true
+  game = resolveAction(game, index, random)
+  const view = toGameView(game)
+  updateStatus(view)
+  if (view.status === 'playing') {
+    phase = 'event-log'
+  } else {
+    phase = 'end-log'
+  }
+  appendTranscriptLines(resultLines(view, action))
 }
 
 function startNewRun(): void {
+  output.stop()
   seed = randomSeed()
   random = createSeededRandom(seed)
   game = createGame(random, seed)
   const nextUrl = new URL(window.location.href)
   nextUrl.searchParams.set('seed', String(seed))
   window.history.replaceState(null, '', nextUrl)
-  render()
+  beginRunOutput()
 }
 
-app.addEventListener('click', event => {
+consoleWindow.addEventListener('scroll', () => {
+  followTail = consoleWindow.scrollHeight - consoleWindow.scrollTop - consoleWindow.clientHeight < 48
+  latestLogButton.hidden = followTail
+})
+
+latestLogButton.addEventListener('click', () => {
+  followTail = true
+  consoleWindow.scrollTop = consoleWindow.scrollHeight
+  latestLogButton.hidden = true
+})
+
+consoleWindow.addEventListener('click', () => {
+  if (output.isBusy) output.skip()
+})
+
+commandList.addEventListener('click', event => {
   const target = event.target
   if (!(target instanceof Element)) return
-  const restart = target.closest<HTMLButtonElement>('[data-restart]')
-  if (restart) {
-    startNewRun()
-    return
-  }
   const button = target.closest<HTMLButtonElement>('[data-action-index]')
-  if (!button) return
+  if (!button || button.disabled) return
   const index = Number(button.dataset.actionIndex)
-  if (!Number.isInteger(index)) return
-  game = resolveAction(game, index, random)
-  render()
+  if (Number.isInteger(index)) selectAction(index)
+})
+
+restartCommand.addEventListener('click', event => {
+  const target = event.target
+  if (target instanceof Element && target.closest('[data-restart]')) startNewRun()
 })
 
 window.addEventListener('keydown', event => {
   if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return
+  if (event.code === 'Space' || event.key === 'Enter') {
+    if (output.isBusy) {
+      event.preventDefault()
+      output.skip()
+    }
+    return
+  }
   if (event.key !== '1' && event.key !== '2' && event.key !== '3') return
-  if (game.status !== 'playing') return
+  if (!inputReady || output.isBusy || game.status !== 'playing') return
   const index = Number(event.key) - 1
   if (!toGameView(game).currentEvent.actions[index]) return
   event.preventDefault()
-  game = resolveAction(game, index, random)
-  render()
+  selectAction(index)
 })
 
-render()
+document.addEventListener('visibilitychange', () => output.setPaused(document.hidden))
+motionPreference.addEventListener('change', event => output.setReducedMotion(event.matches))
+
+beginRunOutput()
