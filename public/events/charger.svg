@@ -1,12 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="96" viewBox="0 0 128 96" fill="none">
-  <rect width="128" height="96" fill="#030604"/>
-  <g stroke="#79ed92" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M29 17h62v64H29zM37 25h46v31H37z"/>
-    <path d="M51 32v9h-7l12 12V43h8L51 32Z"/>
-    <path d="M39 66h13M39 73h31M75 65h8v10h-8z"/>
-    <path d="M91 39h11v12H91M102 45h8v16c0 8-5 12-12 12h-4"/>
-    <path d="M24 25h5M24 73h5M43 86h34"/>
-  </g>
-  <circle cx="76" cy="64" r="2" fill="#79ed92"/>
-  <circle cx="76" cy="72" r="2" fill="#79ed92"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200" role="img" aria-label="壁面に固定された充電装置">
+  <defs>
+    <linearGradient id="charger-case" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#347943"/><stop offset=".22" stop-color="#174427"/><stop offset="1" stop-color="#07160b"/></linearGradient>
+    <linearGradient id="charger-face" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#163d21"/><stop offset="1" stop-color="#08160c"/></linearGradient>
+    <radialGradient id="charger-screen"><stop stop-color="#66b96e"/><stop offset="1" stop-color="#0d2e17"/></radialGradient>
+    <radialGradient id="charger-light"><stop stop-color="#27733a" stop-opacity=".55"/><stop offset="1" stop-color="#030604" stop-opacity="0"/></radialGradient>
+    <filter id="charger-blur"><feGaussianBlur stdDeviation="9"/></filter>
+  </defs>
+  <rect width="320" height="200" fill="#030604"/><rect x="10" y="10" width="300" height="180" fill="#06100a" stroke="#173b22"/>
+  <path d="M46 31h227v140H46z" fill="#08150b" stroke="#234b2c" stroke-width="2"/>
+  <path d="M60 43h197v115H60z" fill="url(#charger-case)" stroke="#71a177" stroke-width="2"/>
+  <path d="M68 51h181v99H68z" fill="url(#charger-face)" stroke="#315f39"/>
+  <ellipse cx="158" cy="99" rx="113" ry="82" fill="url(#charger-light)" filter="url(#charger-blur)"/>
+  <path d="M72 56h176M72 146h176" stroke="#76a67a" stroke-opacity=".55"/>
+  <path d="M82 69h76v48H82z" fill="#05110a" stroke="#769879" stroke-width="2"/>
+  <path d="M87 74h66v37H87z" fill="url(#charger-screen)" opacity=".85"/>
+  <path d="M93 101h10V91h10V84h10v-4h10v11h11" fill="none" stroke="#b2d394" stroke-width="2"/>
+  <path d="M95 105h50" stroke="#c0d69a" stroke-opacity=".7"/>
+  <path d="M175 69h59v7h-59zm0 12h59v7h-59zm0 12h42v7h-42" fill="#0a1c0f" stroke="#588360"/>
+  <circle cx="185" cy="121" r="9" fill="#091a0d" stroke="#8baa7f" stroke-width="2"/><circle cx="185" cy="121" r="4" fill="#69bc70"/>
+  <circle cx="210" cy="121" r="9" fill="#091a0d" stroke="#678c6d" stroke-width="2"/><circle cx="210" cy="121" r="3" fill="#1f4e2b"/>
+  <path d="M235 114h12v32h-12z" fill="#0a2111" stroke="#69926d" stroke-width="2"/>
+  <path d="M241 147c-9 15-6 20 1 21 13 2 15-8 12-17l-10-15" fill="none" stroke="#8aab7f" stroke-width="4"/>
+  <path d="M254 151c19 4 25 13 22 24-2 6-9 8-15 5" fill="none" stroke="#47724d" stroke-width="4"/>
+  <path d="M48 168h224" stroke="#294b2c" stroke-width="4"/><path d="M60 172h200" stroke="#101f11" stroke-width="3"/>
+  <g fill="#91b28c" stroke="#142c18"><circle cx="68" cy="52" r="3"/><circle cx="248" cy="52" r="3"/><circle cx="68" cy="146" r="3"/><circle cx="248" cy="146" r="3"/></g>
+  <path d="M277 48v18m0 8v18m0 8v18" stroke="#36623a" stroke-width="3"/>
 </svg>

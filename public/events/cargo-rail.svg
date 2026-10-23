@@ -1,10 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="96" viewBox="0 0 128 96" fill="none">
-  <rect width="128" height="96" fill="#030604"/>
-  <g stroke="#79ed92" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M15 31h98M15 38h98M20 31v7M33 31v7M46 31v7M59 31v7M72 31v7M85 31v7M98 31v7M111 31v7"/>
-    <path d="M30 40h68l-7 27H37zM39 46h49v14H39z"/>
-    <circle cx="47" cy="71" r="5"/><circle cx="81" cy="71" r="5"/>
-    <path d="M48 51h31M54 46v14M73 46v14M20 82h88M28 88h72"/>
-    <path d="M22 22h12M94 22h12M18 53h10M100 53h10"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200" role="img" aria-label="貨物台車と搬送レール">
+  <defs>
+    <linearGradient id="rail-steel" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#72a678"/><stop offset=".2" stop-color="#245631"/><stop offset=".7" stop-color="#0b2111"/><stop offset="1" stop-color="#3b7142"/></linearGradient>
+    <linearGradient id="crate-face" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#28643a"/><stop offset="1" stop-color="#07170c"/></linearGradient>
+    <linearGradient id="crate-top" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#5b8b59"/><stop offset="1" stop-color="#153b20"/></linearGradient>
+    <radialGradient id="rail-glow"><stop stop-color="#286c37" stop-opacity=".48"/><stop offset="1" stop-color="#030604" stop-opacity="0"/></radialGradient>
+    <filter id="rail-blur"><feGaussianBlur stdDeviation="8"/></filter>
+  </defs>
+  <rect width="320" height="200" fill="#030604"/><rect x="10" y="10" width="300" height="180" fill="#06100a" stroke="#173b22"/>
+  <path d="M33 157 119 123l165 33-96 25z" fill="url(#rail-glow)" filter="url(#rail-blur)"/>
+  <path d="m24 168 95-39 184 36M18 179l103-40 184 35" fill="none" stroke="#183d23" stroke-width="8"/>
+  <path d="m24 164 95-39 184 35M18 175l103-40 184 35" fill="none" stroke="url(#rail-steel)" stroke-width="5"/>
+  <g stroke="#44734a" stroke-width="2"><path d="m44 157 3 17m19-25 4 17m20-25 5 18m21-27 5 18m20-16 5 18m21-15 5 18m21-14 5 18m22-14 4 18m22-14 4 18m22-13 4 18"/></g>
+  <ellipse cx="158" cy="159" rx="90" ry="16" fill="#000" opacity=".8"/>
+  <path d="m78 77 95-20 69 24-97 22z" fill="url(#crate-top)" stroke="#86aa7b" stroke-width="1.3"/>
+  <path d="m78 77 67 26v47l-67-24z" fill="url(#crate-face)" stroke="#54805a" stroke-width="1.4"/>
+  <path d="m145 103 97-22v45l-97 24z" fill="#0b2111" stroke="#3f7047" stroke-width="1.4"/>
+  <path d="m87 86 49 19v5L87 91zm0 12 49 19v5l-49-19zm0 12 49 19v5l-49-19" fill="#447b4d" opacity=".6"/>
+  <path d="m157 111 74-17m-74 25 74-18m-74 26 74-18" stroke="#3c7648" stroke-width="2"/>
+  <path d="m72 146 80 29 104-27-9-17-99 24-70-26z" fill="#164025" stroke="#608767" stroke-width="2"/>
+  <path d="m92 151-7 10m29-2-6 13m121-36 8 13m-31-6 7 14" stroke="#809d76" stroke-width="4"/>
+  <g fill="#07110a" stroke="#8ba886" stroke-width="2"><circle cx="93" cy="164" r="11"/><circle cx="130" cy="177" r="11"/><circle cx="218" cy="160" r="11"/><circle cx="253" cy="149" r="11"/></g>
+  <g fill="#4d8752"><circle cx="93" cy="164" r="4"/><circle cx="130" cy="177" r="4"/><circle cx="218" cy="160" r="4"/><circle cx="253" cy="149" r="4"/></g>
+  <path d="m79 76 98-22 73 26" fill="none" stroke="#a1c198" stroke-opacity=".7" stroke-width="2"/>
 </svg>

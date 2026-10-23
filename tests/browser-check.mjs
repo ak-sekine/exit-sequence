@@ -24,6 +24,10 @@ async function finishCurrentTurn(page, index = 0) {
   await page.waitForFunction(previous => document.querySelector('#status-position')?.textContent !== previous, position)
   await page.keyboard.press('Space')
   await waitForChoices(page)
+  await page.waitForFunction(() => {
+    const image = document.querySelector('.event-image')
+    return image?.complete && image.naturalWidth > 0 && new URL(image.currentSrc).pathname.endsWith(`/events/${image.dataset.eventId}.svg`)
+  })
 }
 
 async function measureRegions(page) {
@@ -37,19 +41,23 @@ async function measureRegions(page) {
       document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
       shell: rect('.terminal-shell'),
       status: rect('.status-bar'),
-      title: rect('.wordmark'),
-      eventImage: rect('.event-image'),
-      statusValues: rect('.status-values'),
+      statusContent: rect('.status-content'),
+      wordmark: rect('.wordmark'),
+      image: rect('.event-image'),
       log: rect('.console-window'),
       dock: rect('.command-dock'),
-      eventId: document.querySelector('#event-image').dataset.eventId,
-      imageSource: document.querySelector('#event-image').getAttribute('src'),
-      imageLoaded: document.querySelector('#event-image').complete && document.querySelector('#event-image').naturalWidth > 0,
       logOverflow: getComputedStyle(document.querySelector('.console-window')).overflowY,
       dockOverflow: getComputedStyle(document.querySelector('.command-dock')).overflowY,
+      imageState: {
+        eventId: document.querySelector('.event-image').dataset.eventId,
+        src: document.querySelector('.event-image').currentSrc,
+        loaded: document.querySelector('.event-image').complete,
+        naturalWidth: document.querySelector('.event-image').naturalWidth,
+        naturalHeight: document.querySelector('.event-image').naturalHeight,
+      },
       buttons: [...document.querySelectorAll('.action-command')].map(button => {
         const { top, right, bottom, left, width, height } = button.getBoundingClientRect()
-        return { top, right, bottom, left, width, height, text: button.innerText }
+        return { top, right, bottom, left, width, height }
       }),
       overflowing: [...document.querySelectorAll('.action-command, .action-command *, .console-line')]
         .filter(element => element.scrollWidth > element.clientWidth + 1)
@@ -63,10 +71,19 @@ function assertRegions(measurements, layout) {
   assert.equal(measurements.document.height, layout.height, `no page scroll at ${layout.width}×${layout.height}`)
   assert.ok(Math.abs(measurements.shell.height - layout.height) <= 1, 'terminal fills the viewport')
   assert.ok(measurements.status.bottom <= measurements.log.top + 1, 'status does not overlap the log')
+  assert.ok(Math.abs(measurements.wordmark.left - measurements.status.left) <= 1, 'title stays at the top left of the status area')
+  assert.ok(measurements.image.left >= measurements.statusContent.left - 1 && measurements.image.right <= measurements.statusContent.right + 1, 'event image stays inside the two-column status content')
+  assert.ok(measurements.image.bottom <= measurements.status.bottom + 1, 'event image stays inside the top status area')
+  assert.ok(measurements.statusContent.right <= measurements.status.right + 1, 'status content stays inside the viewport column')
+  assert.equal(measurements.imageState.loaded, true, 'event image finishes loading')
+  assert.equal(measurements.imageState.naturalWidth, 320, 'event image has its authored width')
+  assert.equal(measurements.imageState.naturalHeight, 200, 'event image has its authored height')
+  assert.ok(measurements.image.width >= 116 && measurements.image.width <= 160, 'event image adapts to the layout')
+  assert.ok(measurements.image.width > 120 || layout.height <= 440, 'portrait and desktop event images exceed the former 120px size')
+  assert.ok(measurements.imageState.src.endsWith(`/events/${measurements.imageState.eventId}.svg`), 'displayed image matches the current event ID')
   assert.ok(measurements.log.bottom <= measurements.dock.top + 1, 'log does not overlap the fixed input dock')
   assert.ok(measurements.dock.bottom <= measurements.shell.bottom + 1, 'input dock stays inside the safe-area padded shell')
   assert.ok(measurements.log.height > 0, 'central log retains a scrollable viewport')
-  assert.ok(measurements.dock.height <= 160, 'input dock fits the three compact choice rows')
   assert.equal(measurements.logOverflow, 'auto', 'only the log scrolls vertically in the middle region')
   assert.equal(measurements.dockOverflow, 'auto', 'the input dock can scroll internally on short screens')
   assert.deepEqual(measurements.overflowing, [], `no clipped console or choice text at ${layout.width}px`)
@@ -94,20 +111,58 @@ try {
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(`${base}?seed=123456`)
-    // A key pressed while the initial event is still being written must not select an action.
+    await page.locator('.action-command').first().waitFor()
+    assert.equal(await page.locator('.action-command').count(), 3, 'all three one-line choices appear immediately')
+    assert.equal(await page.locator('.action-command:disabled').count(), 3, 'choices stay disabled until the event log finishes')
+    assert.doesNotMatch(await page.locator('.command-dock').innerText(), /\[SELECT ACTION\]/, 'the command heading is omitted')
+    await page.waitForFunction(() => {
+      const image = document.querySelector('.event-image')
+      return image?.complete && image.naturalWidth > 0
+    })
+    const eventAssets = await page.evaluate(async ids => Promise.all(ids.map(id => new Promise(resolve => {
+      const image = new Image()
+      image.onload = () => resolve({ id, loaded: true, width: image.naturalWidth, height: image.naturalHeight })
+      image.onerror = () => resolve({ id, loaded: false, width: 0, height: 0 })
+      image.src = new URL(`${id}.svg`, document.querySelector('.event-image').src).href
+    }))), ['battery', 'bulkhead', 'cargo-rail', 'charger', 'conveyor', 'emergency', 'generator', 'leak', 'lift', 'terminal'])
+    assert.ok(eventAssets.every(asset => asset.loaded && asset.width === 320 && asset.height === 200), 'all ten local event SVGs load at the same size')
+
     await page.keyboard.press('1')
-    assert.match(await page.locator('#status-position').innerText(), /01\/15/)
+    assert.match(await page.locator('#status-position').innerText(), /01 \/ 15/)
+    const disabledChoice = page.locator('.action-command:disabled').first()
+    if (await disabledChoice.count()) {
+      await disabledChoice.evaluate(button => button.click())
+      assert.match(await page.locator('#status-position').innerText(), /01 \/ 15/)
+    }
     await skipOutput(page)
 
     const measurements = await measureRegions(page)
     assertRegions(measurements, layout)
-    assert.ok(measurements.title.top >= measurements.shell.top, 'title sits inside the top safe area')
-    assert.ok(Math.abs(measurements.title.left - measurements.eventImage.left) <= 1, 'title is left aligned with the event image')
-    assert.ok(measurements.title.top < measurements.eventImage.top, 'title stays above the image and status row')
-    assert.ok(Math.abs((measurements.eventImage.top + measurements.eventImage.height / 2) - (measurements.statusValues.top + measurements.statusValues.height / 2)) <= 1, 'image and numeric status are vertically centered')
-    assert.ok(measurements.eventImage.width >= 110 && measurements.eventImage.width <= 130, 'event image stays within the target width')
-    assert.equal(measurements.imageLoaded, true, 'the current event illustration loads')
-    assert.ok(measurements.imageSource.endsWith(`/events/${measurements.eventId}.svg`), 'the image source follows the current event ID')
+
+    const palette = await page.evaluate(() => {
+      const color = selector => getComputedStyle(document.querySelector(selector)).color
+      return {
+        root: getComputedStyle(document.documentElement).color,
+        title: color('.wordmark'),
+        status: color('#status-position'),
+        log: color('.transcript'),
+        logLine: color('.console-line'),
+        prompt: color('.prompt-prefix'),
+        cursor: getComputedStyle(document.querySelector('.console-cursor')).backgroundColor,
+        choice: color('.command-number'),
+        delta: color('.command-delta'),
+        latest: color('.latest-log'),
+      }
+    })
+    const terminalGreen = 'rgb(79, 214, 106)'
+    assert.deepEqual(Object.values(palette), Array(10).fill(terminalGreen), 'all text and the cursor use one deep green')
+    const activeChoice = page.locator('.action-command:not(:disabled)').first()
+    await activeChoice.hover()
+    assert.equal(await activeChoice.evaluate(button => getComputedStyle(button).color), terminalGreen, 'hover keeps the terminal text color')
+    await activeChoice.focus()
+    const focusStyle = await activeChoice.evaluate(button => ({ color: getComputedStyle(button).color, outline: getComputedStyle(button).outlineColor }))
+    assert.equal(focusStyle.color, terminalGreen, 'focus keeps the terminal text color')
+    assert.equal(focusStyle.outline, terminalGreen, 'focus outline stays in the terminal palette')
 
     const transcript = await page.locator('#transcript').innerText()
     assert.match(transcript, /\[SYSTEM\] 脱出シーケンス開始/)
@@ -123,34 +178,23 @@ try {
     assert.doesNotMatch(bodyText, /\[SELECT ACTION\]/)
     assert.match(bodyText, /\[1\]/)
     assert.doesNotMatch(bodyText, /(?:0|[1-9]\d?)\s*%|facilityConditions|\b(?:stable|degraded)\b/i)
-    assert.equal(await page.locator('.command-heading').count(), 0, 'the action heading is removed')
-    assert.equal(await page.locator('.command-detail').count(), 0, 'choice detail text is removed')
-    assert.equal(await page.locator('.action-command').count(), 3, 'each action occupies one row')
-    assert.ok((await page.locator('.action-command').allInnerTexts()).every(text => /成[+-]\d+\/失[+-]\d+/.test(text)), 'every row includes success and failure power changes')
-    assert.ok((await page.locator('.action-command').evaluateAll(rows => rows.every(row => getComputedStyle(row).whiteSpace === 'nowrap'))), 'choice text stays on a single line')
-    assert.ok((await page.locator('.action-command').evaluateAll(rows => rows.every(row => getComputedStyle(row).color === 'rgb(121, 237, 146)'))), 'choice text uses the bright green console color')
     assert.equal(await page.locator('.wordmark').innerText(), 'EXIT SEQUENCE')
-    assert.equal(await page.locator('.wordmark').count(), 1, 'the title is not repeated in the status column')
-    assert.match(await page.locator('#status-position').innerText(), /POSITION 01\/15/)
-    assert.match(await page.locator('#status-power').innerText(), /POWER\s+20\/20/)
+    assert.match(await page.locator('#status-position').innerText(), /\[POSITION\] 01 \/ 15/)
+    assert.match(await page.locator('#status-power').innerText(), /\[POWER\] 20 \/ 20/)
 
     if (layout.width === 320) {
       await page.evaluate(() => { window.__originalFirstLine = document.querySelector('.console-line') })
       const priorLines = await page.locator('#transcript .console-line:not(.prompt-line)').allInnerTexts()
-      const selectedLabel = await page.locator('.action-command:not(:disabled) .command-label').nth(1).innerText()
-      const eventIdBeforeTurn = await page.locator('#event-image').getAttribute('data-event-id')
+      const selectedLabel = await page.locator('.action-command:not(:disabled) .command-number').nth(1).innerText()
       const dockTop = measurements.dock.top
       await page.locator('.action-command:not(:disabled)').nth(1).tap()
       const dockTopWhileOutputRuns = (await page.locator('.command-dock').boundingBox()).y
       assert.ok(Math.abs(dockTopWhileOutputRuns - dockTop) <= 1, 'the input dock stays fixed while the selected line is written')
       await page.keyboard.press('1')
       await waitForChoices(page)
-      const eventIdAfterTurn = await page.locator('#event-image').getAttribute('data-event-id')
-      assert.notEqual(eventIdAfterTurn, eventIdBeforeTurn, 'a new event switches the illustration')
-      assert.ok((await page.locator('#event-image').getAttribute('src')).endsWith(`/events/${eventIdAfterTurn}.svg`), 'the new illustration follows the next event ID')
       const resultText = await page.locator('#transcript').innerText()
       const promptRows = await page.locator('#transcript .prompt-line').allInnerTexts()
-      const selectedAction = selectedLabel
+      const selectedAction = selectedLabel.replace(/^\[2\]\s*/, '')
       assert.equal(promptRows.length, 2, 'the selected command remains as a past prompt line and the next event gets a new prompt')
       assert.equal(promptRows[0], `> 2. ${selectedAction}`, 'the selection number and action name share the prompt line')
       assert.match(promptRows[1], /^>\s*$/, 'the new event has a fresh prompt')
@@ -160,10 +204,10 @@ try {
       assert.doesNotMatch(resultText, /\[(?:ACTION|STATUS|POSITION|MOVE)\]/, 'duplicate action and status log lines are omitted')
       const priorLinesAfter = await page.locator('#transcript .console-line:not(.prompt-line)').allInnerTexts()
       assert.deepEqual(priorLinesAfter.slice(0, priorLines.length), priorLines, 'past console lines stay in order')
-      assert.match(await page.locator('#status-position').innerText(), /02\/15/)
+      assert.match(await page.locator('#status-position').innerText(), /02 \/ 15/)
       const powerDelta = resultText.match(/\[(?:SUCCESS|FAILED)\] 電力 ([+-]?\d+)/)
       assert.ok(powerDelta, 'action result includes the actual power change')
-      assert.equal(Number((await page.locator('#status-power').innerText()).match(/\d+\/20/)?.[0].split('/')[0]), Math.max(0, Math.min(20, 20 + Number(powerDelta[1]))), 'top power status matches the game result')
+      assert.equal(Number((await page.locator('#status-power').innerText()).match(/\d+ \/ 20/)?.[0].split(' ')[0]), Math.max(0, Math.min(20, 20 + Number(powerDelta[1]))), 'top power status matches the game result')
       assert.equal(await page.evaluate(() => window.__originalFirstLine === document.querySelector('.console-line')), true, 'existing log DOM node is reused')
 
       await finishCurrentTurn(page, 0)
@@ -175,7 +219,6 @@ try {
       assert.equal(canScroll, true, 'long run logs scroll inside the console')
       await page.locator('.console-window').evaluate(element => { element.scrollTop = 0 })
       await page.locator('#latest-log').waitFor({ state: 'visible' })
-      assert.equal((await page.locator('.wordmark').boundingBox()).y, measurements.title.top, 'the title stays fixed while the central log scrolls')
       await finishCurrentTurn(page, 0)
       assert.equal(await page.locator('.console-window').evaluate(element => element.scrollTop), 0, 'reading old output does not auto-scroll to the tail')
       await page.locator('#latest-log').click()
@@ -188,14 +231,14 @@ try {
       await page.keyboard.press('2')
       await waitForChoices(page)
       assert.match((await page.locator('#transcript .prompt-line').first().innerText()), /^> 2\. /, 'number keys also commit a prompt history line')
-      assert.match(await page.locator('#status-position').innerText(), /02\/15/)
+      assert.match(await page.locator('#status-position').innerText(), /02 \/ 15/)
     } else if (layout.width === 1280) {
       assert.ok(measurements.buttons.every(button => button.width < 760), 'desktop console is centered and width-limited')
       await page.locator('.action-command:not(:disabled)').nth(1).click()
       await waitForChoices(page)
       await page.keyboard.press('3')
       await waitForChoices(page)
-      assert.match(await page.locator('#status-position').innerText(), /03\/15/)
+      assert.match(await page.locator('#status-position').innerText(), /03 \/ 15/)
       assert.match((await page.locator('#transcript .prompt-line').nth(1).innerText()), /^> 3\. /, 'a later numeric choice is retained in the log')
     } else {
       await page.locator('.action-command:not(:disabled)').last().tap()
@@ -214,31 +257,30 @@ try {
     if (!eventSeeds.has(id)) eventSeeds.set(id, seed)
   }
   assert.equal(eventSeeds.size, EVENTS.length, 'a deterministic seed is available for each event')
-  const imageContext = await browser.newContext({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true })
+  const imageContext = await browser.newContext({ viewport: { width: 320, height: 640 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' })
   const imagePage = await imageContext.newPage()
   imagePage.setDefaultTimeout(5000)
   for (const definition of EVENTS) {
-    const seed = eventSeeds.get(definition.id)
-    await imagePage.goto(`${base}?seed=${seed}`)
-    await imagePage.locator('#event-image').waitFor()
+    await imagePage.goto(`${base}?seed=${eventSeeds.get(definition.id)}`)
     await waitForChoices(imagePage)
     await imagePage.waitForFunction(() => {
       const image = document.querySelector('#event-image')
-      return image?.complete && image.naturalWidth > 0
+      return image?.complete && image.naturalWidth === 320 && image.naturalHeight === 200
     })
+    const image = await imagePage.locator('#event-image').evaluate(element => ({ id: element.dataset.eventId, src: element.currentSrc, alt: element.alt }))
+    assert.equal(image.id, definition.id, `${definition.id} is selected by its event ID`)
+    assert.ok(image.src.endsWith(`/events/${definition.id}.svg`), `${definition.id} maps to its own local SVG`)
+    assert.equal(image.alt, `${definition.title}の設備`, `${definition.id} image has descriptive alternative text`)
     assertRegions(await measureRegions(imagePage), { width: 320, height: 640 })
-    assert.equal(await imagePage.locator('#event-image').getAttribute('data-event-id'), definition.id, `${definition.id} is selected by its event ID`)
-    assert.ok((await imagePage.locator('#event-image').getAttribute('src')).endsWith(`/events/${definition.id}.svg`), `${definition.id} has its own local SVG`)
-    assert.equal(await imagePage.locator('#event-image').getAttribute('alt'), `${definition.title}の設備画像`)
-    const choices = await imagePage.locator('#command-dock').innerText()
     const choiceRows = await imagePage.locator('.action-command').allInnerTexts()
+    const choices = await imagePage.locator('#command-dock').innerText()
     assert.equal(choiceRows.length, 3, `${definition.id} has one row for each action`)
-    assert.ok(choiceRows.every((row, index) => row.startsWith(`[${index + 1}]`) && /成[+-]?\d+\/失[+-]\d+/.test(row)), `${definition.id} shows success and failure power deltas on one line`)
-    assert.doesNotMatch(choices, /\d+\s*%/, `${definition.id} does not show success rates`)
-    for (const action of definition.actions) assert.ok(!choices.includes(action.detail), `${definition.id} hides action details`)
+    assert.ok(choiceRows.every((row, index) => row.startsWith(`[${index + 1}]`) && /成[+-]?\d+\s*\/\s*失[+-]\d+/.test(row)), `${definition.id} shows power changes on each one-line option`)
+    assert.doesNotMatch(choices, /\d+\s*%/, `${definition.id} does not expose success rates`)
+    for (const action of definition.actions) assert.ok(!choices.includes(action.detail), `${definition.id} keeps action detail off the three visible rows`)
   }
   await imageContext.close()
-  console.log('event illustrations: all ten IDs load their own local SVG')
+  console.log('event illustrations: all ten IDs load their own shaded local SVG')
 
   const reducedContext = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -253,7 +295,7 @@ try {
   assert.equal(await reducedPage.locator('.console-cursor').evaluate(element => getComputedStyle(element).visibility), 'visible', 'Reduced Motion keeps the waiting cursor visible without animation')
   await reducedPage.keyboard.press('1')
   await waitForChoices(reducedPage)
-  assert.match(await reducedPage.locator('#status-position').innerText(), /02\/15/)
+  assert.match(await reducedPage.locator('#status-position').innerText(), /02 \/ 15/)
   assert.match(await reducedPage.locator('#transcript .prompt-line').first().innerText(), /^> 1\. /)
   assert.doesNotMatch(await reducedPage.locator('#transcript').innerText(), /\[(?:ACTION|STATUS|POSITION|MOVE)\]/)
   console.log('reduced motion full output and keyboard action: ok')
@@ -276,12 +318,15 @@ try {
   assert.equal(endingLine, '[GAME OVER] 電力が尽きた')
   assert.doesNotMatch(endingLine, /残存電力|\/ 15|\/ 20/)
   assert.equal(await page.locator('#transcript .console-cursor').count(), 0, 'terminal states do not leave a waiting cursor')
+  const failedAndGameOverColors = await page.evaluate(() => [...document.querySelectorAll('.line-bad')].map(line => getComputedStyle(line).color))
+  assert.ok(failedAndGameOverColors.length >= 2 && failedAndGameOverColors.every(color => color === 'rgb(79, 214, 106)'), '[FAILED] and [GAME OVER] stay green')
+  assert.equal(await page.locator('.restart-button').evaluate(button => getComputedStyle(button).color), 'rgb(79, 214, 106)', 'restart text stays green')
   const finishedPosition = await page.locator('#status-position').innerText()
-  assert.match(await page.locator('#status-power').innerText(), /POWER\s+0\/20/)
+  assert.match(await page.locator('#status-power').innerText(), /\[POWER\] 0 \/ 20/)
   await page.keyboard.press('1')
   assert.equal(await page.locator('#status-position').innerText(), finishedPosition)
   await page.locator('[data-restart]').tap()
-  assert.match(await page.locator('#status-position').innerText(), /01\/15/)
+  assert.match(await page.locator('#status-position').innerText(), /01 \/ 15/)
   await waitForChoices(page)
   assert.match(await page.locator('#transcript').innerText(), /\[SYSTEM\] 脱出シーケンス開始/)
   assert.doesNotMatch(await page.locator('#transcript').innerText(), /\[CLEAR\]|\[GAME OVER\]/)
@@ -305,13 +350,14 @@ try {
   }
   await clearPage.locator('[data-restart]').waitFor()
   assert.equal(await clearPage.locator('#transcript .console-line').last().innerText(), '[CLEAR] 脱出成功')
-  assert.match(await clearPage.locator('#status-position').innerText(), /POSITION 15\/15/)
-  assert.match(await clearPage.locator('#status-power').innerText(), /POWER\s+[1-9]\d*\/20/)
+  assert.equal(await clearPage.locator('.line-good').last().evaluate(line => getComputedStyle(line).color), 'rgb(79, 214, 106)', '[SUCCESS] and [CLEAR] stay green')
+  assert.match(await clearPage.locator('#status-position').innerText(), /\[POSITION\] 15 \/ 15/)
+  assert.match(await clearPage.locator('#status-power').innerText(), /\[POWER\] [1-9]\d* \/ 20/)
   assert.equal(await clearPage.locator('#transcript .console-cursor').count(), 0, 'clear state does not leave a waiting cursor')
   assert.doesNotMatch(await clearPage.locator('#transcript').innerText(), /\[(?:ACTION|STATUS|POSITION|MOVE)\]/)
   console.log('browser clear message and final status: ok')
   await clearContext.close()
-  console.log('PASS: compact header and input, ten event illustrations, 320px no horizontal scroll, tappable choices, output skip/input gating, ordered append-only logs, scroll preservation, keyboard/mouse/touch, reduced motion, end state and restart')
+  console.log('PASS: 320px no horizontal scroll, tappable choices, output skip/input gating, ordered append-only logs, scroll preservation, keyboard/mouse/touch, reduced motion, end state and restart')
 } finally {
   await browser.close()
 }

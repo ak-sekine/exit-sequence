@@ -1,11 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="96" viewBox="0 0 128 96" fill="none">
-  <rect width="128" height="96" fill="#030604"/>
-  <g stroke="#79ed92" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M18 82V23l9-8h74l9 8v59"/>
-    <path d="M29 82V28l6-5h58l6 5v54"/>
-    <path d="M40 82V34h39v48M79 34h10v48"/>
-    <path d="M45 43h29M45 52h29M45 61h29M45 70h29"/>
-    <path d="M18 82h92M12 88h104M104 35h9M104 44h9"/>
-    <circle cx="107" cy="25" r="2" fill="#79ed92"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200" role="img" aria-label="厚い装甲隔壁">
+  <defs>
+    <linearGradient id="door-metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2b713c"/><stop offset=".33" stop-color="#123b20"/><stop offset="1" stop-color="#07160b"/></linearGradient>
+    <linearGradient id="door-ring" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#8ab889"/><stop offset=".16" stop-color="#275b34"/><stop offset=".7" stop-color="#0a2111"/><stop offset="1" stop-color="#4e8758"/></linearGradient>
+    <radialGradient id="door-light"><stop stop-color="#1c5b2b" stop-opacity=".5"/><stop offset="1" stop-color="#030604" stop-opacity="0"/></radialGradient>
+    <filter id="door-soft"><feGaussianBlur stdDeviation="8"/></filter>
+  </defs>
+  <rect width="320" height="200" fill="#030604"/><rect x="10" y="10" width="300" height="180" fill="#06100a" stroke="#173b22"/>
+  <path d="M30 166V43l21-18h218l21 18v123l-22 15H52z" fill="#07170c" stroke="#32633a" stroke-width="2"/>
+  <path d="M37 157V49l18-16h211l18 16v108l-20 15H57z" fill="url(#door-metal)" stroke="#598660" stroke-width="1.5"/>
+  <ellipse cx="162" cy="99" rx="108" ry="89" fill="url(#door-light)" filter="url(#door-soft)"/>
+  <path d="M50 48h49M224 48h45M51 153h54m112 0h52" stroke="#91b990" stroke-opacity=".6" stroke-width="2"/>
+  <circle cx="160" cy="100" r="68" fill="#08170c" stroke="#67946a" stroke-width="4"/>
+  <circle cx="160" cy="100" r="61" fill="url(#door-ring)" stroke="#203e26" stroke-width="3"/>
+  <circle cx="160" cy="100" r="48" fill="#0a1b0e" stroke="#84aa7e" stroke-width="2"/>
+  <circle cx="160" cy="100" r="41" fill="url(#door-metal)" stroke="#3c7144" stroke-width="2"/>
+  <path d="M160 61v78M121 100h78M132.5 72.5l55 55m0-55-55 55" stroke="#204a2a" stroke-width="4"/>
+  <circle cx="160" cy="100" r="15" fill="#174126" stroke="#8bae7f" stroke-width="2"/>
+  <circle cx="160" cy="100" r="5" fill="#a5c98e"/><path d="M160 84v-9m0 50v-9m-16-16h-9m50 0h-9" stroke="#8db78b" stroke-width="3"/>
+  <g fill="#9ab88b" stroke="#1c4728" stroke-width="2"><circle cx="160" cy="39" r="4"/><circle cx="203" cy="57" r="4"/><circle cx="221" cy="100" r="4"/><circle cx="203" cy="143" r="4"/><circle cx="160" cy="161" r="4"/><circle cx="117" cy="143" r="4"/><circle cx="99" cy="100" r="4"/><circle cx="117" cy="57" r="4"/></g>
+  <path d="M48 79h25v7H48zm0 28h25v7H48zm198-29h24v7h-24zm0 29h24v7h-24z" fill="#244d2e" stroke="#68906b"/>
+  <path d="M38 167h244M54 174h212" stroke="#24472b" stroke-width="2"/>
+  <path d="M24 28h44M252 28h44M24 28v22m272-22v22" fill="none" stroke="#3e7849" stroke-width="2"/>
 </svg>

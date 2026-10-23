@@ -1,12 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="96" viewBox="0 0 128 96" fill="none">
-  <rect width="128" height="96" fill="#030604"/>
-  <g stroke="#79ed92" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14 24h100v52H14zM14 67h100M26 24v43M102 24v43"/>
-    <path d="M25 76h78M34 82h60M47 67l-8 9M64 67l-7 9M81 67l-7 9"/>
-    <path d="m68 29-13 20h12l-7 16 19-24H67l7-12"/>
-    <path d="M37 36q4-5 8 0t8 0M82 47q4-5 8 0t8 0"/>
-    <path d="M20 17h13M95 17h13"/>
-  </g>
-  <circle cx="32" cy="56" r="2" fill="#79ed92"/>
-  <circle cx="97" cy="31" r="2" fill="#79ed92"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200" role="img" aria-label="浸水した通路と露出配線">
+  <defs>
+    <linearGradient id="leak-wall" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#183d22"/><stop offset="1" stop-color="#06120a"/></linearGradient>
+    <linearGradient id="leak-water" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#43834c" stop-opacity=".75"/><stop offset="1" stop-color="#07190c" stop-opacity=".9"/></linearGradient>
+    <radialGradient id="leak-reflect"><stop stop-color="#8dca82" stop-opacity=".6"/><stop offset="1" stop-color="#23703a" stop-opacity="0"/></radialGradient>
+    <filter id="leak-blur"><feGaussianBlur stdDeviation="9"/></filter>
+  </defs>
+  <rect width="320" height="200" fill="#030604"/><rect x="10" y="10" width="300" height="180" fill="#06100a" stroke="#173b22"/>
+  <path d="M39 32h242v96L161 173 39 127z" fill="url(#leak-wall)" stroke="#35643d" stroke-width="2"/>
+  <path d="M42 35h236v87l-117 39-117-39z" fill="#07140a"/>
+  <path d="m43 37 91 45v79l-91-35zm234 0-91 45v79l91-35z" fill="#0d2412" stroke="#2a532f"/>
+  <path d="M134 82h52v79l-25 12-27-12z" fill="#0a1b0e" stroke="#315c37"/>
+  <path d="M27 144 161 184l132-44v29l-132 25-134-26z" fill="url(#leak-water)" stroke="#4a8250" stroke-width="2"/>
+  <path d="M48 153c27 2 38 11 57 8 24-4 37 7 59 7s42-16 65-11 39-2 66-13" fill="none" stroke="#9cc78a" stroke-opacity=".65" stroke-width="3"/>
+  <ellipse cx="163" cy="164" rx="97" ry="25" fill="url(#leak-reflect)" filter="url(#leak-blur)"/>
+  <path d="M60 45h41v7H60zm0 13h54v5H60m146-18h48v7h-48m-15 13h63v5h-63" fill="#1a4224" stroke="#4c794d"/>
+  <path d="M78 41v35l20 16m143-53v35l-27 13" fill="none" stroke="#779574" stroke-width="5"/>
+  <path d="M86 74 102 91l21-5 18 21 22-9 21 16 25-13 16 10" fill="none" stroke="#a8c884" stroke-width="4"/>
+  <path d="m155 99-13 17 10 8-9 15m35-35 13 12-8 10 12 13" fill="none" stroke="#d0d99a" stroke-width="2"/>
+  <path d="M150 114h4m35 0h4" stroke="#d3e0a7" stroke-width="4"/><path d="m137 105-5 5m67 17 6 6" stroke="#b5d88a" stroke-width="2"/>
+  <path d="M24 177h272" stroke="#1d3d23" stroke-width="2"/>
+  <path d="M63 126l8-7m167 12 8 5m-116 30 6 6m58-8-4 8" stroke="#b5d894" stroke-width="2" opacity=".8"/>
 </svg>
