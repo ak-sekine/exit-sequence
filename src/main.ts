@@ -27,7 +27,6 @@ app.innerHTML = `
     </section>
     <footer id="command-dock" class="command-dock" aria-label="コマンド選択">
       <div id="command-list" class="command-list"></div>
-      <div id="command-prompt" class="command-prompt" hidden aria-hidden="true"><span>&gt;</span><i></i></div>
       <div id="restart-command" class="restart-command" hidden></div>
     </footer>
   </main>`
@@ -37,7 +36,6 @@ const consoleWindow = app.querySelector<HTMLElement>('.console-window')!
 const positionOutput = app.querySelector<HTMLSpanElement>('#status-position')!
 const powerOutput = app.querySelector<HTMLSpanElement>('#status-power')!
 const commandList = app.querySelector<HTMLDivElement>('#command-list')!
-const commandPrompt = app.querySelector<HTMLDivElement>('#command-prompt')!
 const restartCommand = app.querySelector<HTMLDivElement>('#restart-command')!
 const latestLogButton = app.querySelector<HTMLButtonElement>('#latest-log')!
 
@@ -46,8 +44,10 @@ let random = createSeededRandom(seed)
 let game = createGame(random, seed)
 let followTail = true
 let inputReady = false
-let phase: 'event-log' | 'choices' | 'end-log' | 'idle' = 'idle'
+let phase: 'event-log' | 'choices' | 'selection-echo' | 'end-log' | 'idle' = 'idle'
 let activeChoiceButtons: HTMLButtonElement[] = []
+let activePromptLine: { row: HTMLDivElement; text: Text; cursor: HTMLElement } | null = null
+let pendingChoice: { index: number; action: ActionView } | null = null
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const output = new ConsoleOutput({
@@ -86,9 +86,41 @@ function appendTranscriptLines(lines: readonly string[]): void {
   output.enqueue(lines, hooks)
 }
 
+function appendPromptLine(): void {
+  const row = document.createElement('div')
+  row.className = 'console-line prompt-line'
+  const prefix = document.createElement('span')
+  prefix.className = 'prompt-prefix'
+  prefix.textContent = '> '
+  const text = document.createTextNode('')
+  const cursor = document.createElement('i')
+  cursor.className = 'console-cursor'
+  cursor.setAttribute('aria-hidden', 'true')
+  row.append(prefix, text, cursor)
+  transcript.append(row)
+  activePromptLine = { row, text, cursor }
+  scrollIfFollowing()
+}
+
+function appendSelectionEcho(index: number, action: ActionView): void {
+  const prompt = activePromptLine
+  if (!prompt) return
+  phase = 'selection-echo'
+  output.enqueue([`${index + 1}. ${action.label}`], {
+    onCharacter(character) {
+      prompt.text.appendData(character)
+      scrollIfFollowing()
+    },
+    onLineEnd() {
+      prompt.row.classList.add('committed-prompt')
+      prompt.cursor.remove()
+      activePromptLine = null
+    },
+  })
+}
+
 function appendCommandLines(actions: readonly ActionView[]): void {
   commandList.replaceChildren()
-  commandPrompt.hidden = true
   restartCommand.replaceChildren()
   restartCommand.hidden = true
   activeChoiceButtons = []
@@ -165,7 +197,12 @@ function outputBecameIdle(): void {
     phase = 'idle'
     inputReady = true
     activeChoiceButtons.forEach(button => { button.disabled = false })
-    commandPrompt.hidden = false
+    appendPromptLine()
+    return
+  }
+  if (phase === 'selection-echo') {
+    phase = 'idle'
+    executePendingChoice()
     return
   }
   if (phase === 'end-log') {
@@ -195,19 +232,20 @@ function eventLines(view: GameView): string[] {
 function beginRunOutput(): void {
   transcript.replaceChildren()
   commandList.replaceChildren()
-  commandPrompt.hidden = true
   restartCommand.replaceChildren()
   restartCommand.hidden = true
   activeChoiceButtons = []
+  activePromptLine = null
+  pendingChoice = null
+  inputReady = false
   followTail = true
   consoleWindow.scrollTop = 0
+  latestLogButton.hidden = true
   const view = toGameView(game)
   updateStatus(view)
   phase = 'event-log'
   appendTranscriptLines([
     '[SYSTEM] 脱出シーケンス開始',
-    `[STATUS] 電力 ${view.power} / 20`,
-    `[POSITION] ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}`,
     ...eventLines(view),
   ])
 }
@@ -221,41 +259,41 @@ function resultLines(view: GameView, action: ActionView): string[] {
       ? '（最低値0）'
       : ''
   const lines = [
-    `[ACTION] ${action.label}`,
     `[${result.success ? 'SUCCESS' : 'FAILED'}] 電力 ${signed(result.powerChange)}${capNote}`,
-    `[STATUS] 電力 ${view.power} / 20`,
   ]
   if (view.status === 'lost') {
-    lines.push(`[GAME OVER] 電力が尽きた。${String(view.position).padStart(2, '0')} / ${TOTAL_TILES} で停止。`)
+    lines.push('[GAME OVER] 電力が尽きた')
   } else if (view.status === 'won') {
-    lines.push(`[CLEAR] 脱出成功。残存電力 ${view.power} / 20`)
+    lines.push('[CLEAR] 脱出成功')
   } else {
-    lines.push(`[MOVE] ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}`)
     lines.push(...eventLines(view))
   }
   return lines
 }
 
+function executePendingChoice(): void {
+  const choice = pendingChoice
+  pendingChoice = null
+  if (!choice || game.status !== 'playing') return
+
+  game = resolveAction(game, choice.index, random)
+  const view = toGameView(game)
+  updateStatus(view)
+  phase = view.status === 'playing' ? 'event-log' : 'end-log'
+  appendTranscriptLines(resultLines(view, choice.action))
+}
+
 function selectAction(index: number): void {
-  if (!inputReady || output.isBusy || game.status !== 'playing') return
+  if (!inputReady || !activePromptLine || output.isBusy || game.status !== 'playing') return
   const before = toGameView(game)
   const action = before.currentEvent.actions[index]
   if (!action) return
 
   inputReady = false
-  phase = 'idle'
+  pendingChoice = { index, action }
   activeChoiceButtons.forEach(button => { button.disabled = true })
   commandList.replaceChildren()
-  commandPrompt.hidden = true
-  game = resolveAction(game, index, random)
-  const view = toGameView(game)
-  updateStatus(view)
-  if (view.status === 'playing') {
-    phase = 'event-log'
-  } else {
-    phase = 'end-log'
-  }
-  appendTranscriptLines(resultLines(view, action))
+  appendSelectionEcho(index, action)
 }
 
 function startNewRun(): void {
