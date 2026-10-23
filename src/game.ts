@@ -49,6 +49,7 @@ export interface ActionView {
 }
 
 export interface EventView {
+  id: string
   tile: number
   zone: number
   title: string
@@ -258,6 +259,7 @@ export function toGameView(state: GameState): GameView {
     power: state.power,
     status: state.status,
     currentEvent: {
+      id: definition.id,
       tile: state.currentEvent.tile,
       zone: state.currentEvent.zone,
       title: definition.title,

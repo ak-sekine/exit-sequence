@@ -15,10 +15,13 @@ const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `
   <main class="terminal-shell">
     <header class="status-bar" aria-label="ゲーム状態">
-      <div class="wordmark">EXIT SEQUENCE</div>
-      <div class="status-values">
-        <span id="status-position">[POSITION] 01 / ${TOTAL_TILES}</span>
-        <span id="status-power">[POWER] 20 / 20</span>
+      <h1 class="wordmark">EXIT SEQUENCE</h1>
+      <div class="status-content">
+        <img id="event-image" class="event-image" width="120" height="90" alt="" />
+        <div class="status-values" aria-live="polite">
+          <span id="status-position">POSITION 01/${TOTAL_TILES}</span>
+          <span id="status-power">POWER    20/20</span>
+        </div>
       </div>
     </header>
     <section class="console-window" aria-label="コンソールログをクリックすると文字送りをスキップします">
@@ -35,6 +38,7 @@ const transcript = app.querySelector<HTMLDivElement>('#transcript')!
 const consoleWindow = app.querySelector<HTMLElement>('.console-window')!
 const positionOutput = app.querySelector<HTMLSpanElement>('#status-position')!
 const powerOutput = app.querySelector<HTMLSpanElement>('#status-power')!
+const eventImage = app.querySelector<HTMLImageElement>('#event-image')!
 const commandList = app.querySelector<HTMLDivElement>('#command-list')!
 const restartCommand = app.querySelector<HTMLDivElement>('#restart-command')!
 const latestLogButton = app.querySelector<HTMLButtonElement>('#latest-log')!
@@ -64,7 +68,7 @@ function seedFromAddress(): number {
 }
 
 function signed(value: number): string {
-  return `${value > 0 ? '+' : ''}${value}`
+  return `${value >= 0 ? '+' : ''}${value}`
 }
 
 function appendTranscriptLines(lines: readonly string[]): void {
@@ -125,31 +129,33 @@ function appendCommandLines(actions: readonly ActionView[]): void {
   restartCommand.hidden = true
   activeChoiceButtons = []
 
-  const heading = document.createElement('div')
-  heading.className = 'command-heading'
-  heading.textContent = '[SELECT ACTION]'
-  commandList.append(heading)
-
-  actions.forEach((action, index) => {
+  for (let index = 0; index < actions.length; index++) {
+    const action = actions[index]!
     const successDelta = displayedPowerDelta(game.power, action.successDelta)
     const failureDelta = displayedPowerDelta(game.power, action.failureDelta)
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'action-command'
     button.dataset.actionIndex = String(index)
-    button.setAttribute('aria-label', `${index + 1}: ${action.label}`)
+    button.setAttribute('aria-label', `${index + 1}: ${action.label} 成功時 ${signed(successDelta)}、失敗時 ${signed(failureDelta)}`)
 
     const number = document.createElement('span')
     number.className = 'command-number'
-    number.textContent = `[${index + 1}] ${action.label}`
-    const detail = document.createElement('span')
-    detail.className = 'command-detail'
-    detail.textContent = `${action.detail} · 成功 ${signed(successDelta)} / 失敗 ${signed(failureDelta)}`
-
-    button.append(number, detail)
+    number.textContent = `[${index + 1}]`
+    const label = document.createElement('span')
+    label.className = 'command-label'
+    label.textContent = action.label
+    const delta = document.createElement('span')
+    delta.className = 'command-delta'
+    delta.textContent = `成${signed(successDelta)}/失${signed(failureDelta)}`
+    button.append(number, label, delta)
     activeChoiceButtons.push(button)
     commandList.append(button)
-  })
+  }
+
+  phase = 'idle'
+  inputReady = true
+  appendPromptLine()
 }
 
 function appendRestartCommand(): void {
@@ -166,9 +172,6 @@ function appendRestartCommand(): void {
 function outputBecameIdle(): void {
   if (phase === 'event-log') {
     appendCommandLines(toGameView(game).currentEvent.actions)
-    phase = 'idle'
-    appendPromptLine()
-    inputReady = true
     return
   }
   if (phase === 'selection-echo') {
@@ -187,8 +190,11 @@ function scrollIfFollowing(): void {
 }
 
 function updateStatus(view: GameView): void {
-  positionOutput.textContent = `[POSITION] ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}`
-  powerOutput.textContent = `[POWER] ${view.power} / 20`
+  positionOutput.textContent = `POSITION ${String(view.position).padStart(2, '0')}/${TOTAL_TILES}`
+  powerOutput.textContent = `POWER    ${view.power}/20`
+  eventImage.src = `${import.meta.env.BASE_URL}events/${view.currentEvent.id}.svg`
+  eventImage.alt = `${view.currentEvent.title}の設備画像`
+  eventImage.dataset.eventId = view.currentEvent.id
 }
 
 function eventLines(view: GameView): string[] {

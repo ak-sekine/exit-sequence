@@ -127,6 +127,7 @@ test('current and past clues update a repeatable Bayesian estimate, but the publ
   const estimate = estimateSuccessProbability(state, 0)
   assert.ok(estimate > 0 && estimate < 1)
   const view = toGameView(state)
+  assert.equal(view.currentEvent.id, state.currentEvent.eventId)
   assert.equal('facilityConditions' in view, false)
   assert.equal(JSON.stringify(view).includes('stable'), false)
   assert.equal(JSON.stringify(view).includes('degraded'), false)
