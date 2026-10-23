@@ -1,180 +1,104 @@
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
-import { mkdir } from 'node:fs/promises'
 
 const base = process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/'
-const artifacts = process.env.EXIT_SEQUENCE_ARTIFACTS ?? '/tmp/exit-sequence-browser'
-await mkdir(artifacts, { recursive: true })
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium', args: ['--no-sandbox'] })
+
 try {
-  const layouts = [
+  for (const layout of [
     { width: 320, height: 640, mobile: true },
-    { width: 375, height: 812, mobile: true },
     { width: 390, height: 844, mobile: true },
     { width: 1280, height: 800, mobile: false },
     { width: 812, height: 375, mobile: true },
-  ]
-  for (const layout of layouts) {
+  ]) {
     const context = await browser.newContext({
       viewport: { width: layout.width, height: layout.height },
       deviceScaleFactor: 1,
       hasTouch: layout.mobile,
       isMobile: layout.mobile,
     })
-    const page = await context.newPage(), errors = []
+    const page = await context.newPage()
     page.setDefaultTimeout(5000)
-    console.log(`browser layout ${layout.width}×${layout.height}`)
+    const errors = []
     page.on('pageerror', error => errors.push(error.message))
-    await page.goto(base)
-    await page.waitForFunction(() => !!document.querySelector('.scene-frame')?.dataset.time)
-    const measurements = await page.evaluate(() => {
-      const frame = document.querySelector('.scene-frame').getBoundingClientRect()
-      return {
-        frame: { x: frame.x, y: frame.y, width: frame.width, height: frame.height },
-        scrollWidth: document.documentElement.scrollWidth,
-        scrollHeight: document.documentElement.scrollHeight,
-        viewport: { width: innerWidth, height: innerHeight },
-        controls: document.querySelector('.controls').getBoundingClientRect().toJSON(),
-      }
-    })
-    assert.ok(Math.abs(measurements.frame.width - measurements.frame.height) <= 1, `square scene at ${layout.width}×${layout.height}: ${JSON.stringify(measurements.frame)}`)
-    assert.ok(measurements.frame.width <= layout.width, `scene fits width at ${layout.width}px`)
-    assert.equal(measurements.scrollWidth, layout.width, `no horizontal scrolling at ${layout.width}px`)
-    assert.equal(measurements.scrollHeight, layout.height, `no page scrolling at ${layout.width}×${layout.height}`)
-    assert.ok(measurements.controls.y + measurements.controls.height <= layout.height, `controls remain visible at ${layout.width}×${layout.height}`)
-    assert.ok(await page.locator('.game-canvas').evaluate(canvas => canvas.getContext('2d') !== null))
+    await page.goto(`${base}?seed=123456`)
+    await page.locator('.action-button').first().waitFor()
 
-    if (layout.width === 390 || layout.width === 1280) {
-      await page.screenshot({ path: `${artifacts}/initial-${layout.width}.png` })
+    const measurements = await page.evaluate(() => ({
+      viewport: { width: innerWidth, height: innerHeight },
+      document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
+      buttons: [...document.querySelectorAll('.action-button')].map(button => {
+        const rect = button.getBoundingClientRect()
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, right: rect.right, bottom: rect.bottom }
+      }),
+      overflowing: [...document.querySelectorAll('.action-button, .action-button *, .event-panel h1, .event-description, .observation')]
+        .filter(element => element.scrollWidth > element.clientWidth + 1)
+        .map(element => element.className || element.tagName),
+    }))
+    assert.equal(measurements.document.width, layout.width, `no horizontal scroll at ${layout.width}px`)
+    assert.deepEqual(measurements.overflowing, [], `no clipped choice or event text at ${layout.width}px`)
+    assert.ok(measurements.buttons.every(button => button.x >= 0 && button.right <= layout.width), `choices fit horizontally at ${layout.width}px`)
+    assert.ok(measurements.buttons.every(button => button.height >= 44), 'choice buttons have touch friendly height')
+    if (layout.width === 320) {
+      assert.ok(measurements.buttons.every(button => button.bottom <= layout.height), `all initial choices are visible at 320×640: ${JSON.stringify(measurements.buttons)}`)
     }
+
+    const text = await page.locator('body').innerText()
+    assert.match(text, /EXIT SEQUENCE/)
+    assert.match(text, /電力 POWER/)
+    assert.match(text, /EVENT 01 \/ 15/)
+    assert.match(text, /行動を選択/)
+    assert.doesNotMatch(text, /(?:0|[1-9]\d?)\s*%|facilityConditions|\b(?:stable|degraded)\b/i)
 
     if (layout.width === 320) {
-      await page.addStyleTag({ content: '.shell { --safe-top: 24px; --safe-right: 14px; --safe-bottom: 22px; --safe-left: 14px; }' })
-      const safe = await page.locator('.shell').evaluate(element => ({
-        top: getComputedStyle(element).paddingTop,
-        right: getComputedStyle(element).paddingRight,
-        bottom: getComputedStyle(element).paddingBottom,
-        left: getComputedStyle(element).paddingLeft,
-      }))
-      assert.deepEqual(safe, { top: '24px', right: '14px', bottom: '22px', left: '14px' })
-      const safeFrame = await page.locator('.scene-frame').boundingBox()
-      assert.ok(Math.abs(safeFrame.width - safeFrame.height) <= 1)
+      const button = page.locator('.action-button').first()
+      const bounds = await button.boundingBox()
+      await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+      await page.waitForFunction(() => document.querySelector('.event-kicker')?.textContent?.includes('EVENT 02 / 15'))
+      assert.equal(await page.locator('.log-entry').count(), 1)
+      assert.match(await page.locator('.event-kicker').innerText(), /EVENT 02 \/ 15/)
+      await page.locator('.history-panel summary').click()
+      assert.match(await page.locator('.event-log').innerText(), /観測:/)
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320)
+    } else if (layout.width === 390) {
+      await page.keyboard.press('2')
+      assert.equal(await page.locator('.log-entry').count(), 1)
+      assert.match(await page.locator('.event-kicker').innerText(), /EVENT 02 \/ 15/)
+    } else if (layout.width === 1280) {
+      await page.locator('.action-button').nth(1).click()
+      assert.equal(await page.locator('.log-entry').count(), 1)
+      await page.keyboard.press('3')
+      assert.equal(await page.locator('.log-entry').count(), 2)
     }
 
-    if (layout.width === 390) {
-      await page.locator('.menu-toggle').click()
-      assert.equal(await page.locator('.scene-frame').getAttribute('data-paused'), 'true')
-      const beforeMenu = await page.locator('.scene-frame').getAttribute('data-time')
-      await page.waitForTimeout(250)
-      assert.equal(await page.locator('.scene-frame').getAttribute('data-time'), beforeMenu)
-      await page.locator('[data-language="en"]').click()
-      assert.equal(await page.locator('.status-direction').textContent().then(text => text.startsWith('Direction')), true)
-      await page.locator('.map-button').click()
-      assert.equal(await page.locator('.scene-frame').getAttribute('data-paused'), 'true')
-      assert.equal(await page.locator('.map-screen').isVisible(), true)
-      await page.screenshot({ path: `${artifacts}/map-paused-390.png` })
-      console.log('  map pause and language: ok')
-      await page.locator('.map-close').click()
-      assert.equal(await page.locator('.scene-frame').getAttribute('data-paused'), 'false')
-
-      const initialY = Number(await page.locator('.scene-frame').getAttribute('data-y'))
-      const stick = await page.locator('.joystick').boundingBox()
-      const center = { x: stick.x + stick.width / 2, y: stick.y + stick.height / 2 }
-      await page.mouse.move(center.x, center.y)
-      await page.mouse.down()
-      await page.mouse.move(center.x, center.y - 40, { steps: 4 })
-      await page.waitForTimeout(220)
-      await page.mouse.move(layout.width + 24, center.y - 40, { steps: 4 })
-      await page.waitForTimeout(100)
-      await page.mouse.up()
-      const movedY = Number(await page.locator('.scene-frame').getAttribute('data-y'))
-      assert.ok(movedY < initialY - 0.2, `stick moves while captured: ${initialY} -> ${movedY}`)
-      await page.waitForTimeout(220)
-      const stoppedY = Number(await page.locator('.scene-frame').getAttribute('data-y'))
-      assert.ok(Math.abs(stoppedY - movedY) < 0.025, 'release stops movement immediately')
-      console.log('  joystick capture and release: ok')
-
-      let heading = Number(await page.locator('.scene-frame').getAttribute('data-heading'))
-      const status = await page.locator('.status').boundingBox()
-      await page.mouse.move(status.x + 35, status.y + status.height / 2)
-      await page.mouse.down()
-      await page.mouse.move(status.x + 225, status.y + status.height / 2, { steps: 12 })
-      await page.mouse.up()
-      await page.waitForTimeout(50)
-      const turned = Number(await page.locator('.scene-frame').getAttribute('data-heading'))
-      let delta = ((turned - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI
-      assert.ok(Math.abs(delta) > 2.8, `horizontal drag allows a near 180 degree turn: ${delta}`)
-      console.log('  view rotation: ok')
-
-      heading = turned
-      await page.mouse.move(status.x + 80, status.y + status.height / 2)
-      await page.mouse.down()
-      await page.mouse.move(status.x + 80, status.y + status.height / 2 + 60, { steps: 6 })
-      await page.mouse.up()
-      await page.waitForTimeout(40)
-      assert.equal(await page.locator('.scene-frame').getAttribute('data-heading'), heading.toFixed(4), 'vertical drag does not rotate')
-      const log = await page.locator('.event-log').boundingBox()
-      const action = await page.locator('.action-button').boundingBox()
-      await page.mouse.move(log.x + 20, log.y + log.height / 2)
-      await page.mouse.down()
-      await page.mouse.move(action.x + action.width / 2, action.y + action.height / 2, { steps: 8 })
-      await page.mouse.up()
-      await page.waitForTimeout(40)
-      assert.equal(await page.locator('.scene-frame').getAttribute('data-open-doors'), '000000', 'look pointer moving over A does not activate A')
-      const afterOverButton = Number(await page.locator('.scene-frame').getAttribute('data-heading'))
-      delta = Math.abs(((afterOverButton - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI)
-      assert.ok(delta > 0.4, 'look gesture continues while the pointer passes over a button')
-      console.log('  pointer origin stays fixed over A: ok')
-
-      await page.screenshot({ path: `${artifacts}/realtime-390.png` })
-      await page.keyboard.down('w')
-      const beforeKey = await page.locator('.scene-frame').evaluate(element => ({ x: Number(element.dataset.x), y: Number(element.dataset.y) }))
-      await page.waitForTimeout(150)
-      await page.keyboard.up('w')
-      const afterKey = await page.locator('.scene-frame').evaluate(element => ({ x: Number(element.dataset.x), y: Number(element.dataset.y) }))
-      assert.ok(Math.hypot(afterKey.x - beforeKey.x, afterKey.y - beforeKey.y) > 0.15, 'WASD works in the browser')
-
-      await page.keyboard.press('Escape')
-      assert.equal(await page.locator('.scene-frame').getAttribute('data-paused'), 'true')
-      const beforeHidden = await page.locator('.scene-frame').getAttribute('data-time')
-      await page.evaluate(() => {
-        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
-        document.dispatchEvent(new Event('visibilitychange'))
-      })
-      await page.waitForTimeout(120)
-      assert.equal(await page.locator('.scene-frame').getAttribute('data-time'), beforeHidden)
-      await page.evaluate(() => {
-        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
-        document.dispatchEvent(new Event('visibilitychange'))
-      })
-    }
-    assert.deepEqual(errors, [], `no browser exceptions at ${layout.width}×${layout.height}`)
+    assert.deepEqual(errors, [], `no browser errors at ${layout.width}×${layout.height}`)
+    console.log(`browser layout ${layout.width}×${layout.height}: ok`)
     await context.close()
   }
-  {
-    const context = await browser.newContext({
-      viewport: { width: 390, height: 844 },
-      deviceScaleFactor: 3,
-      hasTouch: true,
-      isMobile: true,
-    })
-    const page = await context.newPage(), errors = []
-    page.on('pageerror', error => errors.push(error.message))
-    await page.goto(base)
-    await page.waitForFunction(() => !!document.querySelector('.scene-frame')?.dataset.time)
-    const canvas = await page.locator('.game-canvas').evaluate(element => ({
-      width: element.width,
-      height: element.height,
-      cssWidth: element.getBoundingClientRect().width,
-      cssHeight: element.getBoundingClientRect().height,
-    }))
-    assert.ok(canvas.width <= Math.ceil(canvas.cssWidth * 2), 'high-DPI render scale stays capped at 2×')
-    assert.ok(canvas.width >= Math.ceil(canvas.cssWidth * 1.9), 'high-DPI canvas uses the capped 2× resolution')
-    assert.deepEqual(errors, [])
-    await context.close()
+
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+  const page = await context.newPage()
+  page.setDefaultTimeout(5000)
+  await page.goto(`${base}?seed=123456`)
+  for (let turn = 0; turn < 15 && await page.locator('.action-button').count() > 0; turn++) {
+    const choices = page.locator('.action-button')
+    await choices.nth(await choices.count() - 1).click()
   }
-  console.log('PASS: square 2.5D canvas, 320/375/390 phone widths, PC and landscape layout, safe-area padding, high-DPI cap, no scroll, menu/map pause, language switch, stick capture/release, view drag, WASD, and Escape pause')
+  assert.match(await page.locator('.system-state').innerText(), /脱出成功|電力枯渇/)
+  const finishedText = await page.locator('.system-state').innerText()
+  const finishedPosition = await page.locator('.route-caption').innerText()
+  await page.keyboard.press('1')
+  assert.equal(await page.locator('.system-state').innerText(), finishedText)
+  assert.equal(await page.locator('.route-caption').innerText(), finishedPosition)
+  await page.locator('[data-restart]').click()
+  assert.match(await page.locator('.system-state').innerText(), /進行中/)
+  assert.match(await page.locator('.event-kicker').innerText(), /EVENT 01 \/ 15/)
+  assert.equal(await page.locator('.power-heading strong span').innerText(), '20')
+  assert.equal(await page.locator('.log-entry').count(), 0)
+  assert.ok(new URL(page.url()).searchParams.has('seed'))
+  console.log('browser terminal/restart and post-finish input lock: ok')
+  await context.close()
+  console.log('PASS: 320px no horizontal scroll, visible touch choices, mobile touch, keyboard and mouse actions, clue history, hidden odds, terminal lock, and fresh restart')
 } finally {
   await browser.close()
 }

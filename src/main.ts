@@ -1,270 +1,168 @@
 import './style.css'
-import { renderMap } from './automap.ts'
-import { normalizeStick, POINTER_TURN_RADIANS_PER_PIXEL } from './controls.ts'
-import { cellAt, DOORS, DUNGEON_MAP, locationKind } from './dungeon.ts'
-import { createGame, interact, MAX_SIMULATION_STEP, rotatePlayer, stepGame } from './game.ts'
-import { compass, initialLanguage, t } from './i18n.ts'
-import type { Language } from './i18n.ts'
-import { renderDungeon } from './renderer.ts'
-
-let game = createGame()
-let language: Language = initialLanguage()
-let menuOpen = false
-let mapOpen = false
-let pendingRotation = 0
-let lastFrame = 0
-const heldKeys = new Set<string>()
-const pointers = new Map<number, { kind: 'stick' | 'look' | 'action'; lastX: number }>()
-let stick = { x: 0, y: 0 }
+import {
+  createGame,
+  createSeededRandom,
+  displayedPowerDelta,
+  randomSeed,
+  resolveAction,
+  toGameView,
+  TOTAL_TILES,
+} from './game.ts'
+import type { GameView } from './game.ts'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
-app.innerHTML = `<main class="shell">
-  <header class="topbar">
-    <h1>EXIT SEQUENCE</h1>
-    <button class="menu-toggle" type="button" aria-controls="game-menu" aria-expanded="false">≡</button>
-    <section id="game-menu" class="menu-panel" aria-label="Menu" hidden>
-      <div class="menu-panel-title"><span class="menu-label"></span><button class="resume-button" type="button"></button></div>
-      <button class="map-button" type="button"></button>
-      <div class="language-row"><span class="language-label"></span><button data-language="ja" type="button">日本語</button><button data-language="en" type="button">English</button></div>
-    </section>
-  </header>
-  <section class="scene-frame" aria-label="Dungeon view">
-    <canvas class="game-canvas"></canvas>
-    <div class="pause-banner" hidden></div>
-    <section class="map-screen" aria-label="Explored map" hidden>
-      <div class="map-toolbar"><span class="map-title"></span><button class="map-close" type="button"></button></div>
-      <div class="map-art"></div>
-    </section>
-    <div class="game-over-screen" hidden></div>
-  </section>
-  <section class="status" aria-label="Status">
-    <span class="status-direction"></span><span class="status-coordinate"></span><span class="status-location"></span>
-    <span class="status-signal" hidden></span>
-  </section>
-  <section class="event-log" role="log" aria-live="polite" aria-relevant="additions" aria-atomic="false"></section>
-  <section class="controls" aria-label="Game controls">
-    <div class="joystick" role="application" tabindex="0"><span class="stick-ring"></span><span class="stick-knob"></span><span class="joystick-label"></span></div>
-    <button class="action-button" type="button"><span class="action-letter">A</span></button>
-  </section>
-</main>`
+let seed = seedFromAddress()
+let random = createSeededRandom(seed)
+let game = createGame(random, seed)
 
-function element<T extends HTMLElement>(selector: string): T { return app.querySelector<T>(selector)! }
-const canvas = element<HTMLCanvasElement>('.game-canvas')
-const scene = element<HTMLElement>('.scene-frame')
-const menuButton = element<HTMLButtonElement>('.menu-toggle')
-const menuPanel = element<HTMLElement>('.menu-panel')
-const joystick = element<HTMLElement>('.joystick')
-const knob = element<HTMLElement>('.stick-knob')
-const mapScreen = element<HTMLElement>('.map-screen')
-const mapArt = element<HTMLElement>('.map-art')
-const pauseBanner = element<HTMLElement>('.pause-banner')
-const overScreen = element<HTMLElement>('.game-over-screen')
+function seedFromAddress(): number {
+  const supplied = new URLSearchParams(window.location.search).get('seed')
+  if (supplied === null || supplied.trim() === '') return randomSeed()
+  const parsed = Number(supplied)
+  return Number.isFinite(parsed) ? Math.floor(parsed) >>> 0 : randomSeed()
+}
 
-const STICK_TRAVEL = 0.34
+function signed(value: number): string {
+  return `${value > 0 ? '+' : ''}${value}`
+}
 
-function isPaused(): boolean { return menuOpen || mapOpen || document.hidden }
+function routeMarkup(view: GameView): string {
+  return Array.from({ length: TOTAL_TILES }, (_, index) => {
+    const tile = index + 1
+    const completed = view.history.some(entry => entry.tile === tile)
+    const current = tile === view.position && view.status === 'playing'
+    const zoneBreak = tile === 6 || tile === 11 ? ' zone-break' : ''
+    const state = completed ? 'done' : current ? 'current' : 'future'
+    return `<li class="route-tile ${state}${zoneBreak}" aria-label="${tile}">${String(tile).padStart(2, '0')}</li>`
+  }).join('')
+}
 
-function resetInputs(): void {
-  for (const pointerId of pointers.keys()) {
-    try { if (app.hasPointerCapture(pointerId)) app.releasePointerCapture(pointerId) } catch { /* pointer already ended */ }
+function logMarkup(view: GameView): string {
+  if (view.history.length === 0) return '<p class="empty-log">まだ記録はありません。</p>'
+  return `<ol class="event-log">${[...view.history].reverse().map(entry => `
+    <li class="log-entry">
+      <div class="log-heading"><span>区画 ${entry.zone} · ${String(entry.tile).padStart(2, '0')}</span><strong class="${entry.success ? 'text-good' : 'text-bad'}">${entry.success ? '成功' : '失敗'}</strong></div>
+      <p class="log-event">${entry.title} — ${entry.actionLabel}</p>
+      <p class="log-observation">観測: ${entry.observationText}</p>
+      <p class="log-power">電力 ${entry.powerBefore} → ${entry.powerAfter} <span>(${signed(entry.powerChange)})</span></p>
+    </li>`).join('')}</ol>`
+}
+
+function resultMarkup(view: GameView): string {
+  if (view.status === 'won') {
+    return `<section class="run-result success" aria-live="polite"><span class="result-mark">[ CLEAR ]</span><p>地上の出口に到達。残存電力 <strong>${view.power}</strong></p></section>`
   }
-  pointers.clear()
-  heldKeys.clear()
-  pendingRotation = 0
-  stick = { x: 0, y: 0 }
-  knob.style.transform = 'translate(0, 0)'
+  if (view.status === 'lost') {
+    return `<section class="run-result failure" aria-live="polite"><span class="result-mark">[ POWER 0 ]</span><p>電力が尽きた。区画 ${view.currentEvent.zone} · ${String(view.position).padStart(2, '0')} マスで停止。</p></section>`
+  }
+  const result = view.lastResult
+  if (!result) return '<section class="run-result waiting" aria-live="polite">選択して突破してください。</section>'
+  return `<section class="run-result ${result.success ? 'success' : 'failure'}" aria-live="polite">
+    <span class="result-mark">${result.success ? '[ ACTION OK ]' : '[ ACTION FAILED ]'}</span>
+    <p>${result.title} · ${result.actionLabel} · 電力 ${result.powerBefore} → <strong>${result.powerAfter}</strong> (${signed(result.powerChange)})</p>
+  </section>`
 }
 
-function normalizedStick(clientX: number, clientY: number): { x: number; y: number } {
-  const bounds = joystick.getBoundingClientRect()
-  const radius = Math.min(bounds.width, bounds.height) * STICK_TRAVEL
-  const x = (clientX - (bounds.left + bounds.width / 2)) / radius
-  const y = (clientY - (bounds.top + bounds.height / 2)) / radius
-  return normalizeStick(x, y)
-}
-
-function updateStick(clientX: number, clientY: number): void {
-  const bounds = joystick.getBoundingClientRect()
-  const radius = Math.min(bounds.width, bounds.height) * STICK_TRAVEL
-  const dx = clientX - (bounds.left + bounds.width / 2), dy = clientY - (bounds.top + bounds.height / 2)
-  const scale = Math.min(1, radius / Math.max(1, Math.hypot(dx, dy)))
-  knob.style.transform = `translate(${dx * scale}px, ${dy * scale}px)`
-  stick = normalizedStick(clientX, clientY)
-}
-
-function movementInput() {
-  const forward = stick.y * -1 + Number(heldKeys.has('w')) - Number(heldKeys.has('s'))
-  const strafe = stick.x + Number(heldKeys.has('d')) - Number(heldKeys.has('a'))
-  return { forward, strafe }
-}
-
-function performAction(): void {
-  if (isPaused() || game.gameOver) return
-  game = interact(game, DUNGEON_MAP, DOORS)
-  render()
-}
-
-function showMenu(open: boolean): void {
-  menuOpen = open
-  if (open) { mapOpen = false; resetInputs(); lastFrame = 0 }
-  render()
-}
-
-function showMap(open: boolean): void {
-  mapOpen = open
-  menuOpen = false
-  if (open) { resetInputs(); lastFrame = 0 }
-  render()
+function actionMarkup(view: GameView): string {
+  if (view.status !== 'playing') return ''
+  return `<div class="action-list">${view.currentEvent.actions.map((action, index) => {
+    const successDelta = displayedPowerDelta(view.power, action.successDelta)
+    const failureDelta = displayedPowerDelta(view.power, action.failureDelta)
+    const stopWarning = view.power + action.failureDelta <= 0 ? '<span class="stop-note">失敗時は停止</span>' : ''
+    return `<button class="action-button" type="button" data-action-index="${index}" aria-label="${index + 1}: ${action.label}; 成功時 電力 ${signed(successDelta)}、失敗時 電力 ${signed(failureDelta)}">
+      <span class="action-number">${index + 1}</span>
+      <span class="action-copy"><strong>${action.label}</strong><small>${action.detail}</small></span>
+      <span class="action-cost"><span>成功 <b>${signed(successDelta)}</b></span><span>失敗 <b>${signed(failureDelta)}</b></span>${stopWarning}</span>
+    </button>`
+  }).join('')}</div>`
 }
 
 function render(): void {
-  document.documentElement.lang = language
-  const paused = isPaused()
-  const menuLabel = t('menu', language)
-  menuButton.setAttribute('aria-label', menuLabel)
-  menuButton.setAttribute('aria-expanded', String(menuOpen || mapOpen))
-  menuPanel.hidden = !menuOpen
-  element('.menu-label').textContent = menuLabel
-  element<HTMLButtonElement>('.resume-button').textContent = t('resume', language)
-  element<HTMLButtonElement>('.map-button').textContent = t('showMap', language)
-  element('.language-label').textContent = t('language', language)
-  for (const button of menuPanel.querySelectorAll<HTMLButtonElement>('[data-language]')) {
-    button.setAttribute('aria-pressed', String(button.dataset.language === language))
-  }
+  const view = toGameView(game)
+  const event = view.currentEvent
+  const statusLabel = view.status === 'won' ? '脱出成功' : view.status === 'lost' ? '電力枯渇' : '進行中'
+  const powerBlocks = Array.from({ length: 20 }, (_, index) => `<i class="${index < view.power ? 'charged' : ''}"></i>`).join('')
+  const progress = Math.round((view.history.length / TOTAL_TILES) * 100)
 
-  mapScreen.hidden = !mapOpen
-  element('.map-title').textContent = t('mapLabel', language)
-  element<HTMLButtonElement>('.map-close').textContent = '×'
-  element<HTMLButtonElement>('.map-close').setAttribute('aria-label', t('closeMap', language))
-  if (mapOpen) mapArt.innerHTML = renderMap(DUNGEON_MAP, game.player, game.visited, DOORS, game.openDoors, game.detections)
-  pauseBanner.hidden = !menuOpen || mapOpen || game.gameOver
-  pauseBanner.textContent = t('paused', language)
-  overScreen.hidden = !game.gameOver
-  overScreen.textContent = t('gameOver', language)
+  app.innerHTML = `<main class="terminal-shell">
+    <header class="topbar">
+      <a class="wordmark" href="./" aria-label="EXIT SEQUENCE はじめから"><span class="prompt">&gt;</span> EXIT SEQUENCE</a>
+      <span class="system-state"><i></i>${statusLabel}</span>
+    </header>
 
-  const cell = cellAt(game.player)
-  const location = locationKind(DUNGEON_MAP, game.player)
-  element('.status-direction').textContent = `${t('direction', language)} ${compass(game.player.heading, language)}`
-  element('.status-coordinate').textContent = `${t('coordinates', language)} ${String(cell.x).padStart(2, '0')},${String(cell.y).padStart(2, '0')}`
-  element('.status-location').textContent = location ? t(location, language) : ''
-  const signal = element<HTMLElement>('.status-signal')
-  signal.hidden = game.detections.length === 0
-  signal.textContent = game.detections.some(detection => detection.kind === 'sight') ? t('enemyDetected', language) : t('heardMovement', language)
+    <section class="overview" aria-label="進行状況と電力">
+      <div class="position-block">
+        <div class="section-label">進行 ROUTE</div>
+        <ol class="route" aria-label="15マスの進行状況">${routeMarkup(view)}</ol>
+        <div class="route-caption"><span>${view.status === 'playing' ? `現在 ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}` : `到達 ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}`}</span><span>区画 ${event.zone} / 3</span></div>
+      </div>
+      <div class="power-block">
+        <div class="power-heading"><span class="section-label">電力 POWER</span><strong><span>${view.power}</span><small> / 20</small></strong></div>
+        <div class="power-meter" role="meter" aria-label="電力" aria-valuemin="0" aria-valuemax="20" aria-valuenow="${view.power}">${powerBlocks}</div>
+      </div>
+    </section>
 
-  const log = element<HTMLElement>('.event-log')
-  log.setAttribute('aria-label', t('log', language))
-  log.replaceChildren(...game.events.map(event => {
-    const line = document.createElement('p')
-    line.dataset.eventId = String(event.id)
-    line.textContent = t(event.key, language)
-    return line
-  }))
+    <div class="progress-track" role="progressbar" aria-label="脱出までの進行" aria-valuemin="0" aria-valuemax="15" aria-valuenow="${view.history.length}"><span style="width:${progress}%"></span></div>
 
-  const visible = renderDungeon(canvas, game)
-  scene.dataset.x = game.player.x.toFixed(3)
-  scene.dataset.y = game.player.y.toFixed(3)
-  scene.dataset.heading = game.player.heading.toFixed(4)
-  scene.dataset.time = game.time.toFixed(3)
-  scene.dataset.paused = String(paused)
-  scene.dataset.gameOver = String(game.gameOver)
-  scene.dataset.openDoors = game.openDoors.map(open => open ? '1' : '0').join('')
-  scene.dataset.visibleEnemies = visible.join(',')
-  scene.setAttribute('aria-label', `${t('dungeon', language)} ${cell.x},${cell.y}`)
-  canvas.setAttribute('aria-label', `${t('dungeon', language)} ${cell.x},${cell.y}`)
-  element('.joystick-label').textContent = t('joystick', language)
-  element<HTMLButtonElement>('.action-button').setAttribute('aria-label', `${t('action', language)} · ${t('doorAhead', language)}`)
+    <section class="event-panel" aria-labelledby="event-title">
+      <div class="event-kicker"><span>EVENT ${String(event.tile).padStart(2, '0')} / ${TOTAL_TILES}</span><span>ZONE ${event.zone}</span></div>
+      <h1 id="event-title">${event.title}</h1>
+      <p class="event-description">${event.description}</p>
+      <p class="observation"><span>観測 //</span> ${event.observationText}</p>
+    </section>
+
+    <section class="decision-panel" aria-labelledby="decision-title">
+      <div class="decision-heading"><h2 id="decision-title">行動を選択</h2><span>KEY [ 1 ] [ 2 ] [ 3 ]</span></div>
+      ${actionMarkup(view)}
+      ${view.status !== 'playing' ? `<button class="restart-button" type="button" data-restart>新しいランを開始</button>` : ''}
+    </section>
+
+    ${resultMarkup(view)}
+
+    <details class="history-panel">
+      <summary><span>イベントログ</span><span>${view.history.length} / ${TOTAL_TILES} <b>＋</b></span></summary>
+      ${logMarkup(view)}
+    </details>
+
+    <footer class="footer-line"><span>FACILITY EXIT PROTOCOL</span><span>電力が 0 でシステム停止</span></footer>
+  </main>`
 }
 
-menuButton.addEventListener('click', () => showMenu(!menuOpen && !mapOpen))
-element<HTMLButtonElement>('.resume-button').addEventListener('click', () => showMenu(false))
-element<HTMLButtonElement>('.map-button').addEventListener('click', () => showMap(true))
-element<HTMLButtonElement>('.map-close').addEventListener('click', () => showMap(false))
-for (const button of menuPanel.querySelectorAll<HTMLButtonElement>('[data-language]')) {
-  button.addEventListener('click', () => { language = button.dataset.language as Language; render() })
-}
-element<HTMLButtonElement>('.action-button').addEventListener('click', event => {
-  if (event.detail === 0) performAction()
-})
-
-app.addEventListener('pointerdown', event => {
-  const target = event.target instanceof Element ? event.target : null
-  if (!target) return
-  const pointerId = event.pointerId
-  if (target.closest('.joystick')) {
-    if (isPaused() || game.gameOver || [...pointers.values()].some(pointer => pointer.kind === 'stick')) return
-    event.preventDefault()
-    pointers.set(pointerId, { kind: 'stick', lastX: event.clientX })
-    try { app.setPointerCapture(pointerId) } catch { /* capture is best effort on synthetic events */ }
-    updateStick(event.clientX, event.clientY)
-    return
-  }
-  if (target.closest('.action-button')) {
-    if (isPaused() || game.gameOver) return
-    event.preventDefault()
-    pointers.set(pointerId, { kind: 'action', lastX: event.clientX })
-    try { app.setPointerCapture(pointerId) } catch { /* capture is best effort on synthetic events */ }
-    performAction()
-    return
-  }
-  if (target.closest('button')) return
-  if (isPaused() || game.gameOver) return
-  event.preventDefault()
-  pointers.set(pointerId, { kind: 'look', lastX: event.clientX })
-  try { app.setPointerCapture(pointerId) } catch { /* capture is best effort on synthetic events */ }
-}, { passive: false })
-
-app.addEventListener('pointermove', event => {
-  const pointer = pointers.get(event.pointerId)
-  if (!pointer) return
-  event.preventDefault()
-  if (pointer.kind === 'stick') updateStick(event.clientX, event.clientY)
-  else if (pointer.kind === 'look') {
-    pendingRotation += (event.clientX - pointer.lastX) * POINTER_TURN_RADIANS_PER_PIXEL
-    pointer.lastX = event.clientX
-  }
-}, { passive: false })
-
-function endPointer(event: PointerEvent): void {
-  const pointer = pointers.get(event.pointerId)
-  if (!pointer) return
-  if (pointer.kind === 'stick') {
-    stick = { x: 0, y: 0 }
-    knob.style.transform = 'translate(0, 0)'
-  }
-  pointers.delete(event.pointerId)
-}
-app.addEventListener('pointerup', endPointer)
-app.addEventListener('pointercancel', endPointer)
-app.addEventListener('lostpointercapture', endPointer)
-
-document.addEventListener('keydown', event => {
-  const key = event.key.toLowerCase()
-  if (key === 'escape') {
-    event.preventDefault()
-    if (mapOpen) showMap(false)
-    else if (menuOpen) showMenu(false)
-    else showMenu(true)
-    return
-  }
-  if ((key === 'e' || event.code === 'Space') && !event.repeat) { event.preventDefault(); performAction(); return }
-  if (['w', 'a', 's', 'd'].includes(key) && !isPaused() && !game.gameOver) {
-    event.preventDefault(); heldKeys.add(key)
-  }
-})
-document.addEventListener('keyup', event => heldKeys.delete(event.key.toLowerCase()))
-window.addEventListener('blur', resetInputs)
-document.addEventListener('visibilitychange', () => { resetInputs(); lastFrame = 0; render() })
-
-function frame(timestamp: number): void {
-  const dt = lastFrame === 0 ? 0 : Math.min(MAX_SIMULATION_STEP, Math.max(0, (timestamp - lastFrame) / 1000))
-  lastFrame = timestamp
-  if (!isPaused() && !game.gameOver) {
-    if (pendingRotation) { game = rotatePlayer(game, pendingRotation); pendingRotation = 0 }
-    if (dt > 0) game = stepGame(game, movementInput(), dt, DUNGEON_MAP, DOORS)
-  }
+function startNewRun(): void {
+  seed = randomSeed()
+  random = createSeededRandom(seed)
+  game = createGame(random, seed)
+  const nextUrl = new URL(window.location.href)
+  nextUrl.searchParams.set('seed', String(seed))
+  window.history.replaceState(null, '', nextUrl)
   render()
-  requestAnimationFrame(frame)
 }
+
+app.addEventListener('click', event => {
+  const target = event.target
+  if (!(target instanceof Element)) return
+  const restart = target.closest<HTMLButtonElement>('[data-restart]')
+  if (restart) {
+    startNewRun()
+    return
+  }
+  const button = target.closest<HTMLButtonElement>('[data-action-index]')
+  if (!button) return
+  const index = Number(button.dataset.actionIndex)
+  if (!Number.isInteger(index)) return
+  game = resolveAction(game, index, random)
+  render()
+})
+
+window.addEventListener('keydown', event => {
+  if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return
+  if (event.key !== '1' && event.key !== '2' && event.key !== '3') return
+  if (game.status !== 'playing') return
+  const index = Number(event.key) - 1
+  if (!toGameView(game).currentEvent.actions[index]) return
+  event.preventDefault()
+  game = resolveAction(game, index, random)
+  render()
+})
 
 render()
-requestAnimationFrame(frame)

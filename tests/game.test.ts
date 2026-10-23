@@ -1,121 +1,214 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { character } from '../src/character.ts'
-import { doorAnimationProgress } from '../src/animation.ts'
-import { ENEMY_RADIUS, INITIAL_ENEMY } from '../src/enemy.ts'
-import { DOORS, INITIAL_PLAYER, PLAYER_SPEED, wrapAngle } from '../src/dungeon.ts'
-import { createGame, interact, rotatePlayer, stepGame } from '../src/game.ts'
-import type { GameState } from '../src/game.ts'
-import { shortestPath } from '../src/pathfinding.ts'
+import { EVENTS, OBSERVATION_LIKELIHOOD, successChance } from '../src/events.ts'
+import {
+  INITIAL_POWER,
+  MAX_POWER,
+  TOTAL_TILES,
+  adjustedPower,
+  createGame,
+  createSeededRandom,
+  displayedPowerDelta,
+  estimateSuccessProbability,
+  inferStableProbability,
+  resolveAction,
+  toGameView,
+  zoneForTile,
+} from '../src/game.ts'
+import type { GameState, RandomSource } from '../src/game.ts'
 
-const e = (x: number, y: number, extras: Partial<GameState['enemies'][number]> = {}) => ({
-  ...character({ x, y, heading: Math.PI * 1.5 }, 0, 0),
-  id: 'fixture', destination: null, route: [], alerted: false, ...extras,
-})
+const constant = (value: number): RandomSource => () => value
 
-test('real-time free movement is frame-rate independent and keeps diagonal speed capped', () => {
-  const map = Array(7).fill('#######') as string[]
-  const initial = createGame({ player: { x: 3.5, y: 3.5, heading: 0 }, enemies: [], doors: [] })
-  let at60 = initial, at30 = initial
-  for (let i = 0; i < 60; i++) at60 = stepGame(at60, { forward: 1, strafe: 0 }, 1 / 60, map, [], () => 0.5)
-  for (let i = 0; i < 30; i++) at30 = stepGame(at30, { forward: 1, strafe: 0 }, 1 / 30, map, [], () => 0.5)
-  assert.ok(Math.abs(at60.player.y - at30.player.y) < 0.015)
-  assert.ok(Math.abs((3.5 - at60.player.y) - PLAYER_SPEED) < 0.035)
-
-  const diagonal = createGame({ player: { x: 3.5, y: 3.5, heading: 0 }, enemies: [], doors: [] })
-  const straight = createGame({ player: { x: 3.5, y: 3.5, heading: 0 }, enemies: [], doors: [] })
-  let diagonalNext = diagonal, straightNext = straight
-  for (let i = 0; i < 20; i++) {
-    diagonalNext = stepGame(diagonalNext, { forward: 1, strafe: 1 }, 0.05, map, [])
-    straightNext = stepGame(straightNext, { forward: 1, strafe: 0 }, 0.05, map, [])
+function fixtureAt(tile: number, power: number, seed = 7): GameState {
+  const initial = createGame(constant(0.25), seed)
+  return {
+    ...initial,
+    position: tile,
+    power,
+    currentEvent: { tile, zone: zoneForTile(tile), eventId: 'bulkhead', observation: 'flicker' },
   }
-  assert.ok(Math.abs(Math.hypot(diagonalNext.player.x - 3.5, diagonalNext.player.y - 3.5) - Math.hypot(straightNext.player.x - 3.5, straightNext.player.y - 3.5)) < 0.03)
+}
+
+test('initial state has 20 power, 15 tiles, three fixed facility zones, and a live first event', () => {
+  const state = createGame(constant(0.1), 1234)
+  assert.equal(INITIAL_POWER, 20)
+  assert.equal(MAX_POWER, 20)
+  assert.equal(TOTAL_TILES, 15)
+  assert.equal(state.power, 20)
+  assert.equal(state.position, 1)
+  assert.equal(state.status, 'playing')
+  assert.equal(state.facilityConditions.length, 3)
+  assert.equal(state.currentEvent.tile, 1)
+  assert.equal(state.currentEvent.zone, 1)
+  assert.equal(state.history.length, 0)
+  assert.equal(EVENTS.length >= 8, true)
+  assert.ok(state.facilityConditions.every(condition => condition === 'stable'))
 })
 
-test('heading rotates continuously through 360 degrees and wraps without inertia', () => {
-  let state = createGame({ enemies: [] })
-  for (let i = 0; i < 720; i++) state = rotatePlayer(state, Math.PI / 360)
-  assert.ok(Math.abs(state.player.heading) < 1e-8 || Math.abs(state.player.heading - Math.PI * 2) < 1e-8)
-  const previous = state.player.heading
-  state = rotatePlayer(state, -0.8)
-  assert.ok(Math.abs(state.player.heading - wrapAngle(previous - 0.8)) < 1e-10)
-  assert.equal(rotatePlayer(state, 0), state)
-})
-
-test('enemies move while the player is idle and real-time contact ends the game', () => {
-  const map = ['########']
-  const patrol = {
-    ...e(5.5, 0.5, { vision: 0, hearing: 0, destination: { x: 1, y: 0 } }),
-    route: [{ x: 4.5, y: 0.5 }],
+test('event draw and seeded play are reproducible', () => {
+  const play = (seed: number) => {
+    const random = createSeededRandom(seed)
+    let state = createGame(random, seed)
+    let action = 0
+    for (let i = 0; i < 15 && state.status === 'playing'; i++) {
+      const count = EVENTS.find(event => event.id === state.currentEvent.eventId)!.actions.length
+      state = resolveAction(state, action % count, random)
+      action++
+    }
+    return state
   }
-  let state = createGame({ player: { x: 1.5, y: 0.5, heading: 0 }, enemies: [patrol], doors: [] })
-  const initialX = state.enemies[0]!.x
-  for (let i = 0; i < 20; i++) state = stepGame(state, { forward: 0, strafe: 0 }, 0.05, map, [], () => 0.5)
-  assert.ok(state.enemies[0]!.x < initialX)
-  assert.equal(state.gameOver, false)
-
-  const touching = createGame({
-    player: { x: 1.5, y: 0.5, heading: 0 },
-    enemies: [e(1.5 + ENEMY_RADIUS, 0.5)], doors: [],
-  })
-  const caught = stepGame(touching, { forward: 0, strafe: 0 }, 1 / 60, map, [])
-  assert.equal(caught.gameOver, true)
-  assert.equal(caught.events.at(-1)?.key, 'gameOver')
-  assert.equal(stepGame(caught, { forward: 1, strafe: 0 }, 0.05, map, []), caught)
+  assert.deepEqual(toGameView(play(0xdeadbeef)), toGameView(play(0xdeadbeef)))
+  assert.notDeepEqual(toGameView(play(1)).currentEvent, toGameView(play(2)).currentEvent)
 })
 
-test('enemy vision starts a chase and movement noise gives a last-known destination', () => {
-  const map = ['##########']
-  const player = { x: 1.5, y: 0.5, heading: Math.PI / 2 }
-  const facing = e(5.5, 0.5, { heading: Math.PI * 1.5, vision: 8, hearing: 6 })
-  let state = createGame({ player, enemies: [facing], doors: [] })
-  for (let i = 0; i < 7; i++) state = stepGame(state, { forward: 0, strafe: 0 }, 0.05, map, [], () => 0.5)
-  assert.equal(state.enemies[0]!.alerted, true)
-  assert.deepEqual(state.enemies[0]!.destination, { x: 1, y: 0 })
-  assert.ok(state.events.some(event => event.key === 'enemySpotted'))
-
-  const listener = e(1.5, 0.5, { hearing: 8, vision: 0 })
-  let heard = createGame({ player: { x: 4.5, y: 0.5, heading: Math.PI / 2 }, enemies: [listener], doors: [] })
-  let heardSound = false
-  for (let i = 0; i < 20; i++) {
-    heard = stepGame(heard, { forward: 1, strafe: 0 }, 0.05, map, [], () => 0.5)
-    heardSound ||= heard.detections.some(item => item.kind === 'hearing')
+test('all ten event definitions contain two or three choices and no 0% or 100% action', () => {
+  assert.equal(EVENTS.length, 10)
+  for (const event of EVENTS) {
+    assert.ok(event.actions.length >= 2 && event.actions.length <= 3, event.id)
+    for (const action of event.actions) {
+      for (const condition of ['stable', 'degraded'] as const) {
+        const chance = successChance(action, condition)
+        assert.ok(chance > 0 && chance < 1, `${event.id}/${action.id}/${condition}`)
+      }
+    }
   }
-  assert.equal(heard.enemies[0]!.alerted, true)
-  assert.equal(heardSound, true)
 })
 
-test('A toggles an in-range forward door and state controls movement collision', () => {
-  const map = ['###']
-  const doors = [{ from: { x: 0, y: 0 }, to: { x: 1, y: 0 } }]
-  const start = createGame({ player: { x: 0.5, y: 0.5, heading: Math.PI / 2 }, enemies: [], doors })
-  const open = interact(start, map, doors)
-  assert.deepEqual(open.openDoors, [true])
-  assert.deepEqual(open.doorMotions[0], { fromOpen: false, startedAt: 0 })
-  assert.equal(doorAnimationProgress(open.openDoors[0]!, open.doorMotions[0], open.time), 0)
-  assert.equal(open.events.at(-1)?.key, 'doorOpened')
-  const closed = interact(open, map, doors)
-  assert.deepEqual(closed.openDoors, [false])
-  assert.deepEqual(closed.doorMotions[0], { fromOpen: true, startedAt: 0 })
-  assert.equal(closed.events.at(-1)?.key, 'doorClosed')
-  assert.equal(interact(start, map, doors).player.x, 0.5)
-
-  let blocked = start
-  for (let i = 0; i < 25; i++) blocked = stepGame(blocked, { forward: 1, strafe: 0 }, 0.05, map, doors)
-  assert.ok(blocked.player.x < 0.81)
-  let through = open
-  for (let i = 0; i < 25; i++) through = stepGame(through, { forward: 1, strafe: 0 }, 0.05, map, doors)
-  assert.ok(through.player.x > 1.5)
-  assert.equal(shortestPath(map, { x: 0, y: 0 }, { x: 1, y: 0 }, doors, [false]), null)
-  assert.deepEqual(shortestPath(map, { x: 0, y: 0 }, { x: 1, y: 0 }, doors, [true]), [{ x: 1, y: 0 }])
+test('event draw is uniform over the catalog when random values span [0, 1)', () => {
+  const observed = new Set<string>()
+  for (let index = 0; index < EVENTS.length; index++) {
+    const value = (index + 0.5) / EVENTS.length
+    observed.add(createGame(constant(value), 42).currentEvent.eventId)
+  }
+  assert.equal(observed.size, EVENTS.length)
 })
 
-test('closed doors stop sight and contact checks do not alter the start layout', () => {
-  assert.equal(INITIAL_ENEMY.x, 7.5)
-  assert.equal(INITIAL_PLAYER.x, 2.5)
-  const state = createGame()
-  assert.equal(state.openDoors.filter(Boolean).length, 0)
-  assert.equal(state.visited.has('2,14'), true)
-  assert.equal(state.events[0]?.key, 'ready')
-  assert.equal(DOORS.length, 6)
+test('action success chance changes with the hidden zone condition', () => {
+  const stableState = createGame(constant(0), 1)
+  const degradedState = createGame(constant(0.99), 2)
+  assert.equal(stableState.currentEvent.eventId, 'bulkhead')
+  assert.equal(degradedState.currentEvent.eventId, 'lift')
+  const stableSensitive = successChance(EVENTS[0]!.actions[0]!, 'stable')
+  const degradedSensitive = successChance(EVENTS[0]!.actions[0]!, 'degraded')
+  assert.ok(Math.abs(stableSensitive - 0.78) < 1e-12)
+  assert.ok(Math.abs(degradedSensitive - 0.36) < 1e-12)
+  assert.notEqual(stableSensitive, degradedSensitive)
+
+  const bulkheadManual = EVENTS[0]!.actions[1]!
+  assert.ok(successChance(bulkheadManual, 'degraded') > successChance(bulkheadManual, 'stable'))
+})
+
+test('facility condition and observation sampling have a stable statistical link without certainty', () => {
+  const counts = {
+    stable: { steady: 0, flicker: 0, drop: 0, total: 0 },
+    degraded: { steady: 0, flicker: 0, drop: 0, total: 0 },
+  }
+  for (let seed = 1; seed <= 12_000; seed++) {
+    const state = createGame(createSeededRandom(seed), seed)
+    const condition = state.facilityConditions[0]!
+    counts[condition][state.currentEvent.observation]++
+    counts[condition].total++
+  }
+  for (const condition of ['stable', 'degraded'] as const) {
+    for (const observation of ['steady', 'flicker', 'drop'] as const) {
+      const rate = counts[condition][observation] / counts[condition].total
+      const expected = OBSERVATION_LIKELIHOOD[condition][observation]
+      assert.ok(Math.abs(rate - expected) < 0.035, `${condition}/${observation}: ${rate} vs ${expected}`)
+      assert.ok(rate > 0.04, `${condition}/${observation} must remain possible`)
+    }
+  }
+  assert.ok(counts.stable.total > 5_000 && counts.degraded.total > 5_000)
+})
+
+test('current and past clues update a repeatable Bayesian estimate, but the public view omits it', () => {
+  const state = createGame(constant(0), 2)
+  const posterior = inferStableProbability(state, 1)
+  assert.ok(Math.abs(posterior - (0.62 / (0.62 + 0.15))) < 1e-10)
+  const estimate = estimateSuccessProbability(state, 0)
+  assert.ok(estimate > 0 && estimate < 1)
+  const view = toGameView(state)
+  assert.equal('facilityConditions' in view, false)
+  assert.equal(JSON.stringify(view).includes('stable'), false)
+  assert.equal(JSON.stringify(view).includes('degraded'), false)
+  assert.equal(JSON.stringify(view).includes('baseChance'), false)
+  assert.equal(JSON.stringify(view).includes('successChance'), false)
+
+  let withHistory = resolveAction(state, 0, constant(0))
+  withHistory = resolveAction(withHistory, 0, constant(0))
+  assert.equal(withHistory.history.length, 2)
+  assert.notEqual(inferStableProbability(withHistory, 1), posterior)
+})
+
+test('zone assignment changes every five tiles and internal zone states stay fixed', () => {
+  assert.deepEqual([1, 5, 6, 10, 11, 15].map(zoneForTile), [1, 1, 2, 2, 3, 3])
+  const random = constant(0)
+  let state = createGame(random, 1)
+  const initialConditions = [...state.facilityConditions]
+  for (let i = 0; i < 5; i++) state = resolveAction(state, 0, random)
+  assert.equal(state.position, 6)
+  assert.equal(state.currentEvent.zone, 2)
+  assert.deepEqual(state.facilityConditions, initialConditions)
+})
+
+test('success, failure, logged power deltas, cap, and floor are applied correctly', () => {
+  const starting = createGame(constant(0), 9)
+  const success = resolveAction(starting, 0, constant(0))
+  assert.equal(success.history[0]!.success, true)
+  assert.equal(success.history[0]!.powerBefore, 20)
+  assert.equal(success.history[0]!.powerAfter, 19)
+  assert.equal(success.history[0]!.powerChange, -1)
+  assert.equal(success.position, 2)
+
+  const failure = resolveAction(starting, 0, constant(0.99999))
+  assert.equal(failure.history[0]!.success, false)
+  assert.equal(failure.history[0]!.powerAfter, 15)
+  assert.equal(failure.history[0]!.powerChange, -5)
+  assert.equal(failure.position, 2)
+
+  assert.equal(adjustedPower(19, 8), 20)
+  assert.equal(adjustedPower(2, -8), 0)
+  assert.equal(displayedPowerDelta(19, 8), 1)
+  assert.equal(displayedPowerDelta(2, -8), -2)
+  const cappedSuccess = resolveAction({ ...starting, power: 19 }, 0, constant(0))
+  assert.ok(cappedSuccess.power <= MAX_POWER)
+})
+
+test('power reaching zero is a game over and prevents further choices', () => {
+  const state = fixtureAt(4, 1)
+  const failed = resolveAction(state, 0, constant(0.99999))
+  assert.equal(failed.power, 0)
+  assert.equal(failed.status, 'lost')
+  assert.equal(failed.position, 4)
+  assert.equal(resolveAction(failed, 1, constant(0)), failed)
+})
+
+test('reaching tile 15 with power succeeds, while zero power there is still a loss', () => {
+  const finalSuccess = resolveAction(fixtureAt(15, 10), 0, constant(0))
+  assert.equal(finalSuccess.status, 'won')
+  assert.equal(finalSuccess.position, 15)
+  assert.ok(finalSuccess.power > 0)
+  assert.equal(resolveAction(finalSuccess, 0, constant(0.99)), finalSuccess)
+
+  const finalFailure = resolveAction(fixtureAt(15, 4), 0, constant(0.99999))
+  assert.equal(finalFailure.status, 'lost')
+  assert.equal(finalFailure.power, 0)
+})
+
+test('restart from the same seed reconstructs a clean initial run', () => {
+  const first = createGame(createSeededRandom(314159), 314159)
+  let finished = first
+  const random = createSeededRandom(314159)
+  for (let index = 0; index < 15 && finished.status === 'playing'; index++) finished = resolveAction(finished, 0, random)
+  const restarted = createGame(createSeededRandom(314159), 314159)
+  assert.deepEqual(toGameView(restarted), toGameView(first))
+  assert.equal(restarted.position, 1)
+  assert.equal(restarted.power, 20)
+  assert.equal(restarted.history.length, 0)
+})
+
+test('invalid choice indexes and invalid injected random values do not create hidden state leaks', () => {
+  const state = createGame(constant(0.2), 4)
+  assert.equal(resolveAction(state, 5, constant(0)), state)
+  assert.throws(() => resolveAction(state, 0, constant(1)), RangeError)
+  assert.throws(() => resolveAction(state, 0, constant(Number.NaN)), RangeError)
 })
