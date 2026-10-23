@@ -16,6 +16,63 @@ async function skipOutput(page) {
   await waitForChoices(page)
 }
 
+async function watchFirstChoiceRender(page) {
+  await page.addInitScript(() => {
+    window.__firstChoiceRender = null
+    window.__choiceRenders = []
+    let lastRenderedButton = null
+    const observer = new MutationObserver(() => {
+      const buttons = [...document.querySelectorAll('#command-list .action-command')]
+      if (buttons.length === 0) {
+        lastRenderedButton = null
+        return
+      }
+      if (buttons[0] === lastRenderedButton) return
+      lastRenderedButton = buttons[0]
+      const render = {
+        count: buttons.length,
+        disabled: buttons.map(button => button.disabled),
+        labels: buttons.map(button => button.querySelector('.command-number')?.textContent ?? ''),
+        details: buttons.map(button => button.querySelector('.command-detail')?.textContent ?? ''),
+        promptReady: !!document.querySelector('#transcript .prompt-line .console-cursor'),
+      }
+      window.__choiceRenders.push(render)
+      if (window.__firstChoiceRender === null) window.__firstChoiceRender = render
+    })
+    observer.observe(document, { childList: true, subtree: true })
+  })
+}
+
+async function assertGreenConsole(page) {
+  const colors = await page.evaluate(() => {
+    const selectors = [
+      '.wordmark', '#status-position', '#status-power', '.transcript',
+      '.command-heading', '.action-command', '.command-number', '.command-detail',
+      '.prompt-prefix', '.console-cursor', '.restart-button',
+    ]
+    const rootColor = getComputedStyle(document.documentElement).color
+    return {
+      rootColor,
+      textColors: selectors.flatMap(selector => [...document.querySelectorAll(selector)].map(element => getComputedStyle(element).color)),
+      resultColors: [...document.querySelectorAll('.line-good, .line-bad')].map(element => getComputedStyle(element).color),
+    }
+  })
+  assert.equal(colors.rootColor, 'rgb(124, 255, 152)', 'the console uses one bright green text color')
+  assert.ok(colors.textColors.length > 0 && colors.textColors.every(color => color === colors.rootColor), 'status, log, options, prompt and restart text stay green')
+  assert.ok(colors.resultColors.every(color => color === colors.rootColor), 'success, failure, clear and game-over lines use the same green')
+}
+
+async function assertFixedTextSizes(page) {
+  const sizes = await page.evaluate(() => ({
+    title: getComputedStyle(document.querySelector('.wordmark')).fontSize,
+    status: getComputedStyle(document.querySelector('#status-position')).fontSize,
+    heading: getComputedStyle(document.querySelector('.command-heading')).fontSize,
+    action: getComputedStyle(document.querySelector('.command-number')).fontSize,
+    detail: getComputedStyle(document.querySelector('.command-detail')).fontSize,
+  }))
+  assert.deepEqual(sizes, { title: '18px', status: '15px', heading: '14px', action: '15px', detail: '14px' })
+}
+
 async function finishCurrentTurn(page, index = 0) {
   const position = await page.locator('#status-position').innerText()
   await page.locator('.action-command:not(:disabled)').nth(index).click()
@@ -43,6 +100,8 @@ async function measureRegions(page) {
         const { top, right, bottom, left, width, height } = button.getBoundingClientRect()
         return { top, right, bottom, left, width, height }
       }),
+      dockScrollHeight: document.querySelector('.command-dock').scrollHeight,
+      dockClientHeight: document.querySelector('.command-dock').clientHeight,
       overflowing: [...document.querySelectorAll('.action-command, .action-command *, .console-line')]
         .filter(element => element.scrollWidth > element.clientWidth + 1)
         .map(element => element.className || element.tagName),
@@ -62,9 +121,9 @@ function assertRegions(measurements, layout) {
   assert.equal(measurements.dockOverflow, 'auto', 'the input dock can scroll internally on short screens')
   assert.deepEqual(measurements.overflowing, [], `no clipped console or choice text at ${layout.width}px`)
   assert.ok(measurements.buttons.every(button => button.left >= measurements.dock.left - 1 && button.right <= measurements.dock.right + 1), 'choices stay inside the input dock')
-  assert.ok(measurements.buttons.every(button => button.top >= measurements.dock.top - 1 && button.bottom <= measurements.dock.bottom + 1), 'all three choices are visible inside the input dock')
   assert.ok(measurements.buttons.every(button => button.height >= 44), 'choice tap areas are at least 44px high')
-  assert.ok(measurements.buttons.every(button => button.bottom <= layout.height), `choices stay within ${layout.height}px viewport`)
+  assert.ok(measurements.buttons.some(button => button.top < measurements.dock.bottom && button.bottom > measurements.dock.top), 'the input dock shows an available choice')
+  assert.ok(measurements.dockScrollHeight >= measurements.dockClientHeight, 'the dock exposes all choices through its visible area or internal scrolling')
 }
 
 try {
@@ -84,20 +143,48 @@ try {
     page.setDefaultTimeout(5000)
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
+    await watchFirstChoiceRender(page)
     await page.goto(`${base}?seed=123456`)
-    await page.locator('.action-command').first().waitFor()
 
+    const eventDescription = page.locator('#transcript .console-line').nth(2)
+    await page.waitForFunction(() => document.querySelectorAll('#transcript .console-line')[2]?.textContent?.length > 0)
+    const descriptionStarted = (await eventDescription.innerText()).length
+    await page.waitForTimeout(40)
+    const descriptionAdvanced = (await eventDescription.innerText()).length
+    assert.ok(descriptionAdvanced > descriptionStarted && descriptionAdvanced < 30, 'event descriptions stream through the central log a character at a time')
+    assert.equal(await page.locator('.action-command').count(), 0, 'choices stay hidden while the event log is still being written')
     await page.keyboard.press('1')
-    assert.match(await page.locator('#status-position').innerText(), /01 \/ 15/)
-    const disabledChoice = page.locator('.action-command:disabled').first()
-    if (await disabledChoice.count()) {
-      await disabledChoice.evaluate(button => button.click())
-      assert.match(await page.locator('#status-position').innerText(), /01 \/ 15/)
-    }
+    assert.match(await page.locator('#status-position').innerText(), /01 \/ 15/, 'actions cannot be selected while the event log is running')
+    await page.locator('.action-command').first().waitFor()
+    const firstChoiceRender = await page.evaluate(() => window.__firstChoiceRender)
+    assert.equal(firstChoiceRender.count, 3, 'all three choices are created in the first input render')
+    assert.deepEqual(firstChoiceRender.disabled, [false, false, false], 'all choices are enabled as soon as the event log ends')
+    assert.ok(firstChoiceRender.labels.every(label => label.length > 4), 'action names are complete when choices first appear')
+    assert.ok(firstChoiceRender.details.every(detail => detail.includes('成功') && detail.includes('失敗')), 'descriptions and both power changes are complete on first render')
+    assert.equal(firstChoiceRender.promptReady, true, 'the log prompt and cursor appear with the immediately available choices')
+
     await skipOutput(page)
 
     const measurements = await measureRegions(page)
     assertRegions(measurements, layout)
+    await assertGreenConsole(page)
+    await assertFixedTextSizes(page)
+
+    const dockTop = measurements.dock.top
+    const logTop = measurements.log.top
+    await page.locator('.command-dock').evaluate(element => { element.scrollTop = element.scrollHeight })
+    const finalChoice = await page.locator('.action-command').last().boundingBox()
+    const dockAfterScroll = await page.locator('.command-dock').boundingBox()
+    const logAfterDockScroll = await page.locator('.console-window').boundingBox()
+    assert.ok(finalChoice && finalChoice.y >= dockAfterScroll.y - 1 && finalChoice.y + finalChoice.height <= dockAfterScroll.y + dockAfterScroll.height + 1, 'the last choice is reachable by scrolling inside the dock')
+    assert.ok(Math.abs(dockAfterScroll.y - dockTop) <= 1 && Math.abs(logAfterDockScroll.y - logTop) <= 1, 'scrolling choices leaves the input dock fixed and the log in its own region')
+    await page.locator('.command-dock').evaluate(element => { element.scrollTop = 0 })
+
+    const firstChoice = page.locator('.action-command:not(:disabled)').first()
+    await firstChoice.hover()
+    assert.equal(await firstChoice.evaluate(element => getComputedStyle(element).color), 'rgb(124, 255, 152)', 'choice hover keeps green text')
+    await firstChoice.focus()
+    assert.equal(await firstChoice.evaluate(element => getComputedStyle(element).color), 'rgb(124, 255, 152)', 'choice focus keeps green text')
 
     const transcript = await page.locator('#transcript').innerText()
     assert.match(transcript, /\[SYSTEM\] 脱出シーケンス開始/)
@@ -121,7 +208,6 @@ try {
       await page.evaluate(() => { window.__originalFirstLine = document.querySelector('.console-line') })
       const priorLines = await page.locator('#transcript .console-line:not(.prompt-line)').allInnerTexts()
       const selectedLabel = await page.locator('.action-command:not(:disabled) .command-number').nth(1).innerText()
-      const dockTop = measurements.dock.top
       await page.locator('.action-command:not(:disabled)').nth(1).tap()
       const dockTopWhileOutputRuns = (await page.locator('.command-dock').boundingBox()).y
       assert.ok(Math.abs(dockTopWhileOutputRuns - dockTop) <= 1, 'the input dock stays fixed while the selected line is written')
@@ -144,6 +230,7 @@ try {
       assert.ok(powerDelta, 'action result includes the actual power change')
       assert.equal(Number((await page.locator('#status-power').innerText()).match(/\d+ \/ 20/)?.[0].split(' ')[0]), Math.max(0, Math.min(20, 20 + Number(powerDelta[1]))), 'top power status matches the game result')
       assert.equal(await page.evaluate(() => window.__originalFirstLine === document.querySelector('.console-line')), true, 'existing log DOM node is reused')
+      await assertGreenConsole(page)
 
       await finishCurrentTurn(page, 0)
       await finishCurrentTurn(page, 0)
@@ -208,8 +295,13 @@ try {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
   const page = await context.newPage()
   page.setDefaultTimeout(5000)
+  await watchFirstChoiceRender(page)
   await page.goto(`${base}?seed=1`)
   await skipOutput(page)
+  const skippedChoiceRender = await page.evaluate(() => window.__firstChoiceRender)
+  assert.equal(skippedChoiceRender.count, 3, 'skipping the opening log renders all choices immediately')
+  assert.deepEqual(skippedChoiceRender.disabled, [false, false, false])
+  assert.ok(skippedChoiceRender.details.every(detail => detail.includes('成功') && detail.includes('失敗')))
   for (let turn = 0; turn < 15 && await page.locator('.action-command:not(:disabled)').count() > 0; turn++) {
     await page.locator('.action-command:not(:disabled)').last().tap()
     await page.keyboard.press('Enter')
@@ -222,10 +314,13 @@ try {
   assert.equal(endingLine, '[GAME OVER] 電力が尽きた')
   assert.doesNotMatch(endingLine, /残存電力|\/ 15|\/ 20/)
   assert.equal(await page.locator('#transcript .console-cursor').count(), 0, 'terminal states do not leave a waiting cursor')
+  await assertGreenConsole(page)
+  assert.equal(await page.locator('.restart-button').evaluate(element => getComputedStyle(element).color), 'rgb(124, 255, 152)', 'restart text stays green')
   const finishedPosition = await page.locator('#status-position').innerText()
   assert.match(await page.locator('#status-power').innerText(), /\[POWER\] 0 \/ 20/)
   await page.keyboard.press('1')
   assert.equal(await page.locator('#status-position').innerText(), finishedPosition)
+  const rendersBeforeRestart = await page.evaluate(() => window.__choiceRenders.length)
   await page.locator('[data-restart]').tap()
   assert.match(await page.locator('#status-position').innerText(), /01 \/ 15/)
   await waitForChoices(page)
@@ -236,6 +331,12 @@ try {
   assert.equal(await page.locator('#transcript .console-cursor').count(), 1, 'restart does not leave an old cursor behind')
   assert.doesNotMatch(await page.locator('#command-dock').innerText(), />/)
   assert.ok(new URL(page.url()).searchParams.has('seed'))
+  const rendersAfterRestart = await page.evaluate(() => window.__choiceRenders.length)
+  assert.equal(rendersAfterRestart, rendersBeforeRestart + 1, 'restart renders one fresh choice panel after clearing the previous list')
+  const restartedChoiceRender = await page.evaluate(() => window.__choiceRenders.at(-1))
+  assert.equal(restartedChoiceRender.count, 3, 'a restarted run displays all choices with the same immediate render')
+  assert.deepEqual(restartedChoiceRender.disabled, [false, false, false])
+  assert.ok(restartedChoiceRender.details.every(detail => detail.includes('成功') && detail.includes('失敗')))
   console.log('browser game over, input lock, fresh transcript and restart: ok')
   await context.close()
 
@@ -254,6 +355,7 @@ try {
   assert.match(await clearPage.locator('#status-position').innerText(), /\[POSITION\] 15 \/ 15/)
   assert.match(await clearPage.locator('#status-power').innerText(), /\[POWER\] [1-9]\d* \/ 20/)
   assert.equal(await clearPage.locator('#transcript .console-cursor').count(), 0, 'clear state does not leave a waiting cursor')
+  await assertGreenConsole(clearPage)
   assert.doesNotMatch(await clearPage.locator('#transcript').innerText(), /\[(?:ACTION|STATUS|POSITION|MOVE)\]/)
   console.log('browser clear message and final status: ok')
   await clearContext.close()

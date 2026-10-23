@@ -44,7 +44,7 @@ let random = createSeededRandom(seed)
 let game = createGame(random, seed)
 let followTail = true
 let inputReady = false
-let phase: 'event-log' | 'choices' | 'selection-echo' | 'end-log' | 'idle' = 'idle'
+let phase: 'event-log' | 'selection-echo' | 'end-log' | 'idle' = 'idle'
 let activeChoiceButtons: HTMLButtonElement[] = []
 let activePromptLine: { row: HTMLDivElement; text: Text; cursor: HTMLElement } | null = null
 let pendingChoice: { index: number; action: ActionView } | null = null
@@ -125,56 +125,31 @@ function appendCommandLines(actions: readonly ActionView[]): void {
   restartCommand.hidden = true
   activeChoiceButtons = []
 
-  let currentText: Text | null = null
-  let currentButton: HTMLButtonElement | null = null
-  const lines = ['[SELECT ACTION]']
-  for (let index = 0; index < actions.length; index++) {
-    const action = actions[index]!
+  const heading = document.createElement('div')
+  heading.className = 'command-heading'
+  heading.textContent = '[SELECT ACTION]'
+  commandList.append(heading)
+
+  actions.forEach((action, index) => {
     const successDelta = displayedPowerDelta(game.power, action.successDelta)
     const failureDelta = displayedPowerDelta(game.power, action.failureDelta)
-    lines.push(`[${index + 1}] ${action.label}`)
-    lines.push(`    ${action.detail} · 成功 ${signed(successDelta)} / 失敗 ${signed(failureDelta)}`)
-  }
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'action-command'
+    button.dataset.actionIndex = String(index)
+    button.setAttribute('aria-label', `${index + 1}: ${action.label}`)
 
-  const hooks: OutputHooks = {
-    onLineStart(_text, lineIndex) {
-      if (lineIndex === 0) {
-        const label = document.createElement('div')
-        label.className = 'command-heading'
-        currentText = document.createTextNode('')
-        label.append(currentText)
-        commandList.append(label)
-        return
-      }
-      if (lineIndex % 2 === 1) {
-        const actionIndex = (lineIndex - 1) / 2
-        currentButton = document.createElement('button')
-        currentButton.type = 'button'
-        currentButton.className = 'action-command'
-        currentButton.dataset.actionIndex = String(actionIndex)
-        currentButton.disabled = true
-        currentButton.setAttribute('aria-label', `${actionIndex + 1}: ${actions[actionIndex]!.label}`)
-        const number = document.createElement('span')
-        number.className = 'command-number'
-        currentText = document.createTextNode('')
-        number.append(currentText)
-        currentButton.append(number)
-        activeChoiceButtons.push(currentButton)
-        commandList.append(currentButton)
-      } else {
-        const detail = document.createElement('span')
-        detail.className = 'command-detail'
-        currentText = document.createTextNode('')
-        detail.append(currentText)
-        currentButton?.append(detail)
-      }
-    },
-    onCharacter(character) {
-      currentText?.appendData(character)
-    },
-  }
-  phase = 'choices'
-  output.enqueue(lines, hooks)
+    const number = document.createElement('span')
+    number.className = 'command-number'
+    number.textContent = `[${index + 1}] ${action.label}`
+    const detail = document.createElement('span')
+    detail.className = 'command-detail'
+    detail.textContent = `${action.detail} · 成功 ${signed(successDelta)} / 失敗 ${signed(failureDelta)}`
+
+    button.append(number, detail)
+    activeChoiceButtons.push(button)
+    commandList.append(button)
+  })
 }
 
 function appendRestartCommand(): void {
@@ -191,13 +166,9 @@ function appendRestartCommand(): void {
 function outputBecameIdle(): void {
   if (phase === 'event-log') {
     appendCommandLines(toGameView(game).currentEvent.actions)
-    return
-  }
-  if (phase === 'choices') {
     phase = 'idle'
-    inputReady = true
-    activeChoiceButtons.forEach(button => { button.disabled = false })
     appendPromptLine()
+    inputReady = true
     return
   }
   if (phase === 'selection-echo') {
