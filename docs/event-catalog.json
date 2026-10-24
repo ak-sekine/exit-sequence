@@ -1470,7 +1470,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1497,7 +1497,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1524,7 +1524,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1551,7 +1551,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1578,7 +1578,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1605,7 +1605,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1632,7 +1632,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1659,7 +1659,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1686,7 +1686,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1713,7 +1713,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1740,7 +1740,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1767,7 +1767,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1794,7 +1794,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1821,7 +1821,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1848,7 +1848,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1875,7 +1875,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1902,7 +1902,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1929,7 +1929,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1956,7 +1956,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -1983,7 +1983,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2010,7 +2010,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2037,7 +2037,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2064,7 +2064,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2091,7 +2091,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2118,7 +2118,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2145,7 +2145,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2172,7 +2172,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2199,7 +2199,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2226,7 +2226,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2253,7 +2253,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2274,7 +2274,7 @@
         "condition": "なし",
         "reason": "起点イベントとして通常抽選で登場。"
       },
-      "stateChange": "成功: kabo=rescued;失敗: kabo=rescue-failed;見送り: encountered",
+      "stateChange": "救出成功: kabo=rescued;救出失敗: rescue-failed;声での見送り失敗: encountered。",
       "linkedResources": [
         "npc:kabo"
       ],
@@ -2284,7 +2284,7 @@
       ],
       "followUpEffect": "カボが後に梱包材を使った安全な足場を作る",
       "causalExplanation": "助けられた事実と梱包材の使い方を具体的に結びつける",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2311,7 +2311,7 @@
         "condition": "all requirements listed above",
         "reason": "必要: npc-momo-firstの成功後、区画2で予約"
       },
-      "stateChange": "成功: momo=repaid",
+      "stateChange": "成功: momo=repaid;工具棚で救出された記憶を話し、ラベルで安全な足場を作る。失敗時はrescuedを維持。",
       "linkedResources": [
         "npc:momo"
       ],
@@ -2321,7 +2321,7 @@
       "followUpEventIds": [],
       "followUpEffect": "モモが工具ラベルで安全な足場を作り、小さな恩返しをする",
       "causalExplanation": "救出済み条件の時だけ「助けてくれた」と発話。失敗状態ではイベント不成立",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2348,7 +2348,7 @@
         "condition": "all requirements listed above",
         "reason": "必要: npc-nori-firstの成功後、区画2で予約"
       },
-      "stateChange": "成功: nori=repaid;床の安全印を共有",
+      "stateChange": "成功: nori=repaid;区画1の測距棒を覚えて安全な荷役線を共有。失敗時はrescuedを維持。",
       "linkedResources": [
         "npc:nori"
       ],
@@ -2358,7 +2358,7 @@
       "followUpEventIds": [],
       "followUpEffect": "ノリが以前の測定を使い、ひびのない荷役路を示す",
       "causalExplanation": "「あの測定を覚えている」と線のずれを具体的に説明",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2379,7 +2379,7 @@
         "condition": "なし",
         "reason": "起点イベントとして通常抽選で登場。"
       },
-      "stateChange": "成功: pico=rescued;失敗: pico=rescue-failed;見送り: encountered",
+      "stateChange": "救出成功: pico=rescued;救出失敗: rescue-failed;列を指す選択の失敗: encountered。",
       "linkedResources": [
         "npc:pico"
       ],
@@ -2389,7 +2389,7 @@
       ],
       "followUpEffect": "ピコが後に札で生産ラインの正しい順序を示す",
       "causalExplanation": "自分の札を貼った失敗談を再会時に覚えている",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2416,7 +2416,7 @@
         "condition": "all requirements listed above",
         "reason": "必要: alarm-route確認時は予約"
       },
-      "stateChange": "成功: facility:alarm-disabled=true;失敗は状態維持",
+      "stateChange": "成功: facility:alarm-disabled=true;共通リレーを切れた成功経路で設定。失敗は状態維持。",
       "linkedResources": [
         "facility:alarm-route"
       ],
@@ -2429,7 +2429,7 @@
       ],
       "followUpEffect": "地図で分岐を特定したため、警報を止めるか経路を覚えられる",
       "causalExplanation": "地図の赤線と現場の札が同じ番号と説明",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2450,7 +2450,7 @@
         "condition": "なし",
         "reason": "起点イベントとして通常抽選で登場。"
       },
-      "stateChange": "成功: facility:aux-power=true",
+      "stateChange": "成功: facility:aux-power=true;回路図照合または安全端子接続の成功時。迂回では変化なし。",
       "linkedResources": [
         "facility:aux-power"
       ],
@@ -2460,7 +2460,7 @@
       ],
       "followUpEffect": "復旧した予備系統が昇降機の専用母線へつながる",
       "causalExplanation": "スイッチ番号と昇降機母線の同じ回路記号を示す",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2486,7 +2486,7 @@
         "condition": "history:coolant-label",
         "reason": "区画1で読み取った番号に合う冷却水分岐弁が廃棄区画にあります。"
       },
-      "stateChange": "成功: facility:coolant-diverted=true",
+      "stateChange": "成功: 分岐先切替でfacility:coolant-diverted=true;漏水受け/迂回では設備状態を変えない。",
       "linkedResources": [
         "facility:coolant-diverted"
       ],
@@ -2498,7 +2498,7 @@
       ],
       "followUpEffect": "分岐した冷却水は後の管理棟ラジエーターを満たす",
       "causalExplanation": "水の流れと管理棟の乾いたラジエーターを対比",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2519,7 +2519,7 @@
         "condition": "なし",
         "reason": "起点イベントとして通常抽選で登場。"
       },
-      "stateChange": "成功: item:copper-fuse取得",
+      "stateChange": "成功: item:copper-fuse取得と履歴記録。失敗は取得なし。",
       "linkedResources": [
         "item:copper-fuse"
       ],
@@ -2529,7 +2529,7 @@
       ],
       "followUpEffect": "ヒューズの刻印は生産区の治具番号と一致",
       "causalExplanation": "番号照合を会話と成功率理由に使う",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2556,7 +2556,7 @@
         "condition": "all requirements listed above",
         "reason": "必要: 鍵取得時に区画2で予約"
       },
-      "stateChange": "鍵所持の解錠は100%。成功時に鍵を消費",
+      "stateChange": "保守鍵所持時のみ出現。鍵の選択肢は100%成功し、成功時にused/consumed履歴を記録して鍵を消費。ラッチ/選別溝では鍵を保持。",
       "linkedResources": [
         "item:service-key"
       ],
@@ -2566,7 +2566,7 @@
       "followUpEventIds": [],
       "followUpEffect": "回収した鍵の刻みがハッチの錠と一致し、一手で解錠できる",
       "causalExplanation": "成功率100%の根拠として鍵の刻みと塗料を説明。不所持時は通常進路",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 2,
@@ -2592,7 +2592,7 @@
         "condition": "history:vent-map",
         "reason": "区画1の紙模型で換気角度を記録したため、対応するシャッターが現れます。"
       },
-      "stateChange": "成功: ventilation-shutter=true。開放後、区画4の換気盤へ抜ける。",
+      "stateChange": "成功: 模型照合または手動開放でfacility:ventilation-shutter=true。歩廊迂回と失敗では状態維持。",
       "linkedResources": [
         "info:vent-map"
       ],
@@ -2604,7 +2604,7 @@
       ],
       "followUpEffect": "区画4で同じ換気路の管理盤を予約し、実際のバイパスを開ける。",
       "causalExplanation": "紙模型の折り角とシャッターの埃の流れが一致し、後の管理盤まで同じ送風路が続く。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,

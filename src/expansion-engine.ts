@@ -13,8 +13,8 @@ export const DEFAULT_INVENTORY_CAPACITY = 3
 
 export type ZoneId = 1 | 2 | 3 | 4 | 5
 export type ItemId = 'service-key' | 'copper-fuse'
-export type FacilityId = 'aux-power' | 'alarm-disabled' | 'lift-powered' | 'safety-rail' | 'alarm-route' | 'shaft-braced' | 'signal-mark'
-export type NpcId = 'momo' | 'nori' | 'goro' | 'chiri'
+export type FacilityId = 'aux-power' | 'alarm-disabled' | 'lift-powered' | 'safety-rail' | 'alarm-route' | 'shaft-braced' | 'signal-mark' | 'coolant-diverted' | 'ventilation-shutter'
+export type NpcId = 'momo' | 'nori' | 'goro' | 'chiri' | 'kabo' | 'pico'
 export type NpcStatus = 'unmet' | 'encountered' | 'rescued' | 'rescue-failed' | 'repaid'
 export type ItemHistoryKind = 'acquired' | 'used' | 'consumed' | 'already-held' | 'capacity-full'
 
@@ -151,18 +151,28 @@ export const ITEMS: Readonly<Record<ItemId, { readonly name: string; readonly re
   'copper-fuse': { name: '銅線ヒューズ', reusable: false },
 }
 
+export const FACILITIES: Readonly<Record<FacilityId, string>> = {
+  'aux-power': '予備電源', 'alarm-disabled': '警報リレー', 'lift-powered': '昇降機電源',
+  'safety-rail': '安全手すり', 'alarm-route': '警報線図', 'shaft-braced': '点検シャフト安全爪',
+  'signal-mark': '外壁信号反射角', 'coolant-diverted': '冷却水分岐',
+  'ventilation-shutter': '換気シャッター',
+}
+
 export const NPCS: Readonly<Record<NpcId, { readonly name: string; readonly appearance: string; readonly personality: string; readonly voice: string }>> = {
   momo: { name: 'モモ', appearance: '片耳のように曲がったアンテナと丸い作業アーム', personality: '心配性だが親切', voice: '語尾に「かも」を付けて小声で話す' },
   nori: { name: 'ノリ', appearance: '長い測距棒と額の水平器', personality: '怖がりだが几帳面', voice: '距離と「たぶん」を小声で添える' },
   goro: { name: 'ゴロ', appearance: '大きな運搬コンテナを頭にかぶる癖', personality: 'おしゃべりで陽気', voice: '大声で短い擬音を交える' },
   chiri: { name: 'チリ', appearance: '曲がったブラシを大事にする小型清掃ロボ', personality: '働き者で約束を守る', voice: '明るく「さっぱり」と言う' },
+  kabo: { name: 'カボ', appearance: '緩衝材の山に埋まるほど大柄な梱包係ロボ', personality: '心配性だが梱包手順に詳しい', voice: '箱の中から慎重に短く返事をする' },
+  pico: { name: 'ピコ', appearance: '小さな札貼りアームを持つ仕分けロボ', personality: '几帳面だが自分の名前札を貼りがち', voice: '札の番号を読み上げながら話す' },
 }
 
 const EMPTY_FACILITIES: Readonly<Record<FacilityId, boolean>> = {
   'aux-power': false, 'alarm-disabled': false, 'lift-powered': false, 'safety-rail': false,
   'alarm-route': false, 'shaft-braced': false, 'signal-mark': false,
+  'coolant-diverted': false, 'ventilation-shutter': false,
 }
-const EMPTY_NPCS: Readonly<Record<NpcId, NpcStatus>> = { momo: 'unmet', nori: 'unmet', goro: 'unmet', chiri: 'unmet' }
+const EMPTY_NPCS: Readonly<Record<NpcId, NpcStatus>> = { momo: 'unmet', nori: 'unmet', goro: 'unmet', chiri: 'unmet', kabo: 'unmet', pico: 'unmet' }
 
 export function expansionZoneForTile(tile: number): ZoneId {
   if (!Number.isInteger(tile) || tile < 1 || tile > EXPANSION_TOTAL_TILES) throw new RangeError(`Invalid 100 tile position: ${tile}`)
@@ -344,7 +354,7 @@ export function resolveExpansionAction(
 
   const facilities = { ...state.facilities, ...outcome.facilities }
   for (const [facilityId, active] of Object.entries(outcome.facilities ?? {}) as [FacilityId, boolean][]) {
-    consequenceText.push(`${facilityId}を${active ? '復旧' : '停止'}しました。`)
+    consequenceText.push(`${FACILITIES[facilityId]}を${active ? '復旧' : '停止'}しました。`)
   }
   const npcStatuses = { ...state.npcStatuses, ...outcome.npcStatuses }
   for (const [npcId, status] of Object.entries(outcome.npcStatuses ?? {}) as [NpcId, NpcStatus][]) {
