@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200" fill="none">
+  <defs>
+    <linearGradient id="hall" x1="160" y1="16" x2="160" y2="170" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#193721"/>
+      <stop offset="1" stop-color="#050806"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="200" fill="#030604"/>
+  <path d="M0 0h320v200H0z" fill="#050806"/>
+  <path d="M56 164V45l45-30h118l45 30v119" fill="url(#hall)" stroke="#244B2D" stroke-width="3"/>
+  <path d="M96 164V62l31-24h64l31 24v102" fill="#07100A" stroke="#17351F" stroke-width="3"/>
+  <path d="m0 170 99-31h122l99 31v30H0z" fill="#09110B" stroke="#244B2D" stroke-width="2"/>
+  <path d="M15 189h75m140 0h75M75 171l-22 29m192-29 22 29" stroke="#17351F" stroke-width="3"/>
+  <path d="M20 42h31v54H20z" fill="#08100A" stroke="#285D32" stroke-width="3"/>
+  <path d="M27 52h17m-17 9h11m-11 9h17" stroke="#204D29" stroke-width="3"/>
+  <!-- An empty wall charger and weak emergency lamp signal the stalled robot can be recharged. -->
+  <path d="M258 66h38v55h-38z" fill="#0B160D" stroke="#3B7A42" stroke-width="3"/>
+  <rect x="267" y="77" width="20" height="12" rx="2" stroke="#79A65A" stroke-width="2"/>
+  <path d="M271 83h11" stroke="#79A65A" stroke-width="2"/>
+  <path d="M276 97v10m-7-5h14" stroke="#4F8B4C" stroke-width="2" stroke-linecap="round"/>
+  <path d="M246 64v-7m5 10 5-5m-16 5-5-5" stroke="#8EAA67" stroke-width="2" opacity=".6"/>
+  <!-- Same robot, now seated with drooping antenna and dim eyes and chest light. -->
+  <path d="m127 83-3-20m3 20 12-16" stroke="#618A53" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="123" cy="60" r="4" fill="#8AA46A"/><circle cx="141" cy="64" r="4" fill="#8AA46A"/>
+  <path d="M118 88q0-8 8-8h42q8 0 8 8v30h-58z" fill="#101A12" stroke="#6F9B5F" stroke-width="4"/>
+  <path d="M126 94h42v16h-42z" fill="#080D09" stroke="#416B3D" stroke-width="2"/>
+  <circle cx="138" cy="102" r="2.5" fill="#9BAD6D"/><circle cx="156" cy="102" r="2.5" fill="#9BAD6D"/>
+  <path d="M126 119h43v30h-43z" fill="#101A12" stroke="#618A53" stroke-width="4"/>
+  <rect x="138" y="128" width="20" height="15" rx="3" fill="#0A100B" stroke="#57764A" stroke-width="2"/>
+  <path d="M143 136h10" stroke="#83945A" stroke-width="2" stroke-linecap="round" opacity=".55"/>
+  <path d="m120 126-16 14-16 3m78-14 16 14 15 2" stroke="#668B56" stroke-width="8" stroke-linecap="round"/>
+  <path d="M136 149 126 166 108 170m48-21 12 18 16 4" stroke="#668B56" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M101 141q-5 2-6 8m111-6q8 1 10 8" stroke="#A3B66D" stroke-width="3" stroke-linecap="round"/>
+  <path d="M103 134q-8-9-1-15m115 18q9-8 4-15" stroke="#9BAB69" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 4"/>
+  <path d="M173 73q9-9 18 0" stroke="#91A86A" stroke-width="2" stroke-linecap="round"/>
+</svg>

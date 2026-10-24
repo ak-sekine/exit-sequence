@@ -93,7 +93,7 @@ button { color: inherit; font: inherit; }
   background: #030604;
 }
 
-.console-event-image, .console-prologue-image {
+.console-event-image, .console-prologue-image, .console-ending-image {
   position: absolute;
   inset: 0;
   display: block;
@@ -235,6 +235,7 @@ button { color: inherit; font: inherit; }
   .transcript { font-size: 14px; line-height: 1.35; }
   .prologue-image-row { width: min(100%, 150px); margin: 1px 0; }
   .event-image-row { width: min(100%, 170px); margin: 1px 0; }
+  .ending-image-row { width: min(100%, 170px); margin: 1px 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

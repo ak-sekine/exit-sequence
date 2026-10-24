@@ -41,7 +41,7 @@ const restartCommand = app.querySelector<HTMLDivElement>('#restart-command')!
 const continueCommand = app.querySelector<HTMLDivElement>('#continue-command')!
 const latestLogButton = app.querySelector<HTMLButtonElement>('#latest-log')!
 
-type Phase = 'prologue-log' | 'prologue-wait' | 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'result-log' | 'await-continue' | 'end-log' | 'idle'
+type Phase = 'prologue-log' | 'prologue-wait' | 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'result-log' | 'await-continue' | 'ending-log' | 'idle'
 type PendingChoice = { index: number; action: ActionView }
 
 let seed = seedFromAddress()
@@ -117,9 +117,9 @@ function appendTranscriptLines(entries: readonly (string | OutputItem)[], extraH
     },
     onImage(image, lineIndex) {
       const frame = document.createElement('div')
-      frame.className = `console-image-row ${image.kind === 'prologue' ? 'prologue-image-row' : 'event-image-row'}`
+      frame.className = `console-image-row ${image.kind === 'prologue' ? 'prologue-image-row' : image.kind === 'ending' ? 'ending-image-row' : 'event-image-row'}`
       const element = document.createElement('img')
-      element.className = image.kind === 'prologue' ? 'console-prologue-image' : 'console-event-image'
+      element.className = image.kind === 'prologue' ? 'console-prologue-image' : image.kind === 'ending' ? 'console-ending-image' : 'console-event-image'
       element.dataset.eventId = image.eventId
       element.dataset.imageKind = image.kind ?? 'event'
       element.width = image.width
@@ -234,7 +234,7 @@ function outputBecameIdle(): void {
     beginSlot()
     return
   }
-  if (phase === 'end-log') {
+  if (phase === 'ending-log') {
     phase = 'idle'
     appendRestartCommand()
     return
@@ -341,12 +341,29 @@ function resultLines(view: GameView, action: ActionView): (string | OutputItem)[
     result.success ? result.successText : result.failureText,
     `電力 ${signed(result.powerChange)}${capNote}`,
   ]
-  if (view.status === 'lost') {
-    lines.push('[GAME OVER] あれ？ 体が動かない。電力がゼロみたい。ぼくの冒険はここまで……誰か充電器を持ってきてー！')
-  } else if (view.status === 'won') {
-    lines.push('[CLEAR] 地上の光だ！ 出口だ！ やった、ぼく生きてる！ 拾った部品？ ……あれ、どこに置いたっけ。まあいいや、街へ帰ろう！')
-  }
   return lines
+}
+
+function endingLines(status: GameView['status']): OutputItem[] {
+  if (status === 'won') {
+    return [
+      { type: 'text', text: '[CLEAR]' },
+      { type: 'image', kind: 'ending', eventId: 'clear', src: `${import.meta.env.BASE_URL}story/clear.svg`, alt: 'ロボットが廃棄施設を脱出し、地上で喜んでいる', width: 320, height: 200 },
+      { type: 'text', text: '地上の光だ！ 出口だ！' },
+      { type: 'text', text: 'やった、ぼく生きてる！' },
+      { type: 'text', text: '拾った部品？' },
+      { type: 'text', text: '……あれ、どこに置いたっけ。' },
+      { type: 'text', text: 'まあいいや、街へ帰ろう！' },
+    ]
+  }
+  return [
+    { type: 'text', text: '[GAME OVER]' },
+    { type: 'image', kind: 'ending', eventId: 'game-over', src: `${import.meta.env.BASE_URL}story/game-over.svg`, alt: '廃棄施設の通路で電力切れになり、へたり込んで助けを呼ぶロボット', width: 320, height: 200 },
+    { type: 'text', text: 'あれ？ 体が動かない。' },
+    { type: 'text', text: 'どうやら電力がゼロになったらしい。' },
+    { type: 'text', text: 'ぼくの冒険はここまで。' },
+    { type: 'text', text: '誰か、充電器を持ってきてー！' },
+  ]
 }
 
 function beginSlot(): void {
@@ -415,14 +432,10 @@ function stopSlot(): void {
   const announcement = transcript.querySelector<HTMLElement>('.slot-announcement:last-child')
   if (announcement) announcement.textContent = `停止数値 ${formatRoll(roll)}。${result.success ? '成功' : '失敗'}。`
 
-  if (resolvedView.status === 'playing') {
-    phase = 'result-log'
-  } else {
-    phase = 'end-log'
-  }
+  phase = 'result-log'
   appendTranscriptLines(resultLines(resolvedView, choice.action), {
     onLineEnd(_text, lineIndex) {
-      if (lineIndex !== 0) return
+      if (lineIndex !== 1) return
       updateStatus(resolvedView)
       commandList.replaceChildren()
       activeChoiceButtons = []
@@ -443,6 +456,11 @@ function continueAfterResultFlow(input?: PointerEvent): void {
   if (phase !== 'await-continue') return
   phase = 'idle'
   continueCommand.hidden = true
+  if (game.status !== 'playing') {
+    phase = 'ending-log'
+    appendTranscriptLines(endingLines(game.status))
+    return
+  }
   const previousZone = game.currentEvent.zone
   game = continueAfterResult(game)
   lastContinueTap = input?.pointerType

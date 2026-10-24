@@ -140,11 +140,38 @@ test('power changes clamp at zero and twenty; reaching zero loses', () => {
   assert.equal(failed.status, 'lost'); assert.equal(failed.power, 0)
 })
 
-test('tile 15 with remaining power clears; tile 15 at zero is game over', () => {
+test('tile 15 with remaining power clears after success or failure; zero power is game over', () => {
   const win = resolveAction(fixtureAt(15, 10), 0, 0)
   assert.equal(win.status, 'won'); assert.equal(win.position, 15); assert.ok(win.power > 0)
+  const failedButClear = resolveAction(fixtureAt(15, 20, 'battery'), 0, 99)
+  assert.equal(failedButClear.lastResult?.success, false)
+  assert.equal(failedButClear.status, 'won')
+  assert.equal(failedButClear.position, 15)
+  assert.ok(failedButClear.power > 0)
+  assert.equal(failedButClear.pendingNextEvent, null)
   const loss = resolveAction(fixtureAt(15, 4), 0, 99)
   assert.equal(loss.status, 'lost')
+  assert.equal(loss.position, 15)
+  assert.equal(loss.power, 0)
+  assert.equal(loss.pendingNextEvent, null)
+})
+
+test('terminal outcomes do not draw a next event and result waiting keeps state fixed', () => {
+  let draws = 0
+  const counted = () => { draws++; return 0 }
+  const initial = fixtureAt(7, 1)
+  const lost = resolveAction(initial, 0, 99, counted)
+  assert.equal(lost.status, 'lost')
+  assert.equal(lost.position, 7)
+  assert.equal(lost.power, 0)
+  assert.equal(lost.pendingNextEvent, null)
+  assert.equal(draws, 0)
+  assert.equal(continueAfterResult(lost), lost)
+  assert.equal(draws, 0)
+
+  const finalClear = resolveAction(fixtureAt(15, 20, 'battery'), 0, 99, counted)
+  assert.equal(finalClear.status, 'won')
+  assert.equal(draws, 0)
 })
 
 test('invalid slot values are rejected and invalid action indexes are ignored', () => {

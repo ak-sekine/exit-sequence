@@ -115,6 +115,24 @@ test('prologue images retain their own kind and are emitted once when skipped', 
   assert.deepEqual(emitted, ['prologue:prologue'])
 })
 
+test('ending image is inserted between its heading and text exactly once', () => {
+  const clock = new ManualClock()
+  const typer = output(clock)
+  const emitted: string[] = []
+  typer.enqueueSequence([
+    { type: 'text', text: '[CLEAR]' },
+    { type: 'image', kind: 'ending', eventId: 'clear', src: '/story/clear.svg', alt: '帰還', width: 320, height: 200 },
+    { type: 'text', text: '地上の光だ！' },
+  ], {
+    onCharacter: character => emitted.push(character),
+    onImage: image => emitted.push(`image:${image.kind}:${image.eventId}`),
+  })
+  clock.step()
+  typer.skip()
+  assert.equal(emitted.join(''), '[CLEAR]image:ending:clear地上の光だ！')
+  assert.equal(emitted.filter(item => item === 'image:ending:clear').length, 1)
+})
+
 test('skip drains queued output immediately without touching game state', () => {
   const clock = new ManualClock()
   const state = { position: 3, power: 15, randomDraws: 4 }
