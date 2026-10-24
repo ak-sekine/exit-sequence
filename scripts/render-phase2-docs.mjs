@@ -4,13 +4,19 @@ const catalog = JSON.parse(readFileSync(new URL('../docs/event-catalog.json', im
 const esc = value => String(value ?? 'なし').replaceAll('|', '\\|').replaceAll('\n', ' ')
 const refs = event => event.linkedResources?.join('、') || 'なし'
 const ids = values => values?.length ? values.join('、') : 'なし'
+const statusCounts = Object.fromEntries(['未制作', '作業中', '本文完成', '要確認'].map(status => [status, catalog.events.filter(event => event.phase3Status === status).length]))
+const browserReadyCount = catalog.runtimeReady ? catalog.events.length : 0
+const zone1Batches = Array.from({ length: 4 }, (_, index) => catalog.events.filter(event => event.zone === 1).slice(index * 10, index * 10 + 10))
 
 let ledger = `# イベント一覧・Phase 2制作台帳
 
 ## 制作状態
 
 - 設計済み: **${catalog.events.length}/200件**（各イベントの構成と因果方針まで）。
-- Phase 3本文完成: **0/200件**。600選択肢の確率・電力差分・成功/失敗文章は未制作。
+- Phase 3本文完成: **${statusCounts['本文完成']}/${catalog.events.length}件**。
+- Phase 3未制作: **${statusCounts['未制作']}/${catalog.events.length}件**、作業中: **${statusCounts['作業中']}件**、要確認: **${statusCounts['要確認']}件**。
+- ブラウザで使用可能: **${browserReadyCount}/${catalog.events.length}件**（runtimeReady=${catalog.runtimeReady}。本文完成数とは別の統合状態）。
+- 「要確認」は本文データが存在しても、人による最終レビュー待ちを含む。自動構造検証の通過を文章レビュー済みとは数えない。
 - Phase 4イラスト: **0/200件**。既存10枚は旧15マス版用のまま。
 - この台帳JSONは docs/event-catalog.json。本文未完成の概要をランタイムイベントとして扱わず、runtimeReady=false とする。
 - 本文台帳、依存表、NPC表はJSONから生成する。元データを変更した後に npm run render:phase2 を実行する。
@@ -39,6 +45,10 @@ IDは維持した。旧15マス本文・確率・結果を100マス仕様に移�
 | 区画 | 距離 | 通常 | 連携 | 総数 | 最大予約数 |
 |---|---:|---:|---:|---:|---:|
 ${[1,2,3,4,5].map(zone => { const items=catalog.events.filter(e=>e.zone===zone); return `| ${zone} ${['最深部','廃棄物処理区画','生産・整備区画','管理・保守区画','地上接続区画'][zone-1]} | ${(zone-1)*20+1}〜${zone*20} | ${items.filter(e=>e.category==='normal').length} | ${items.filter(e=>e.category==='linked').length} | ${items.length} | ${items.filter(e=>e.guarantee.needed).length} |` }).join('\n')}
+
+### Phase 3 区画1の10件単位の進捗
+
+${zone1Batches.map((batch, index) => `- P3-01-${String(index + 1).padStart(2,'0')} (${batch.length}/10): ${batch.map(event => `${event.id}［${event.phase3Status}］`).join('、')}`).join('\n')}
 
 ### 各イベントで定義する項目
 

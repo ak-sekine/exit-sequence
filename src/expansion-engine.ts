@@ -13,8 +13,8 @@ export const DEFAULT_INVENTORY_CAPACITY = 3
 
 export type ZoneId = 1 | 2 | 3 | 4 | 5
 export type ItemId = 'service-key' | 'copper-fuse'
-export type FacilityId = 'aux-power' | 'alarm-disabled' | 'lift-powered' | 'safety-rail'
-export type NpcId = 'momo'
+export type FacilityId = 'aux-power' | 'alarm-disabled' | 'lift-powered' | 'safety-rail' | 'alarm-route' | 'shaft-braced' | 'signal-mark'
+export type NpcId = 'momo' | 'nori' | 'goro' | 'chiri'
 export type NpcStatus = 'unmet' | 'encountered' | 'rescued' | 'rescue-failed' | 'repaid'
 export type ItemHistoryKind = 'acquired' | 'used' | 'consumed' | 'already-held' | 'capacity-full'
 
@@ -68,6 +68,8 @@ export interface ExpansionEventDefinition {
   readonly actions: readonly [ActionDefinition, ActionDefinition, ActionDefinition]
   readonly illustration?: string
   readonly relatedEventIds?: readonly string[]
+  /** Phase 2 links that this event can establish for later zones. Metadata only. */
+  readonly followUpEventIds?: readonly string[]
 }
 
 export interface ItemHistoryEntry {
@@ -145,18 +147,22 @@ export interface ExpansionGameView {
 }
 
 export const ITEMS: Readonly<Record<ItemId, { readonly name: string; readonly reusable: boolean }>> = {
-  'service-key': { name: '保守区画の小さな鍵', reusable: false },
+  'service-key': { name: '廃棄区画の保守鍵', reusable: false },
   'copper-fuse': { name: '銅線ヒューズ', reusable: false },
 }
 
 export const NPCS: Readonly<Record<NpcId, { readonly name: string; readonly appearance: string; readonly personality: string; readonly voice: string }>> = {
   momo: { name: 'モモ', appearance: '片耳のように曲がったアンテナと丸い作業アーム', personality: '心配性だが親切', voice: '語尾に「かも」を付けて小声で話す' },
+  nori: { name: 'ノリ', appearance: '長い測距棒と額の水平器', personality: '怖がりだが几帳面', voice: '距離と「たぶん」を小声で添える' },
+  goro: { name: 'ゴロ', appearance: '大きな運搬コンテナを頭にかぶる癖', personality: 'おしゃべりで陽気', voice: '大声で短い擬音を交える' },
+  chiri: { name: 'チリ', appearance: '曲がったブラシを大事にする小型清掃ロボ', personality: '働き者で約束を守る', voice: '明るく「さっぱり」と言う' },
 }
 
 const EMPTY_FACILITIES: Readonly<Record<FacilityId, boolean>> = {
   'aux-power': false, 'alarm-disabled': false, 'lift-powered': false, 'safety-rail': false,
+  'alarm-route': false, 'shaft-braced': false, 'signal-mark': false,
 }
-const EMPTY_NPCS: Readonly<Record<NpcId, NpcStatus>> = { momo: 'unmet' }
+const EMPTY_NPCS: Readonly<Record<NpcId, NpcStatus>> = { momo: 'unmet', nori: 'unmet', goro: 'unmet', chiri: 'unmet' }
 
 export function expansionZoneForTile(tile: number): ZoneId {
   if (!Number.isInteger(tile) || tile < 1 || tile > EXPANSION_TOTAL_TILES) throw new RangeError(`Invalid 100 tile position: ${tile}`)

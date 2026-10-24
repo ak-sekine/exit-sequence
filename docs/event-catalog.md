@@ -3,7 +3,10 @@
 ## 制作状態
 
 - 設計済み: **200/200件**（各イベントの構成と因果方針まで）。
-- Phase 3本文完成: **0/200件**。600選択肢の確率・電力差分・成功/失敗文章は未制作。
+- Phase 3本文完成: **0/200件**。
+- Phase 3未制作: **160/200件**、作業中: **0件**、要確認: **40件**。
+- ブラウザで使用可能: **0/200件**（runtimeReady=false。本文完成数とは別の統合状態）。
+- 「要確認」は本文データが存在しても、人による最終レビュー待ちを含む。自動構造検証の通過を文章レビュー済みとは数えない。
 - Phase 4イラスト: **0/200件**。既存10枚は旧15マス版用のまま。
 - この台帳JSONは docs/event-catalog.json。本文未完成の概要をランタイムイベントとして扱わず、runtimeReady=false とする。
 - 本文台帳、依存表、NPC表はJSONから生成する。元データを変更した後に npm run render:phase2 を実行する。
@@ -36,6 +39,13 @@ IDは維持した。旧15マス本文・確率・結果を100マス仕様に移�
 | 3 生産・整備区画 | 41〜60 | 30 | 10 | 40 | 5 |
 | 4 管理・保守区画 | 61〜80 | 30 | 10 | 40 | 9 |
 | 5 地上接続区画 | 81〜100 | 30 | 10 | 40 | 10 |
+
+### Phase 3 区画1の10件単位の進捗
+
+- P3-01-01 (10/10): battery［要確認］、bulkhead［要確認］、deep-concrete-loaf［要確認］、deep-crate-orbit［要確認］、deep-dust-cloud［要確認］、deep-echo-pipe［要確認］、deep-fake-door［要確認］、deep-floor-piano［要確認］、deep-foam-lake［要確認］、deep-helmet-nest［要確認］
+- P3-01-02 (10/10): deep-loose-grate［要確認］、deep-magnet-snow［要確認］、deep-mirror-puddle［要確認］、deep-misfiled-bone［要確認］、deep-moon-lamp［要確認］、deep-nameplate［要確認］、deep-nut-rain［要確認］、deep-old-ticket［要確認］、deep-paper-boat［要確認］、deep-pocket-shadow［要確認］
+- P3-01-03 (10/10): deep-quiet-clock［要確認］、deep-rubber-stalactite［要確認］、deep-shelf-telescope［要確認］、deep-sleeper-drum［要確認］、deep-socket-firefly［要確認］、deep-swinging-cable［要確認］、deep-tiny-window［要確認］、deep-understair-garden［要確認］、deep-wall-sneeze［要確認］、deep-whisper-fan［要確認］
+- P3-01-04 (10/10): deep-alarm-map［要確認］、deep-coolant-label［要確認］、deep-key-cache［要確認］、deep-shaft-wheel［要確認］、deep-signal-foil［要確認］、deep-vent-sketch［要確認］、npc-chiri-first［要確認］、npc-goro-first［要確認］、npc-momo-first［要確認］、npc-nori-first［要確認］
 
 ### 各イベントで定義する項目
 
@@ -79,7 +89,7 @@ IDは維持した。旧15マス本文・確率・結果を100マス仕様に移�
 | deep-coolant-label / 冷却管の迷子札 / 連携 | 床の管に結ばれた札が管理区画のラジエーター番号を示す。札の絵は魚に見えるが、番号は配管図と正確に合う | 番号を控える / 管の流れを調べる / 札をたどって点検溝へ行く | 通常候補。番号を読み取った時にcoolant-labelタグ / 不要 | 成功: history:coolant-label / info:coolant-label | waste-coolant-diverter / 札の番号が廃棄区画の分岐弁と管理区ラジエーターを結ぶ | 同じ設備番号を後の弁で再確認する |
 | deep-key-cache / 工具箱の底の保守鍵 / 連携 | 工具箱の二重底に保守鍵が挟まっている。箱の分類札は「鍵なし」と書かれ、鍵は札の裏に隠れている | 中身を静かに仕分ける / 箱を傾ける / 二重底を探る | 通常候補。鍵の取得は成功側のみ / 不要 | 成功: item:service-key取得 / item:service-key | waste-key-hatch / 小さな鍵が次の保守ハッチの機械錠に合う | 取得理由と使用先の形状を画面文で明示する |
 | deep-shaft-wheel / シャフトの手回し輪 / 連携 | 床に落ちた手回し輪が錆びた点検シャフトにつながる。輪は非常用で、回すほど上の安全爪が一段ずつ掛かる | 輪を少しずつ回す / 歯止めを先に入れる / シャフト脇の段を探す | 通常候補。歯止めを掛けた場合のみshaft-braced / 不要 | 成功: facility:shaft-braced=true / facility:shaft-braced | ops-shaft-release / 爪が掛かれば後のシャフト梯子の荷重を支えられる | 手回し輪が同じシャフトの安全爪を上げたと示す |
-| deep-signal-foil / 信号を返す銀紙 / 連携 | 銀色の保温材が壁の穴から外の微弱信号を反射する。主人公が自分の目を鏡代わりにして反射角を調整する | 銀紙を向け直す / 信号を数える / 遮蔽物の外へ回る | 通常候補。信号を記録した場合のみsignal-markタグ / 不要 | 成功: history:signal-mark / facility:signal-mark | surface-signal-mirror / 反射した施設信号は外壁受信器の周波数と同じ | 反射角と受信灯の点滅が合う理由を説明する |
+| deep-signal-foil / 信号を返す銀紙 / 連携 | 銀色の保温材が壁の穴から外の微弱信号を反射する。主人公が自分の目を鏡代わりにして反射角を調整する | 銀紙を向け直す / 信号を数える / 遮蔽物の外へ回る | 通常候補。信号を記録した場合のみsignal-markタグ / 不要 | 成功: facility:signal-mark=true; history:signal-mark / facility:signal-mark | surface-signal-mirror / 反射した施設信号は外壁受信器の周波数と同じ | 反射角と受信灯の点滅が合う理由を説明する |
 | deep-vent-sketch / 換気路の紙模型 / 連携 | 廃材で作られた紙の立体模型が床にある。折り目が本物の換気路と同じ角度で、紙の風車が一か所だけ回る | 模型を広げる / 紙風車を吹く / 天井の通気口を探す | 通常候補。正しい出口を読んだ時にvent-mapタグ / 不要 | 成功: history:vent-map / info:vent-map | waste-vent-shutter / 折り角度と壁内の送風路が一致している | 再会時に紙模型の折り目と換気音を結びつける |
 | npc-chiri-first / 小さな清掃係チリ / 連携 | チリが床の割れ目に挟まった清掃ブラシを引けない。ブラシを助けるまで通路を掃かないと決めている | ブラシを一緒に引く / 柄を短く分解する / 別の掃除道具を渡す | 導入時は無条件。成功時に再会用の合図を残す / 不要 | 成功: chiri=rescued;失敗: chiri=rescue-failed;見送り: encountered / npc:chiri | npc-chiri-return / 後にチリが埃を掃き、目印を見つけやすくする | チリの「掃除が先」の約束と後の埃の変化を結びつける |
 | npc-goro-first / おしゃべり運搬係ゴロ / 連携 | ゴロが空コンテナを頭にかぶり、向きが分からなくなった。声は大きいのに、コンテナを外すと急に小声 | 側面の取っ手を引く / 音を頼りに向きを合わせる / コンテナの底を外す | 導入時は無条件。成功時に道案内を約束 / 不要 | 成功: goro=rescued;失敗: goro=rescue-failed;見送り: encountered / npc:goro | npc-goro-return / 後にゴロが大声で出口方向を知らせる | ゴロの音量とコンテナの失敗を再会時の笑いにつなげ、状態を説明する |

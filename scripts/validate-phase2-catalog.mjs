@@ -22,7 +22,8 @@ for (const event of events) {
   check(Array.isArray(event.actionDirections) && event.actionDirections.length === 3 && event.actionDirections.every(Boolean)
     && new Set(event.actionDirections).size === 3,
     `Event needs three action directions: ${event.id}`)
-  check(event.phase3Status === '未制作', `Phase 3 body status must remain unfinished: ${event.id}`)
+  check(['未制作', '作業中', '本文完成', '要確認'].includes(event.phase3Status),
+    `Invalid Phase 3 production status for ${event.id}: ${event.phase3Status}`)
   check(event.zone >= 1 && event.zone <= 5, `Invalid zone for ${event.id}`)
   check(['normal', 'linked'].includes(event.category), `Invalid category for ${event.id}`)
 }

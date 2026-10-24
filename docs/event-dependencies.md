@@ -19,7 +19,7 @@ Phase 2カタログ全件の依存台帳。正本は docs/event-catalog.json。�
 | deep-coolant-label | waste-coolant-diverter | 成功: history:coolant-label | history:coolant-labelを区画1で読み取った場合のみ連携候補。 | 予約保証: 区画1で読み取った番号に合う冷却水分岐弁が廃棄区画にあります。 | 条件不成立時は後続を候補化せず、区画内の無条件通常候補で進む。 | 水の流れと管理棟の乾いたラジエーターを対比 |
 | deep-key-cache | waste-key-hatch | 成功: item:service-key取得 | item:service-key所持時のみ。未所持なら候補にしない | 予約保証: 必要: 鍵取得時に区画2で予約 | 条件不成立時は後続を候補化せず、区画内の無条件通常候補で進む。 | 成功率100%の根拠として鍵の刻みと塗料を説明。不所持時は通常進路 |
 | deep-shaft-wheel | ops-shaft-release | 成功: facility:shaft-braced=true | facility:shaft-bracedがtrueなら予約 | 予約保証: 必要: 区画1で歯止め成功時に区画4で予約 | 条件不成立時は後続を候補化せず、区画内の無条件通常候補で進む。 | シャフト形状と歯止め番号を示して因果を説明 |
-| deep-signal-foil | surface-signal-mirror | 成功: history:signal-mark | facility:signal-mark=trueなら予約 | 予約保証: 必要: 区画1で信号記録時に区画5で予約 | 条件不成立時は後続を候補化せず、区画内の無条件通常候補で進む。 | 点滅パターンの一致を見せて根拠を説明 |
+| deep-signal-foil | surface-signal-mirror | 成功: facility:signal-mark=true; history:signal-mark | facility:signal-mark=trueなら予約 | 予約保証: 必要: 区画1で信号記録時に区画5で予約 | 条件不成立時は後続を候補化せず、区画内の無条件通常候補で進む。 | 点滅パターンの一致を見せて根拠を説明 |
 | deep-vent-sketch | waste-vent-shutter | 成功: history:vent-map | history:vent-mapを区画1で記録している場合のみ連携候補。 | 予約保証: 区画1の紙模型で換気角度を記録したため、対応するシャッターが現れます。 | 条件不成立時は後続を候補化せず、区画内の無条件通常候補で進む。 | 紙模型の折り角とシャッターの埃の流れが一致し、後の管理盤まで同じ送風路が続く。 |
 | npc-chiri-first | npc-chiri-return | 成功: chiri=rescued;失敗: chiri=rescue-failed;見送り: encountered | npc-chiri=rescuedでのみ出現 | 予約保証: 最深部で清掃ブラシを助けたチリが、生産区画で粉じんを掃きながら再会します。 | 条件不成立時は後続を候補化せず、区画内の無条件通常候補で進む。 | 最深部で交わした「掃除を続ける」約束を覚え、粉じんの筋から換気の向きを見つけている。 |
 | npc-goro-first | npc-goro-return | 成功: goro=rescued;失敗: goro=rescue-failed;見送り: encountered | npc-goro=rescuedでのみ出現 | 予約保証: 必要: npc-goro-first成功後、区画3で予約 | 条件不成立時は後続を候補化せず、区画内の無条件通常候補で進む。 | 初回のコンテナ音を覚えた会話で音の因果を説明 |
