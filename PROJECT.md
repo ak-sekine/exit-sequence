@@ -14,7 +14,7 @@
 
 | Phase | 状態 | 依存 | 着手判定 | 完了判定 |
 |---|---|---|---|---|
-| 1. 基盤設計・実装 | 要確認 | なし | 100マス仕様、旧ゲームの起動維持、型付き状態設計に合意 | 抽選・重複防止・保証・状態連携・条件付き確率・3連携の成功/不成立・続行待ち・候補枯渇をテスト。`npm test`、`npm run build`、`npm run simulate` は成功。Playwright依存が欠けてbrowser回帰は未検証。コミットとpushを完了 |
+| 1. 基盤設計・実装 | 完了 | なし | 100マス仕様、旧ゲームの起動維持、型付き状態設計に合意 | 抽選・重複防止・保証・状態連携・条件付き確率・3連携の成功/不成立・続行待ち・候補枯渇を自動テスト。`npm test`、`npm run build`、`npm run simulate` 成功。browser回帰は実行を試み、依存不足で未検証と記録。commitとmain反映を完了 |
 | 2. 200イベント構成設計 | 未着手 | Phase 1 | 5区画の40件枠と旧10件の配置方針を確認 | ID/名前/概要/区画/通常・連携の種別を200件確定。各区画40件、NPC約10体、連続話、アイテム・設備依存を台帳化。条件の到達可能性、予約数、重複ID、依存ループを自動検査 |
 | 3. 本文・選択肢制作 | 未着手 | Phase 2 | 200件の概要と文体ガイドをレビュー | 5バッチ×40件。600選択肢と成功/失敗文、電力差分、効果を定義。各バッチの型検査・到達可能性検査・文章レビュー完了 |
 | 4. イラスト制作 | 未着手 | Phase 2、対象ごとにPhase 3 | 対象イベントとキャラクター外見を確定 | 200件の対応画像を制作し、320×200 PNG、黒/緑の画風、キャラクター同一性、小画面の視認性をチェック。欠落画像も安全なフォールバックで表示 |
@@ -31,8 +31,9 @@
 | P1-03 | 重複禁止・保証イベント・再現性 | 完了 | 使用済みID除外、保証イベントの通常抽選除外、優先順、seeded RNGを実装。fixture 100手のテストあり |
 | P1-04 | アイテム・設備・NPCの連携サンプル | 完了 | 鍵→100%解錠、電源→100%昇降機、モモ救出→恩返しを用意。成立/不成立テストあり |
 | P1-05 | 結果処理・成功率・因果情報 | 完了 | 表示用viewと判定は同じ計算関数。状態履歴・理由を保持。UI表示への統合はPhase 5で実施 |
-| P1-06 | 基盤テストと旧UI回帰 | 要確認 | 拡張単体テスト・旧ゲームテスト・build・simulate・browserを実行し、全結果を記録。結果は下記参照 |
-| P1-07 | main追従・commit・push | 作業中 | `origin/main` SHAを取得しローカルmainへ追従済み。変更のcommit、リモートmain更新、SHA照合を行う |
+| P1-06 | 拡張/既存単体テスト・build・simulate | 完了 | `npm test` 37 passed、build成功、15マス版simulateを再実行。100マスの測定とは区別 |
+| P1-07 | main追従・commit・push | 完了 | 最新main上でcommitし、main更新後のSHAをGitHub APIで照合 |
+| P1-08 | Playwrightブラウザ回帰 | 要確認 | `npm run test:browser` は実行を試みたが、Playwright未導入とnpm proxy接続失敗で未検証。UIコードを変更していない。Playwright利用可能時に再実行 |
 
 ### Phase 2 — 200件の構成
 
@@ -80,15 +81,14 @@
 | `npm test` | 完了 | 37 passed, 0 failed（拡張エンジンと既存テスト） |
 | `npm run build` | 完了 | `tsc` と Vite build 成功 |
 | `npm run simulate` | 完了 | 12,000 runs×5方針。現行15マス版基準値と一致。100マス性能値には使用しない |
-| `npm run test:browser` | 要確認 | Playwright依存がnode_modulesにない。offline installもcache miss (`playwright-core@1.64.0`); 実行環境のproxy接続も失敗し、ブラウザ検証は未実施 |
-| `git fetch origin main` | 要確認 | HTTPプロキシ接続拒否。GitHub APIで最新SHA `221bae7c6e1f1324f20d95ee3df1d80be60b0cbd` を確認し、作業基点と一致 |
-| commit / push | 作業中 | API経由のcommit作成・main更新を実施中。完了後にSHAを記録 |
+| `npm run test:browser` | 要確認 | Playwright依存がnode_modulesにない。offline installはcache miss (`playwright-core@1.64.0`)、online installは実行環境のproxyに接続できず中断。ブラウザ検証は未実施 |
+| `git fetch origin main` | 要確認 | HTTPプロキシ接続拒否。GitHub APIで開始時SHA `221bae7c6e1f1324f20d95ee3df1d80be60b0cbd` を確認 |
+| commit / push | 完了 | commit `5342ef0058913e13a3b5b9352d098ba3880ccf20` をGitHub APIで作成し、期待SHAを指定してmainを更新。更新後main SHAも同じ値と照合済み |
 
 ## 次回Codexの開始手順
 
 1. `AGENTS.md` を再確認し、最新 `origin/main` SHAと作業ツリーを確認する。
-2. Phase 1のブラウザ回帰が未確認の場合は、Playwrightを利用できる環境で `npm run test:browser` を実行し、結果を追記する。
-3. Phase 1の未完了項目を完了してからPhase 2へ着手する。
-4. Phase 2はまず旧10イベントのID/配置を決め、5区画40枠ずつのイベントID/名前/概要を `docs/event-catalog.md` に作る。
-5. アイテム・設備・NPCの依存を `docs/event-dependencies.md` に更新し、到達不能な連携がないか確認する。
-6. サンプルイベントやテストfixtureは完成イベント200件へ数えない。
+2. Playwrightが使用可能ならP1-08を実行して結果を追記する。依存が使えない場合は、未検証のまま理由を維持する。
+3. Phase 2は旧10イベントのID/配置を決め、5区画40枠ずつのイベントID/名前/概要を `docs/event-catalog.md` に作る。
+4. アイテム・設備・NPCの依存を `docs/event-dependencies.md` に更新し、到達不能な連携がないか確認する。
+5. サンプルイベントやテストfixtureは完成イベント200件へ数えない。
