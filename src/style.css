@@ -135,6 +135,21 @@ button { color: inherit; font: inherit; }
 }
 
 .command-list { display: grid; gap: 1px; }
+.continue-command[hidden] { display: none; }
+.continue-button {
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 6px;
+  border: 1px solid #102619;
+  background: transparent;
+  color: var(--terminal-green);
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+.continue-button:hover, .continue-button:focus-visible { background: #09170d; color: var(--terminal-green); }
+.continue-button:focus-visible { outline: 1px solid var(--terminal-green); outline-offset: -1px; }
+.continue-button:active { background: #102317; }
 
 .action-command {
   width: 100%;

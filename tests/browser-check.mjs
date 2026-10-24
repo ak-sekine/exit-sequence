@@ -2,7 +2,7 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import { EVENTS } from '../src/events.ts'
-import { createGame, createSeededRandom, resolveAction } from '../src/game.ts'
+import { createGame, createSeededRandom, resolveAction, continueAfterSuccess } from '../src/game.ts'
 
 const base = process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/'
 const screenshotDir = process.env.EXIT_SEQUENCE_SCREENSHOT_DIR
@@ -14,6 +14,22 @@ async function waitForChoices(page) {
     document.querySelectorAll('#command-list .action-command:not(:disabled)').length === 3
     && !!document.querySelector('#transcript .prompt-line:last-child .console-cursor'),
   )
+}
+
+async function waitForNextInput(page, continueMethod = 'Enter') {
+  await page.waitForFunction(() => {
+    const dock = document.querySelector('#continue-command')
+    return (!!dock && !dock.hidden)
+      || document.querySelector('.action-command:not(:disabled)')
+      || document.querySelector('[data-restart]')
+  }, null, { timeout: 15000 })
+  if (await page.locator('#continue-command:not([hidden])').count()) {
+    if (continueMethod === 'tap') await page.locator('#continue-button').tap()
+    else if (continueMethod === 'click') await page.locator('#continue-button').click()
+    else await page.keyboard.press(continueMethod)
+    await page.waitForFunction(() => document.querySelector('.action-command:not(:disabled)') || document.querySelector('[data-restart]'))
+  }
+  if (await page.locator('.action-command:not(:disabled)').count()) await waitForChoices(page)
 }
 
 async function skipOutput(page) {
@@ -53,10 +69,11 @@ async function selectBestSuccessAction(page) {
   await choices[selected].tap()
 }
 
-async function finishCurrentTurn(page, index = 0, stopMethod = 'Enter') {
+async function finishCurrentTurn(page, index = 0, stopMethod = 'Enter', continueMethod = 'Enter') {
   const position = await page.locator('#status-position').innerText()
   const power = await page.locator('#status-power').innerText()
   const oldSlotCount = await page.locator('.slot-line').count()
+  const oldImageCount = await page.locator('.console-event-image').count()
   await page.locator('.action-command:not(:disabled)').nth(index).click()
   await page.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, oldSlotCount)
   const activeSlot = page.locator('.slot-line').last()
@@ -74,26 +91,40 @@ async function finishCurrentTurn(page, index = 0, stopMethod = 'Enter') {
   const roll = await activeNumber.innerText()
   const probabilityLine = await page.locator('.console-line').filter({ hasText: /^成功率 \d+%$/ }).last().innerText()
   const probability = Number(probabilityLine.match(/(\d+)%/)[1])
-  const previousResults = await page.locator('.line-good, .line-bad').filter({ hasText: /^\[(?:SUCCESS|FAILED)\]/ }).count()
+  const oldResultCount = await page.locator('.line-good, .line-bad').filter({ hasText: /^\[(?:SUCCESS|FAILED)\]/ }).count()
   if (stopMethod === 'tap') await page.locator('.slot-line').tap()
   else if (stopMethod === 'click') {
     const bounds = await page.locator('.slot-line').boundingBox()
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
   } else await page.keyboard.press(stopMethod)
   try {
-    await page.waitForFunction(previous => document.querySelectorAll('.line-good, .line-bad').length > previous, previousResults)
+    await page.waitForFunction(previous => document.querySelectorAll('.line-good, .line-bad').length > previous, oldResultCount)
   } catch (error) {
     console.error('slot stop debug', { previousResults, transcript: await page.locator('#transcript').innerText(), slot: await page.locator('.slot-number').innerText().catch(() => null), status: await page.locator('#status-position').innerText() })
     throw error
   }
   assert.equal(await activeNumber.innerText(), roll, 'stopped roll does not change')
   const expected = Number(roll) < probability ? '[SUCCESS]' : '[FAILED]'
-  await page.waitForFunction(value => [...document.querySelectorAll('.line-good, .line-bad')].some(line => line.textContent?.startsWith(value)), expected)
+  await page.waitForFunction(({ value, previous }) => [...document.querySelectorAll('.line-good, .line-bad')]
+    .filter(line => /^\[(?:SUCCESS|FAILED)\]/.test(line.textContent || '')).length > previous
+    && [...document.querySelectorAll('.line-good, .line-bad')].some(line => line.textContent?.startsWith(value) && /電力 [+-]?\d+/.test(line.textContent)),
+  { value: expected, previous: oldResultCount })
   assert.match(await page.locator('#transcript').innerText(), new RegExp(`\\[ROLL\\] ${roll}`))
   const result = await page.locator('.line-good, .line-bad').filter({ hasText: /^\[(?:SUCCESS|FAILED)\]/ }).last().innerText()
   assert.ok(result.startsWith(expected), 'the visible roll and integer success threshold determine the result')
-  await page.waitForFunction(() => document.querySelector('.action-command:not(:disabled)') || document.querySelector('[data-restart]'))
-  if (await page.locator('.action-command:not(:disabled)').count()) await waitForChoices(page)
+  if (expected === '[SUCCESS]' && position !== 'POSITION 15/15' && !result.includes('[GAME OVER]')) {
+    await page.locator('#continue-command:not([hidden])').waitFor()
+    assert.equal(await page.locator('#status-position').innerText(), position, 'a successful result holds the current position')
+    assert.equal(await page.locator('.console-event-image').count(), oldImageCount, 'the next event image is absent while waiting')
+    assert.equal(await activeNumber.innerText(), roll, 'the stopped slot value stays fixed until continuation')
+    await page.waitForTimeout(80)
+    assert.equal(await page.locator('#status-position').innerText(), position, 'waiting has no time limit or automatic advance')
+    assert.equal(await page.locator('.console-event-image').count(), oldImageCount, 'waiting does not append a future image')
+    if (continueMethod === 'tap') await page.locator('#continue-button').tap()
+    else if (continueMethod === 'click') await page.locator('#continue-button').click()
+    else await page.keyboard.press(continueMethod)
+  }
+  await waitForNextInput(page)
   await page.waitForFunction(() => {
     const images = [...document.querySelectorAll('.console-event-image')]
     const image = images.at(-1)
@@ -108,6 +139,12 @@ async function measureRegions(page) {
     document.querySelector('#restart-command').append(restartProbe)
     const restartFontSize = getComputedStyle(restartProbe).fontSize
     restartProbe.remove()
+    const continueProbe = document.createElement('button')
+    continueProbe.className = 'continue-button'
+    document.querySelector('#continue-command').append(continueProbe)
+    const continueFontSize = getComputedStyle(continueProbe).fontSize
+    const continueMinHeight = getComputedStyle(continueProbe).minHeight
+    continueProbe.remove()
     const rect = selector => {
       const { top, right, bottom, left, width, height } = document.querySelector(selector).getBoundingClientRect()
       return { top, right, bottom, left, width, height }
@@ -122,8 +159,10 @@ async function measureRegions(page) {
         probability: getComputedStyle(document.querySelector('.command-probability')).fontSize,
         delta: getComputedStyle(document.querySelector('.command-delta')).fontSize,
         latest: getComputedStyle(document.querySelector('.latest-log')).fontSize,
+        continue: continueFontSize,
         restart: restartFontSize,
       },
+      continueMinHeight,
       shell: rect('.terminal-shell'),
       status: rect('.status-bar'),
       statusValues: rect('.status-values'),
@@ -194,8 +233,9 @@ function assertRegions(measurements, layout) {
   assert.deepEqual(measurements.overflowing, [], `no clipped console or choice text at ${layout.width}px`)
   assert.ok(measurements.choiceTextOverflow.every(value => value !== 'ellipsis'), 'action labels never use ellipsis')
   assert.deepEqual(measurements.fontSizes, {
-    status: '16px', log: '15px', action: '15px', probability: '14px', delta: '14px', latest: '14px', restart: '15px',
+    status: '16px', log: '15px', action: '15px', probability: '14px', delta: '14px', latest: '14px', continue: '15px', restart: '15px',
   }, `required text sizes are used at ${layout.width}px`)
+  assert.equal(measurements.continueMinHeight, '44px', 'the continue button keeps at least a 44px tap target')
   assert.ok(Object.values(measurements.fontSizes).every(size => Number.parseFloat(size) >= 14), 'no game UI text is smaller than 14px')
   assert.ok(measurements.buttons.every(button => button.left >= measurements.dock.left - 1 && button.right <= measurements.dock.right + 1), 'choices stay inside the input dock')
   assert.ok(measurements.buttons.every(button => button.top >= measurements.dock.top - 1 && button.bottom <= measurements.dock.bottom + 1), 'all three choices are visible inside the input dock')
@@ -344,9 +384,25 @@ try {
       await page.waitForTimeout(80)
       assert.equal(await rollRow.innerText(), stoppedRoll, 'the tapped number is frozen')
       assert.ok((await page.locator('.line-good, .line-bad').last().innerText()).length < 12, 'the slot tap does not also skip the result typewriter')
-      assert.equal(await page.locator('#status-position').innerText(), 'POSITION 01/15', 'position remains unchanged until result output completes')
-      await waitForChoices(page)
-    const resultText = await page.locator('#transcript').innerText()
+      const probabilityLine = await page.locator('.console-line').filter({ hasText: /^成功率 \d+%$/ }).last().innerText()
+      const probability = Number(probabilityLine.match(/(\d+)%/)[1])
+      const expectedSuccess = Number(stoppedRoll) < probability
+      if (expectedSuccess) {
+        await page.locator('.console-window').click()
+        await page.locator('#continue-command:not([hidden])').waitFor()
+        assert.equal(await page.locator('#status-position').innerText(), 'POSITION 01/15', 'result skip does not advance the held success')
+        assert.equal(await page.locator('.console-event-image').count(), 1, 'the next image is absent until continuation')
+        await page.waitForTimeout(80)
+        assert.equal(await page.locator('#continue-command:not([hidden])').count(), 1, 'the success remains paused without input')
+        assert.equal(await page.locator('#status-position').innerText(), 'POSITION 01/15')
+        await page.locator('#continue-button').tap()
+        await waitForChoices(page)
+      } else {
+        await page.locator('.console-window').click()
+        await waitForChoices(page)
+        assert.equal(await page.locator('#continue-command:not([hidden])').count(), 0, 'failure keeps automatic progression')
+      }
+      const resultText = await page.locator('#transcript').innerText()
       const promptRows = await page.locator('#transcript .prompt-line').allInnerTexts()
       const selectedAction = selectedLabel.replace(/^\[2\]\s*/, '')
       assert.equal(promptRows.length, 2, 'the selected command remains as a past prompt line and the next event gets a new prompt')
@@ -393,7 +449,7 @@ try {
       assert.equal(await page.locator('#latest-log').isVisible(), false, 'latest log control returns to the tail')
       assert.equal(await page.locator('.slot-line').count(), previousSlotRows + 1, 'using the log scroll control does not stop the slot')
       await page.keyboard.press('Space')
-      await waitForChoices(page)
+      await waitForNextInput(page)
       const latestCursor = await page.locator('#transcript .console-cursor').boundingBox()
       const logBounds = await page.locator('.console-window').boundingBox()
       assert.ok(latestCursor && latestCursor.y >= logBounds.y && latestCursor.y + latestCursor.height <= logBounds.y + logBounds.height, 'latest prompt is actually visible inside the log viewport')
@@ -402,6 +458,7 @@ try {
       await page.keyboard.press('2')
       await page.locator('.slot-line').waitFor()
       await page.keyboard.press('Space')
+      await waitForNextInput(page)
       await waitForChoices(page)
       assert.match((await page.locator('#transcript .prompt-line').first().innerText()), /^> 2\. /, 'number keys also commit a prompt history line')
       assert.match(await page.locator('#status-position').innerText(), /02\/15/)
@@ -410,11 +467,13 @@ try {
       await page.locator('.action-command:not(:disabled)').nth(1).click()
       await page.locator('.slot-line').waitFor()
       await page.keyboard.press('Enter')
+      await waitForNextInput(page)
       await waitForChoices(page)
       const slotsBeforeKeyboardChoice = await page.locator('.slot-line').count()
       await page.keyboard.press('3')
       await page.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBeforeKeyboardChoice)
       await page.mouse.click(700, 700)
+      await waitForNextInput(page)
       await waitForChoices(page)
       assert.match(await page.locator('#status-position').innerText(), /03\/15/)
       assert.match((await page.locator('#transcript .prompt-line').nth(1).innerText()), /^> 3\. /, 'a later numeric choice is retained in the log')
@@ -423,6 +482,7 @@ try {
       await page.locator('.action-command:not(:disabled)').last().tap()
       await page.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBeforeTap)
       await page.locator('.slot-line').last().tap()
+      await waitForNextInput(page)
       await waitForChoices(page)
       assert.match((await page.locator('#transcript .prompt-line').first().innerText()), /^> 3\. /, 'landscape tap appends the selected command')
     }
@@ -480,6 +540,52 @@ try {
   await imageContext.close()
   console.log('event illustrations: all ten IDs load their own shaded local SVG in the transcript')
 
+  const heldSuccessContext = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' })
+  const heldSuccessPage = await heldSuccessContext.newPage()
+  heldSuccessPage.setDefaultTimeout(5000)
+  await forceSlotValue(heldSuccessPage, 0)
+  await heldSuccessPage.goto(`${base}?seed=123456`)
+  await waitForChoices(heldSuccessPage)
+  await heldSuccessPage.locator('.action-command:not(:disabled)').first().click()
+  await heldSuccessPage.locator('.slot-line').waitFor()
+  assert.equal(await heldSuccessPage.locator('.slot-number').innerText(), '00', 'the success test fixes the slot value')
+  await heldSuccessPage.keyboard.press('Enter')
+  await heldSuccessPage.locator('#continue-command:not([hidden])').waitFor()
+  assert.match(await heldSuccessPage.locator('#transcript').innerText(), /\[ROLL\] 00[\s\S]*\[SUCCESS\]/)
+  assert.equal(await heldSuccessPage.locator('#status-position').innerText(), 'POSITION 01/15')
+  assert.equal(await heldSuccessPage.locator('.console-event-image').count(), 1, 'the next image stays out of the transcript during the hold')
+  assert.equal(await heldSuccessPage.locator('.action-command').count(), 0, 'next-event actions stay hidden during the hold')
+  const successDelta = Number((await heldSuccessPage.locator('#transcript').innerText()).match(/\[SUCCESS\] 電力 ([+-]?\d+)/)[1])
+  assert.match(await heldSuccessPage.locator('#status-power').innerText(), new RegExp(`POWER ${20 + successDelta}/20`), 'power already reflects the resolved result')
+  assert.ok(await heldSuccessPage.locator('#continue-button').evaluate(button => getComputedStyle(button).fontSize === '15px' && button.getBoundingClientRect().height >= 44), 'continue control meets size and tap-target requirements')
+  await heldSuccessPage.keyboard.press('1')
+  assert.equal(await heldSuccessPage.locator('.slot-line').count(), 1, 'numeric selection is ignored during the hold')
+  assert.equal(await heldSuccessPage.locator('#status-position').innerText(), 'POSITION 01/15')
+  await heldSuccessPage.locator('#status-position').click()
+  await heldSuccessPage.locator('#status-position').click()
+  await waitForChoices(heldSuccessPage)
+  assert.equal((await heldSuccessPage.locator('.console-event-image').count()), 2, 'one continue input appends exactly one image')
+  assert.match(await heldSuccessPage.locator('#status-position').innerText(), /02\/15/)
+  await heldSuccessContext.close()
+
+  const automaticFailureContext = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' })
+  const automaticFailurePage = await automaticFailureContext.newPage()
+  automaticFailurePage.setDefaultTimeout(5000)
+  await forceSlotValue(automaticFailurePage, 4_294_967_199)
+  await automaticFailurePage.goto(`${base}?seed=123456`)
+  await waitForChoices(automaticFailurePage)
+  await automaticFailurePage.locator('.action-command:not(:disabled)').first().click()
+  await automaticFailurePage.locator('.slot-line').waitFor()
+  assert.equal(await automaticFailurePage.locator('.slot-number').innerText(), '99', 'the failure test fixes the slot value')
+  await automaticFailurePage.keyboard.press('Enter')
+  await waitForChoices(automaticFailurePage)
+  assert.match(await automaticFailurePage.locator('#transcript').innerText(), /\[ROLL\] 99[\s\S]*\[FAILED\][\s\S]*\[EVENT\]/)
+  assert.equal(await automaticFailurePage.locator('#continue-command:not([hidden])').count(), 0, 'failure does not show a continue prompt')
+  assert.match(await automaticFailurePage.locator('#status-position').innerText(), /02\/15/)
+  assert.equal(await automaticFailurePage.locator('.console-event-image').count(), 2, 'failure appends its next event image automatically')
+  await automaticFailureContext.close()
+  console.log('fixed slot success holds and fixed slot failure auto-advances')
+
   let repeatedRun = null
   for (let seed = 0; seed < 10000 && !repeatedRun; seed++) {
     const random = createSeededRandom(seed)
@@ -488,6 +594,7 @@ try {
     for (let turn = 0; turn < 12 && state.status === 'playing'; turn++) {
       state = resolveAction(state, 0, 0, random)
       if (state.status !== 'playing') break
+      if (state.pendingNextEvent) state = continueAfterSuccess(state)
       eventIds.push(state.currentEvent.eventId)
       if (new Set(eventIds).size < eventIds.length) repeatedRun = { seed, eventIds }
     }
@@ -504,6 +611,7 @@ try {
     await repeatedPage.locator('.action-command:not(:disabled)').first().click()
     await repeatedPage.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBefore)
     await repeatedPage.keyboard.press('Enter')
+    await waitForNextInput(repeatedPage)
     await waitForChoices(repeatedPage)
   }
   const retainedIds = await repeatedPage.locator('.console-event-image').evaluateAll(images => images.map(image => image.dataset.eventId))
@@ -562,6 +670,7 @@ try {
   })
   const reducedPage = await reducedContext.newPage()
   reducedPage.setDefaultTimeout(5000)
+  await forceSlotValue(reducedPage, 0)
   await reducedPage.goto(`${base}?seed=123456`)
   await waitForChoices(reducedPage)
   assert.match(await reducedPage.locator('#transcript').innerText(), /観測：/)
@@ -575,6 +684,9 @@ try {
   assert.equal(await reducedPage.locator('.slot-number').innerText(), reducedRoll, 'Reduced Motion keeps the initial random roll still')
   assert.equal(await reducedPage.locator('#status-position').innerText(), 'POSITION 01/15', 'position waits for a reduced-motion slot stop')
   await reducedPage.keyboard.press('Enter')
+  await reducedPage.locator('#continue-command:not([hidden])').waitFor()
+  assert.equal(await reducedPage.locator('#status-position').innerText(), 'POSITION 01/15', 'reduced-motion success waits on the current tile')
+  await reducedPage.keyboard.press('Space')
   await waitForChoices(reducedPage)
   assert.match(await reducedPage.locator('#status-position').innerText(), /02\/15/)
   assert.match(await reducedPage.locator('#transcript .prompt-line').first().innerText(), /^> 1\. /)
@@ -585,6 +697,7 @@ try {
   const visibilityContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
   const visibilityPage = await visibilityContext.newPage()
   visibilityPage.setDefaultTimeout(5000)
+  await forceFirstSpinChange(visibilityPage)
   await visibilityPage.goto(`${base}?seed=123456`)
   await skipOutput(visibilityPage)
   const slotsBeforeVisibility = await visibilityPage.locator('.slot-line').count()
@@ -602,6 +715,7 @@ try {
   await visibilityPage.evaluate(() => window.__setDocumentHidden(false))
   await visibilityPage.waitForFunction(previous => document.querySelector('.slot-line:last-child .slot-number')?.textContent !== previous, hiddenRoll)
   await visibilityPage.keyboard.press('Enter')
+  await waitForNextInput(visibilityPage)
   await waitForChoices(visibilityPage)
   console.log('hidden-tab pause and resume: ok')
   await visibilityContext.close()
@@ -617,6 +731,7 @@ try {
     await page.locator('.action-command:not(:disabled)').last().tap()
     await page.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBefore)
     await page.keyboard.press('Enter')
+    await waitForNextInput(page)
     await page.waitForFunction(() => document.querySelector('.action-command:not(:disabled)') || document.querySelector('[data-restart]'))
   }
   await page.locator('[data-restart]').waitFor()
@@ -626,6 +741,7 @@ try {
   assert.equal(endingLine, '[GAME OVER] 電力が尽きた')
   assert.doesNotMatch(endingLine, /残存電力|\/ 15|\/ 20/)
   assert.equal(await page.locator('#transcript .console-cursor').count(), 0, 'terminal states do not leave a waiting cursor')
+  assert.equal(await page.locator('#continue-command:not([hidden])').count(), 0, 'game over has no continue prompt')
   const failedAndGameOverColors = await page.evaluate(() => [...document.querySelectorAll('.line-bad')].map(line => getComputedStyle(line).color))
   assert.ok(failedAndGameOverColors.length >= 2 && failedAndGameOverColors.every(color => color === 'rgb(79, 214, 106)'), '[FAILED] and [GAME OVER] stay green')
   assert.equal(await page.locator('.restart-button').evaluate(button => getComputedStyle(button).color), 'rgb(79, 214, 106)', 'restart text stays green')
@@ -657,7 +773,7 @@ try {
     await selectBestSuccessAction(clearPage)
     await clearPage.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBefore)
     await clearPage.keyboard.press('Enter')
-    await clearPage.waitForFunction(() => document.querySelector('.action-command:not(:disabled)') || document.querySelector('[data-restart]'))
+    await waitForNextInput(clearPage)
   }
   await clearPage.locator('[data-restart]').waitFor()
   assert.equal(await clearPage.locator('#transcript .console-line').last().innerText(), '[CLEAR] 脱出成功')
@@ -665,6 +781,7 @@ try {
   assert.match(await clearPage.locator('#status-position').innerText(), /POSITION 15\/15/)
   assert.match(await clearPage.locator('#status-power').innerText(), /POWER [1-9]\d*\/20/)
   assert.equal(await clearPage.locator('#transcript .console-cursor').count(), 0, 'clear state does not leave a waiting cursor')
+  assert.equal(await clearPage.locator('#continue-command:not([hidden])').count(), 0, 'clear has no continue prompt')
   assert.doesNotMatch(await clearPage.locator('#transcript').innerText(), /\[(?:ACTION|STATUS|POSITION|MOVE)\]/)
   console.log('browser clear message and final status: ok')
   await clearContext.close()

@@ -38,6 +38,7 @@ export interface GameState {
   readonly currentEvent: EventEncounter
   readonly history: readonly HistoryEntry[]
   readonly lastResult: HistoryEntry | null
+  readonly pendingNextEvent: EventEncounter | null
 }
 
 export interface ActionView {
@@ -134,6 +135,7 @@ export function createGame(random: RandomSource = Math.random, seed = 0): GameSt
     currentEvent: encounter,
     history: [],
     lastResult: null,
+    pendingNextEvent: null,
   }
 }
 
@@ -159,7 +161,7 @@ export function resolveAction(
   rollValue: number,
   random: RandomSource = Math.random,
 ): GameState {
-  if (state.status !== 'playing') return state
+  if (state.status !== 'playing' || state.pendingNextEvent) return state
   const event = eventById(state.currentEvent.eventId)
   const action = event.actions[actionIndex]
   if (!action) return state
@@ -193,6 +195,15 @@ export function resolveAction(
 
   const nextPosition = state.position + 1
   const nextEncounter = withObservation(createEncounter(nextPosition, random), state.facilityConditions, random)
+  if (success) {
+    return {
+      ...state,
+      power: powerAfter,
+      history,
+      lastResult,
+      pendingNextEvent: nextEncounter,
+    }
+  }
   return {
     ...state,
     position: nextPosition,
@@ -200,6 +211,18 @@ export function resolveAction(
     currentEvent: nextEncounter,
     history,
     lastResult,
+    pendingNextEvent: null,
+  }
+}
+
+export function continueAfterSuccess(state: GameState): GameState {
+  if (state.status !== 'playing' || !state.pendingNextEvent) return state
+  const nextEvent = state.pendingNextEvent
+  return {
+    ...state,
+    position: nextEvent.tile,
+    currentEvent: nextEvent,
+    pendingNextEvent: null,
   }
 }
 
@@ -221,7 +244,7 @@ export function inferStableProbability(state: GameState, zone: number): number {
     if (entry.zone !== zone) continue
     applyObservation(entry.observation)
   }
-  if (state.status === 'playing' && state.currentEvent.zone === zone) {
+  if (state.status === 'playing' && !state.pendingNextEvent && state.currentEvent.zone === zone) {
     applyObservation(state.currentEvent.observation)
   }
 

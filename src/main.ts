@@ -3,6 +3,7 @@ import { ConsoleOutput, type OutputHooks, type OutputItem } from './console-outp
 import {
   createGame,
   createSeededRandom,
+  continueAfterSuccess,
   displayedPowerDelta,
   randomSeed,
   resolveAction,
@@ -26,6 +27,7 @@ app.innerHTML = `
     </section>
     <footer id="command-dock" class="command-dock" aria-label="コマンド選択">
       <div id="command-list" class="command-list"></div>
+      <div id="continue-command" class="continue-command" hidden><button id="continue-button" class="continue-button" type="button">[ 次へ進む ▶ ]</button></div>
       <div id="restart-command" class="restart-command" hidden></div>
     </footer>
   </main>`
@@ -36,9 +38,10 @@ const positionOutput = app.querySelector<HTMLSpanElement>('#status-position')!
 const powerOutput = app.querySelector<HTMLSpanElement>('#status-power')!
 const commandList = app.querySelector<HTMLDivElement>('#command-list')!
 const restartCommand = app.querySelector<HTMLDivElement>('#restart-command')!
+const continueCommand = app.querySelector<HTMLDivElement>('#continue-command')!
 const latestLogButton = app.querySelector<HTMLButtonElement>('#latest-log')!
 
-type Phase = 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'end-log' | 'idle'
+type Phase = 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'success-log' | 'await-continue' | 'end-log' | 'idle'
 type PendingChoice = { index: number; action: ActionView }
 
 let seed = seedFromAddress()
@@ -53,6 +56,7 @@ let currentRoll: number | null = null
 let rollText: Text | null = null
 let rollTimer: number | null = null
 let suppressClickAfterStop = false
+let skipClickHandled = false
 let pointerStart: { id: number; x: number; y: number; scrollTop: number } | null = null
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
 
@@ -163,6 +167,7 @@ function appendSelectionEcho(index: number, action: ActionView): void {
 
 function appendCommandLines(actions: readonly ActionView[]): void {
   commandList.replaceChildren()
+  continueCommand.hidden = true
   restartCommand.replaceChildren()
   restartCommand.hidden = true
   activeChoiceButtons = []
@@ -225,6 +230,11 @@ function outputBecameIdle(): void {
   if (phase === 'end-log') {
     phase = 'idle'
     appendRestartCommand()
+    return
+  }
+  if (phase === 'success-log') {
+    phase = 'await-continue'
+    continueCommand.hidden = false
   }
 }
 
@@ -266,6 +276,7 @@ function beginRunOutput(): void {
   commandList.replaceChildren()
   restartCommand.replaceChildren()
   restartCommand.hidden = true
+  continueCommand.hidden = true
   activeChoiceButtons = []
   activePromptLine = null
   pendingChoice = null
@@ -300,7 +311,7 @@ function resultLines(view: GameView, action: ActionView): (string | OutputItem)[
     lines.push('[GAME OVER] 電力が尽きた')
   } else if (view.status === 'won') {
     lines.push('[CLEAR] 脱出成功')
-  } else {
+  } else if (!result.success) {
     lines.push(...eventLines(view))
   }
   return lines
@@ -363,13 +374,17 @@ function stopSlot(): void {
   rollText.data = formatRoll(roll)
   game = resolveAction(game, choice.index, roll, gameRandom)
   pendingChoice = null
+  if (game.pendingNextEvent || game.status !== 'playing') {
+    commandList.replaceChildren()
+    activeChoiceButtons = []
+  }
   const resolvedView = toGameView(game)
   const result = resolvedView.lastResult!
   const announcement = transcript.querySelector<HTMLElement>('.slot-announcement:last-child')
   if (announcement) announcement.textContent = `停止数値 ${formatRoll(roll)}。${result.success ? '成功' : '失敗'}。`
 
   if (resolvedView.status === 'playing') {
-    phase = 'event-log'
+    phase = game.pendingNextEvent ? 'success-log' : 'event-log'
   } else {
     phase = 'end-log'
   }
@@ -377,7 +392,7 @@ function stopSlot(): void {
     onLineEnd(_text, lineIndex) {
       if (lineIndex !== 0) return
       updateStatus(resolvedView)
-      if (resolvedView.status === 'playing') {
+      if (resolvedView.status === 'playing' && !game.pendingNextEvent) {
         appendCommandLines(resolvedView.currentEvent.actions)
       } else {
         commandList.replaceChildren()
@@ -385,6 +400,18 @@ function stopSlot(): void {
       }
     },
   })
+}
+
+function advanceAfterSuccess(): void {
+  if (phase !== 'await-continue') return
+  phase = 'idle'
+  continueCommand.hidden = true
+  game = continueAfterSuccess(game)
+  const view = toGameView(game)
+  updateStatus(view)
+  appendCommandLines(view.currentEvent.actions)
+  phase = 'event-log'
+  appendTranscriptLines(eventLines(view))
 }
 
 function selectAction(index: number): void {
@@ -417,7 +444,24 @@ consoleWindow.addEventListener('scroll', () => {
 latestLogButton.addEventListener('click', scrollToLatest)
 
 consoleWindow.addEventListener('click', () => {
-  if (output.isBusy) output.skip()
+  if (output.isBusy) {
+    skipClickHandled = true
+    output.skip()
+  }
+})
+
+document.addEventListener('click', event => {
+  if (skipClickHandled) {
+    skipClickHandled = false
+    return
+  }
+  const target = event.target
+  if (target instanceof Element && target.closest('#latest-log, [data-action-index], [data-restart]')) return
+  if (output.isBusy) {
+    output.skip()
+    return
+  }
+  advanceAfterSuccess()
 })
 
 commandList.addEventListener('click', event => {
@@ -469,6 +513,9 @@ window.addEventListener('keydown', event => {
     } else if (output.isBusy) {
       event.preventDefault()
       output.skip()
+    } else if (phase === 'await-continue') {
+      event.preventDefault()
+      advanceAfterSuccess()
     }
     return
   }
