@@ -12,9 +12,9 @@ export const EXPANSION_MAX_POWER = 20
 export const DEFAULT_INVENTORY_CAPACITY = 3
 
 export type ZoneId = 1 | 2 | 3 | 4 | 5
-export type ItemId = 'service-key' | 'copper-fuse'
+export type ItemId = 'service-key' | 'copper-fuse' | 'route-card' | 'access-code'
 export type FacilityId = 'aux-power' | 'alarm-disabled' | 'lift-powered' | 'safety-rail' | 'alarm-route' | 'shaft-braced' | 'signal-mark' | 'coolant-diverted' | 'ventilation-shutter'
-export type NpcId = 'momo' | 'nori' | 'goro' | 'chiri' | 'kabo' | 'pico'
+export type NpcId = 'momo' | 'nori' | 'goro' | 'chiri' | 'kabo' | 'pico' | 'jin' | 'lens' | 'peta'
 export type NpcStatus = 'unmet' | 'encountered' | 'rescued' | 'rescue-failed' | 'repaid'
 export type ItemHistoryKind = 'acquired' | 'used' | 'consumed' | 'already-held' | 'capacity-full'
 
@@ -149,6 +149,8 @@ export interface ExpansionGameView {
 export const ITEMS: Readonly<Record<ItemId, { readonly name: string; readonly reusable: boolean }>> = {
   'service-key': { name: '廃棄区画の保守鍵', reusable: false },
   'copper-fuse': { name: '銅線ヒューズ', reusable: false },
+  'route-card': { name: '折りたたみ工程カード', reusable: true },
+  'access-code': { name: '検査端末の型番コード', reusable: false },
 }
 
 export const FACILITIES: Readonly<Record<FacilityId, string>> = {
@@ -165,6 +167,9 @@ export const NPCS: Readonly<Record<NpcId, { readonly name: string; readonly appe
   chiri: { name: 'チリ', appearance: '曲がったブラシを大事にする小型清掃ロボ', personality: '働き者で約束を守る', voice: '明るく「さっぱり」と言う' },
   kabo: { name: 'カボ', appearance: '緩衝材の山に埋まるほど大柄な梱包係ロボ', personality: '心配性だが梱包手順に詳しい', voice: '箱の中から慎重に短く返事をする' },
   pico: { name: 'ピコ', appearance: '小さな札貼りアームを持つ仕分けロボ', personality: '几帳面だが自分の名前札を貼りがち', voice: '札の番号を読み上げながら話す' },
+  jin: { name: 'ジン', appearance: '絶縁手袋と電圧計を装備。片手だけ手袋がない', personality: '慎重な電気係。安全確認を三度行う', voice: '「無電圧、確認」を繰り返す' },
+  lens: { name: 'レン', appearance: '胸に交換式の検査レンズを携える', personality: '観察好き。自分の顔表示の曇りには気づきにくい', voice: '光や焦点の比喩で静かに話す' },
+  peta: { name: 'ペタ', appearance: '折り畳み点検表を何枚も背負う', personality: '几帳面で粘り強く、抜け欄を放置できない', voice: '項目番号と完了印を口にする' },
 }
 
 const EMPTY_FACILITIES: Readonly<Record<FacilityId, boolean>> = {
@@ -172,7 +177,10 @@ const EMPTY_FACILITIES: Readonly<Record<FacilityId, boolean>> = {
   'alarm-route': false, 'shaft-braced': false, 'signal-mark': false,
   'coolant-diverted': false, 'ventilation-shutter': false,
 }
-const EMPTY_NPCS: Readonly<Record<NpcId, NpcStatus>> = { momo: 'unmet', nori: 'unmet', goro: 'unmet', chiri: 'unmet', kabo: 'unmet', pico: 'unmet' }
+const EMPTY_NPCS: Readonly<Record<NpcId, NpcStatus>> = {
+  momo: 'unmet', nori: 'unmet', goro: 'unmet', chiri: 'unmet', kabo: 'unmet', pico: 'unmet',
+  jin: 'unmet', lens: 'unmet', peta: 'unmet',
+}
 
 export function expansionZoneForTile(tile: number): ZoneId {
   if (!Number.isInteger(tile) || tile < 1 || tile > EXPANSION_TOTAL_TILES) throw new RangeError(`Invalid 100 tile position: ${tile}`)

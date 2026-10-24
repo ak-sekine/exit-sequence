@@ -2631,7 +2631,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2658,7 +2658,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2685,7 +2685,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2712,7 +2712,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2739,7 +2739,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2766,7 +2766,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2793,7 +2793,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2820,7 +2820,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2847,7 +2847,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2874,7 +2874,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2901,7 +2901,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2928,7 +2928,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2955,7 +2955,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -2982,7 +2982,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3009,7 +3009,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3036,7 +3036,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3063,7 +3063,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3090,7 +3090,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3117,7 +3117,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3144,7 +3144,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3171,7 +3171,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3198,7 +3198,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3225,7 +3225,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3252,7 +3252,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3279,7 +3279,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3306,7 +3306,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3333,7 +3333,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3360,7 +3360,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3387,7 +3387,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3414,7 +3414,7 @@
       "followUpEventIds": [],
       "followUpEffect": "特定の後続イベントを変えない。",
       "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3451,7 +3451,7 @@
       "followUpEventIds": [],
       "followUpEffect": "警報停止で不要な騒音を抑え、ミュータントを刺激せずに済む",
       "causalExplanation": "敵AIや戦闘にせず、警報音と遠い気配を因果説明",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3488,7 +3488,7 @@
       "followUpEventIds": [],
       "followUpEffect": "チリが床を掃き、換気の向きと地上向きの車輪跡を見つけやすくする。",
       "causalExplanation": "最深部で交わした「掃除を続ける」約束を覚え、粉じんの筋から換気の向きを見つけている。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3525,7 +3525,7 @@
       "followUpEventIds": [],
       "followUpEffect": "ゴロが以前の大声を反響探知に使い、空洞の位置を教える",
       "causalExplanation": "初回のコンテナ音を覚えた会話で音の因果を説明",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3556,7 +3556,7 @@
       ],
       "followUpEffect": "ジンが後に高圧区画を安全に絶縁する",
       "causalExplanation": "手袋不足を覚え、後に予備手袋を渡せる因果を話す",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3587,7 +3587,7 @@
       ],
       "followUpEffect": "レンが後に曇った表示や反射光を読み解く",
       "causalExplanation": "磨いたレンズが後続の光学問題を解く理由を示す",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3618,7 +3618,7 @@
       ],
       "followUpEffect": "ペタが後に点検履歴から安全な設備を見分ける",
       "causalExplanation": "チェック欄の抜けを覚えていて、再会時に完了を伝える",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3655,7 +3655,7 @@
       "followUpEventIds": [],
       "followUpEffect": "ピコが貼り直した工程札で、安全な搬送順を教える",
       "causalExplanation": "初回の誤札を台詞で思い出し、札の違いを根拠にする",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3686,7 +3686,7 @@
       ],
       "followUpEffect": "型番末尾は端末の保守用認証コードと同一",
       "causalExplanation": "端末型番の刻印とコード桁数の一致を見せる",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3726,7 +3726,7 @@
       ],
       "followUpEffect": "ヒューズ装着で補助母線を通電し、区画4の昇降機を保証候補にする。",
       "causalExplanation": "廃棄区画で拾った規格品がこの治具用。銅線ヒューズが昇降機専用母線を復旧する。",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 3,
@@ -3757,7 +3757,7 @@
       ],
       "followUpEffect": "カードの記号が管理区の搬送盤の旧記号と一致",
       "causalExplanation": "前後の記号照合によって表示と影響を説明",
-      "phase3Status": "未制作"
+      "phase3Status": "要確認"
     },
     {
       "zone": 4,

@@ -9,7 +9,7 @@
 - 各区画は最終的に40イベントを持つ。各プレイでは最大20件だけ選び、同一イベントIDを再使用しない。IDが尽きたときの重複補填は禁止。
 - 旧15マス版は `src/game.ts` と `src/events.ts` に残り、`src/main.ts` が引き続き利用する。拡張エンジンのAPIは `src/expansion-engine.ts`。
 - `EXPANSION_SAMPLE_EVENTS` は連携検証用の6件であり、完成イベント数に含めない。Phase 2では `docs/event-catalog.json` に設計概要200件を記録したが、本文・成功率・結果電力が未完成なのでランタイムカタログへ読み込まない。実際の100マス進行にはPhase 3以降で実装したイベントが各区画40件必要。
-- Phase 2 JSON内の item / facility / NPC IDは設計上の参照名である。ランタイムへ移す段階で `ItemId`、`FacilityId`、`NpcId`、`ITEMS`、`FACILITIES`、`NPCS`、初期設備/NPC状態、実行時参照検査を同時に拡張し、その後にイベントデータを型検査する。P3-02で `coolant-diverted`、`ventilation-shutter`、`kabo`、`pico` を登録した。
+- Phase 2 JSON内の item / facility / NPC IDは設計上の参照名である。ランタイムへ移す段階で `ItemId`、`FacilityId`、`NpcId`、`ITEMS`、`FACILITIES`、`NPCS`、初期設備/NPC状態、実行時参照検査を同時に拡張し、その後にイベントデータを型検査する。P3-02で `coolant-diverted`、`ventilation-shutter`、`kabo`、`pico`、P3-03で `route-card`、`access-code`、`jin`、`lens`、`peta` を登録した。
 
 ## 候補抽選とイベント保証
 
@@ -33,9 +33,9 @@
 
 ### Phase 3 データの置き方と状態寿命
 
-- 区画1/2本文はそれぞれ `src/expansion-content/zone1.ts` の `ZONE1_EVENTS`、`src/expansion-content/zone2.ts` の `ZONE2_EVENTS` に置く。各イベントの設計ID・名前・行動方向は `docs/event-catalog.json` と一致させ、後続リンクは `followUpEventIds` に記録する。各区画40件のうち30件は無条件の通常候補、10件は連携イベント。
+- 区画1〜3本文はそれぞれ `src/expansion-content/zone1.ts` の `ZONE1_EVENTS`、`src/expansion-content/zone2.ts` の `ZONE2_EVENTS`、`src/expansion-content/zone3.ts` の `ZONE3_EVENTS` に置く。各イベントの設計ID・名前・行動方向は `docs/event-catalog.json` と一致させ、後続リンクは `followUpEventIds` に記録する。各区画40件のうち30件は無条件の通常候補、10件は連携イベント。P3-03は警報停止後の静音搬送路、銅線ヒューズと組立治具の100%装着、救出状態に応じたNPC再会、区画4で使う工程カード/アクセスコードを実装した。
 - 出現理由は `availableWhen.explanation` で保持する。無条件イベントは `all: []` とし、場面固有の手掛かりを説明する。後続の条件付きイベントは `availableWhen` と `guarantee.when` に同じ状態条件を使う。
-- Phase 2 `requires` の配列項目は全て満たすAND条件として `Predicate.all` に変換する。OR条件は別フィールドが定義された場合だけ表現し、未対応条件を省略しない。P3-02 zone 2の条件は単一条件で、`requiresAny` はない。
+- Phase 2 `requires` の配列項目は全て満たすAND条件として `Predicate.all` に変換する。OR条件は別フィールドが定義された場合だけ表現し、未対応条件を省略しない。P3-02 zone 2とP3-03 zone 3の連携条件は単一条件で、`requiresAny` はない。
 - アイテムは所持品に残り、設備フラグとNPC状態はゲーム状態に保持される。情報タグは履歴の `historyTags` に記録され、後続の `history-tag` 条件から履歴全体を参照する。これらに期限切れ処理はない。
 - 状態効果はイベント結果の確定時にだけ適用される。ゲームエンジンがIDの重複出現を止めるため、同一イベントの効果は一度だけ適用する。失敗側と見送り側に成功状態を含めない。
 - NPC初登場は `rescued` / `rescue-failed` / `encountered` を区別する。後続の再会条件は `rescued` だけを要求し、救出失敗と見送りは通常候補へ進む。
