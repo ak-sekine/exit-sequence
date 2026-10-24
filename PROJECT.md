@@ -113,7 +113,7 @@
 | `npm run simulate` | 完了 | 12,000 runs×5方針。既存15マス用シミュレーション。100マスの電力バランス評価には使用しない |
 | `npm run test:browser` | 要確認 | `playwright` packageがnode_modulesにないため起動できず。ブラウザ回帰は未検証 |
 | `git fetch origin main` | 要確認 | 実行環境のHTTPプロキシ接続拒否。GitHub APIで開始時のmain SHA `f3ebe25ac6df18b891deb4ef5444dd289e96ca44` を確認 |
-| mainへの反映 | 完了 | GitHub APIで開始時SHA `f3ebe25ac6df18b891deb4ef5444dd289e96ca44` をexpected headにしてP3-01 commit `ebed95a44af09a093ac323532fdb962d144950bb` を作成。WBS追記後にもmain tipをAPIで再照合 |
+| mainへの反映 | 完了 | GitHub APIで開始時SHA `f3ebe25ac6df18b891deb4ef5444dd289e96ca44` をexpected headにしてP3-01 commit `998ca00d98b88259af14d7d353277bedbac4d1f3` を作成。WBS追記後にもmain tipをAPIで再照合 |
 
 ## 次回Codexの開始手順
 
