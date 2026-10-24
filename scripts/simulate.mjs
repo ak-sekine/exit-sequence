@@ -1,4 +1,4 @@
-import { createGame, createSeededRandom, estimateSuccessProbability, resolveAction, successProbabilityPercent } from '../src/game.ts'
+import { createGame, createSeededRandom, resolveAction, successProbabilityPercent, continueAfterResult } from '../src/game.ts'
 import { eventById } from '../src/events.ts'
 
 const RUNS = 12_000
@@ -40,7 +40,7 @@ const policies = [
     },
   },
   {
-    name: 'clue based, survival weighted',
+    name: 'fixed chance, survival weighted',
     choose(state, event) {
       let bestIndex = 0
       let bestScore = Number.NEGATIVE_INFINITY
@@ -82,6 +82,7 @@ function runPolicy(policy) {
       const event = eventById(state.currentEvent.eventId)
       const actionIndex = policy.choose(state, event, policyRandom)
       state = resolveAction(state, actionIndex, Math.floor(slotRandom() * 100), gameRandom)
+      if (state.pendingNextEvent) state = continueAfterResult(state)
     }
     if (state.status === 'won') {
       clears++

@@ -3,7 +3,7 @@ import { ConsoleOutput, type OutputHooks, type OutputItem } from './console-outp
 import {
   createGame,
   createSeededRandom,
-  continueAfterSuccess,
+  continueAfterResult,
   displayedPowerDelta,
   randomSeed,
   resolveAction,
@@ -41,7 +41,7 @@ const restartCommand = app.querySelector<HTMLDivElement>('#restart-command')!
 const continueCommand = app.querySelector<HTMLDivElement>('#continue-command')!
 const latestLogButton = app.querySelector<HTMLButtonElement>('#latest-log')!
 
-type Phase = 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'success-log' | 'await-continue' | 'end-log' | 'idle'
+type Phase = 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'result-log' | 'await-continue' | 'end-log' | 'idle'
 type PendingChoice = { index: number; action: ActionView }
 
 let seed = seedFromAddress()
@@ -101,7 +101,7 @@ function appendTranscriptLines(entries: readonly (string | OutputItem)[], extraH
   const hooks: OutputHooks = {
     onLineStart(text, lineIndex) {
       const row = document.createElement('div')
-      row.className = `console-line${text.startsWith('[SUCCESS]') || text.startsWith('[CLEAR]') ? ' line-good' : ''}${text.startsWith('[FAILED]') || text.startsWith('[GAME OVER]') ? ' line-bad' : ''}`
+      row.className = `console-line${text.startsWith('[CLEAR]') ? ' line-good' : ''}${text.startsWith('[GAME OVER]') ? ' line-bad' : ''}`
       activeText = document.createTextNode('')
       row.append(activeText)
       mutateTranscript(() => transcript.append(row))
@@ -232,7 +232,7 @@ function outputBecameIdle(): void {
     appendRestartCommand()
     return
   }
-  if (phase === 'success-log') {
+  if (phase === 'result-log') {
     phase = 'await-continue'
     continueCommand.hidden = false
   }
@@ -266,7 +266,6 @@ function eventLines(view: GameView): OutputItem[] {
       height: 200,
     },
     { type: 'text', text: event.description },
-    { type: 'text', text: `観測：${event.observationText}` },
   ]
 }
 
@@ -291,7 +290,9 @@ function beginRunOutput(): void {
   appendCommandLines(view.currentEvent.actions)
   appendTranscriptLines([
     '[SYSTEM] EXIT SEQUENCE',
-    '[SYSTEM] 脱出シーケンス開始',
+    'ぼくの仕事は、廃墟から部品を拾って街へ持ち帰ること。',
+    '今日もお宝探し……のはずが、床が抜けて最深部まで落下！',
+    'ミュータントに会う前に、電力が切れる前に地上へ帰ろう！',
     ...eventLines(view),
   ])
 }
@@ -305,14 +306,13 @@ function resultLines(view: GameView, action: ActionView): (string | OutputItem)[
       ? '（最低値0）'
       : ''
   const lines: (string | OutputItem)[] = [
-    `[${result.success ? 'SUCCESS' : 'FAILED'}] 電力 ${signed(result.powerChange)}${capNote}`,
+    result.success ? result.successText : result.failureText,
+    `電力 ${signed(result.powerChange)}${capNote}`,
   ]
   if (view.status === 'lost') {
-    lines.push('[GAME OVER] 電力が尽きた')
+    lines.push('[GAME OVER] あれ？ 体が動かない。電力がゼロみたい。ぼくの冒険はここまで……誰か充電器を持ってきてー！')
   } else if (view.status === 'won') {
-    lines.push('[CLEAR] 脱出成功')
-  } else if (!result.success) {
-    lines.push(...eventLines(view))
+    lines.push('[CLEAR] 地上の光だ！ 出口だ！ やった、ぼく生きてる！ 拾った部品？ ……あれ、どこに置いたっけ。まあいいや、街へ帰ろう！')
   }
   return lines
 }
@@ -384,7 +384,7 @@ function stopSlot(): void {
   if (announcement) announcement.textContent = `停止数値 ${formatRoll(roll)}。${result.success ? '成功' : '失敗'}。`
 
   if (resolvedView.status === 'playing') {
-    phase = game.pendingNextEvent ? 'success-log' : 'event-log'
+    phase = 'result-log'
   } else {
     phase = 'end-log'
   }
@@ -392,12 +392,8 @@ function stopSlot(): void {
     onLineEnd(_text, lineIndex) {
       if (lineIndex !== 0) return
       updateStatus(resolvedView)
-      if (resolvedView.status === 'playing' && !game.pendingNextEvent) {
-        appendCommandLines(resolvedView.currentEvent.actions)
-      } else {
-        commandList.replaceChildren()
-        activeChoiceButtons = []
-      }
+      commandList.replaceChildren()
+      activeChoiceButtons = []
     },
   })
 }
@@ -406,12 +402,18 @@ function advanceAfterSuccess(): void {
   if (phase !== 'await-continue') return
   phase = 'idle'
   continueCommand.hidden = true
-  game = continueAfterSuccess(game)
+  const previousZone = game.currentEvent.zone
+  game = continueAfterResult(game)
   const view = toGameView(game)
   updateStatus(view)
   appendCommandLines(view.currentEvent.actions)
   phase = 'event-log'
-  appendTranscriptLines(eventLines(view))
+  appendTranscriptLines([
+    ...(view.currentEvent.zone !== previousZone
+      ? [view.currentEvent.zone === 2 ? '[ZONE] 中層へ到着。保守設備が増えてきた。地上まであと少し……のはず！' : '[ZONE] 上層に入った！ 外の風が近い。街の充電スタンドが待ってる！']
+      : []),
+    ...eventLines(view),
+  ])
 }
 
 function selectAction(index: number): void {
