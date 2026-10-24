@@ -19,8 +19,8 @@ app.innerHTML = `
       <div class="status-content">
         <img id="event-image" class="event-image" width="160" height="100" alt="" />
         <div class="status-values" aria-live="polite">
-          <span id="status-position">[POSITION] 01 / ${TOTAL_TILES}</span>
-          <span id="status-power">[POWER] 20 / 20</span>
+          <span id="status-position">POSITION 01/${TOTAL_TILES}</span>
+          <span id="status-power">POWER 20/20</span>
         </div>
       </div>
     </header>
@@ -138,15 +138,14 @@ function appendCommandLines(actions: readonly ActionView[]): void {
     button.className = 'action-command'
     button.dataset.actionIndex = String(index)
     button.disabled = true
-    button.title = action.detail
-    button.setAttribute('aria-label', `${index + 1}: ${action.label}. ${action.detail}. 成功 ${signed(successDelta)}、失敗 ${signed(failureDelta)}`)
+    button.setAttribute('aria-label', `${index + 1}: ${action.label}. ${action.detail}. 成功時 ${signed(successDelta)}、失敗時 ${signed(failureDelta)}`)
 
     const label = document.createElement('span')
     label.className = 'command-number'
     label.textContent = `[${index + 1}] ${action.label}`
     const delta = document.createElement('span')
     delta.className = 'command-delta'
-    delta.textContent = `成${signed(successDelta)} / 失${signed(failureDelta)}`
+    delta.textContent = `${signed(successDelta)}/${signed(failureDelta)}`
     button.append(label, delta)
     activeChoiceButtons.push(button)
     commandList.append(button)
@@ -188,8 +187,8 @@ function scrollIfFollowing(): void {
 }
 
 function updateStatus(view: GameView): void {
-  positionOutput.textContent = `[POSITION] ${String(view.position).padStart(2, '0')} / ${TOTAL_TILES}`
-  powerOutput.textContent = `[POWER] ${view.power} / 20`
+  positionOutput.textContent = `POSITION ${String(view.position).padStart(2, '0')}/${TOTAL_TILES}`
+  powerOutput.textContent = `POWER ${view.power}/20`
   eventImage.src = `${import.meta.env.BASE_URL}events/${view.currentEvent.id}.svg`
   eventImage.dataset.eventId = view.currentEvent.id
   eventImage.alt = `${view.currentEvent.title}の設備`
