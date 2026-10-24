@@ -33,7 +33,7 @@ async function enterFirstEvent(page) {
   await page.waitForSelector('#continue-command:not([hidden])')
   const prologueImage = page.locator('.console-prologue-image')
   assert.equal(await prologueImage.evaluate(img => img.complete && img.naturalWidth === 320), true)
-  assert.match(await prologueImage.getAttribute('src'), /\/story\/prologue\.svg$/)
+  assert.match(await prologueImage.getAttribute('src'), /\/story\/prologue\.png$/)
   await revealEndingImage(page, prologueImage)
   await assertImageFrame(prologueImage)
   await page.locator('#continue-button').click()
@@ -41,8 +41,11 @@ async function enterFirstEvent(page) {
   await page.waitForSelector('.action-command:not(:disabled)')
   assert.equal(await page.locator('.console-prologue-image').count(), 1)
   assert.equal(await page.locator('.console-event-image').count(), 1)
-  await revealEndingImage(page, page.locator('.console-event-image').first())
-  await assertImageFrame(page.locator('.console-event-image').first())
+  const eventImage = page.locator('.console-event-image').first()
+  const eventId = await eventImage.getAttribute('data-event-id')
+  assert.match(await eventImage.getAttribute('src'), new RegExp(`/events/${eventId}\\.png$`))
+  await revealEndingImage(page, eventImage)
+  await assertImageFrame(eventImage)
 }
 
 async function assertImageFrame(image, allowBroken = false) {
@@ -55,7 +58,7 @@ async function assertImageFrame(image, allowBroken = false) {
   })
   assert.ok(measure.width > 0 && measure.width <= 320, 'art stays within 320px and adapts to the log')
   assert.ok(Math.abs(measure.ratio - 8 / 5) < 0.02, 'art keeps the 8:5 ratio')
-  if (!allowBroken) assert.equal(measure.loaded, true, 'the requested SVG is loaded')
+  if (!allowBroken) assert.equal(measure.loaded, true, 'the requested PNG is loaded')
   assert.ok(measure.frameTop >= measure.logTop - 1 && measure.frameBottom <= measure.logBottom + 1, `the full image frame fits the log viewport: ${JSON.stringify(measure)}`)
   assert.ok(measure.alt.length > 0, 'image has alternative text')
 }
@@ -151,7 +154,7 @@ async function playToEnding(page, ending, finalFailure = false, continueMethod =
   }, endingId)
   assert.equal(await image.count(), 1, 'one final input adds one ending image')
   assert.equal(await image.getAttribute('data-image-kind'), 'ending')
-  assert.match(await image.getAttribute('src'), new RegExp(`/story/${endingId}\\.svg$`))
+  assert.match(await image.getAttribute('src'), new RegExp(`/story/${endingId}\\.png$`))
   await image.evaluate(img => new Promise(resolve => { if (img.complete) resolve(); else { img.onload = resolve; img.onerror = resolve } }))
   await revealEndingImage(page)
   await assertImageFrame(image, allowBrokenImage)
@@ -241,7 +244,7 @@ try {
   await slowContext.close()
 
   const brokenContext = await browser.newContext({ viewport: { width: 320, height: 640 }, reducedMotion: 'reduce' })
-  await brokenContext.route('**/story/game-over.svg', route => route.abort())
+  await brokenContext.route('**/story/game-over.png', route => route.abort())
   const brokenPage = await brokenContext.newPage()
   await prepare(brokenPage, 99)
   await brokenPage.goto(`${base}?seed=9`)

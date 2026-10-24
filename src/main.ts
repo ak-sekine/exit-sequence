@@ -267,7 +267,7 @@ function eventLines(view: GameView): OutputItem[] {
     {
       type: 'image',
       eventId: event.id,
-      src: `${import.meta.env.BASE_URL}events/${event.id}.svg`,
+      src: `${import.meta.env.BASE_URL}events/${event.id}.png`,
       alt: `${event.title}の設備`,
       width: 320,
       height: 200,
@@ -296,7 +296,7 @@ function prologueLines(): (string | OutputItem)[] {
     '[SYSTEM] EXIT SEQUENCE',
     {
       type: 'image', kind: 'prologue', eventId: 'prologue',
-      src: `${import.meta.env.BASE_URL}story/prologue.svg`,
+      src: `${import.meta.env.BASE_URL}story/prologue.png`,
       alt: '床を踏み抜き、手足を広げて廃棄施設の奥へ落下する主人公ロボット',
       width: 320, height: 200,
     },
@@ -348,7 +348,7 @@ function endingLines(status: GameView['status']): OutputItem[] {
   if (status === 'won') {
     return [
       { type: 'text', text: '[CLEAR]' },
-      { type: 'image', kind: 'ending', eventId: 'clear', src: `${import.meta.env.BASE_URL}story/clear.svg`, alt: 'ロボットが廃棄施設を脱出し、地上で喜んでいる', width: 320, height: 200 },
+      { type: 'image', kind: 'ending', eventId: 'clear', src: `${import.meta.env.BASE_URL}story/clear.png`, alt: 'ロボットが廃棄施設を脱出し、地上で喜んでいる', width: 320, height: 200 },
       { type: 'text', text: '地上の光だ！ 出口だ！' },
       { type: 'text', text: 'やった、ぼく生きてる！' },
       { type: 'text', text: '拾った部品？' },
@@ -358,7 +358,7 @@ function endingLines(status: GameView['status']): OutputItem[] {
   }
   return [
     { type: 'text', text: '[GAME OVER]' },
-    { type: 'image', kind: 'ending', eventId: 'game-over', src: `${import.meta.env.BASE_URL}story/game-over.svg`, alt: '廃棄施設の通路で電力切れになり、へたり込んで助けを呼ぶロボット', width: 320, height: 200 },
+    { type: 'image', kind: 'ending', eventId: 'game-over', src: `${import.meta.env.BASE_URL}story/game-over.png`, alt: '廃棄施設の通路で電力切れになり、へたり込んで助けを呼ぶロボット', width: 320, height: 200 },
     { type: 'text', text: 'あれ？ 体が動かない。' },
     { type: 'text', text: 'どうやら電力がゼロになったらしい。' },
     { type: 'text', text: 'ぼくの冒険はここまで。' },

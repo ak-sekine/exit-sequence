@@ -65,7 +65,7 @@ test('inserts images between text immediately and exactly once when output is sk
   const clock = new ManualClock()
   const typer = output(clock)
   const order: string[] = []
-  const image = { type: 'image' as const, eventId: 'bulkhead', src: '/events/bulkhead.svg', alt: '隔壁', width: 320, height: 200 }
+  const image = { type: 'image' as const, eventId: 'bulkhead', src: '/events/bulkhead.png', alt: '隔壁', width: 320, height: 200 }
   typer.enqueueSequence([
     { type: 'text', text: '見出し' },
     image,
@@ -89,7 +89,7 @@ test('image entries do not receive character-by-character output', () => {
   const order: string[] = []
   typer.enqueueSequence([
     { type: 'text', text: 'A' },
-    { type: 'image', eventId: 'battery', src: '/events/battery.svg', alt: '蓄電池', width: 320, height: 200 },
+    { type: 'image', eventId: 'battery', src: '/events/battery.png', alt: '蓄電池', width: 320, height: 200 },
     { type: 'text', text: 'B' },
   ], {
     onCharacter: character => order.push(character),
@@ -108,7 +108,7 @@ test('prologue images retain their own kind and are emitted once when skipped', 
   const emitted: string[] = []
   typer.enqueueSequence([
     { type: 'text', text: '導入' },
-    { type: 'image', kind: 'prologue', eventId: 'prologue', src: '/story/prologue.svg', alt: '落下', width: 320, height: 200 },
+    { type: 'image', kind: 'prologue', eventId: 'prologue', src: '/story/prologue.png', alt: '落下', width: 320, height: 200 },
   ], { onImage: image => emitted.push(`${image.kind}:${image.eventId}`) })
   clock.step()
   typer.skip()
@@ -121,7 +121,7 @@ test('ending image is inserted between its heading and text exactly once', () =>
   const emitted: string[] = []
   typer.enqueueSequence([
     { type: 'text', text: '[CLEAR]' },
-    { type: 'image', kind: 'ending', eventId: 'clear', src: '/story/clear.svg', alt: '帰還', width: 320, height: 200 },
+    { type: 'image', kind: 'ending', eventId: 'clear', src: '/story/clear.png', alt: '帰還', width: 320, height: 200 },
     { type: 'text', text: '地上の光だ！' },
   ], {
     onCharacter: character => emitted.push(character),
