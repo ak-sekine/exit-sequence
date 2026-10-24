@@ -2,7 +2,7 @@ import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import { EVENTS } from '../src/events.ts'
-import { createGame, createSeededRandom, resolveAction, continueAfterSuccess } from '../src/game.ts'
+import { createGame, createSeededRandom, resolveAction, continueAfterResult } from '../src/game.ts'
 
 const base = process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/'
 const screenshotDir = process.env.EXIT_SEQUENCE_SCREENSHOT_DIR
@@ -112,7 +112,7 @@ async function finishCurrentTurn(page, index = 0, stopMethod = 'Enter', continue
   assert.match(await page.locator('#transcript').innerText(), new RegExp(`\\[ROLL\\] ${roll}`))
   const result = await page.locator('.line-good, .line-bad').filter({ hasText: /^\[(?:SUCCESS|FAILED)\]/ }).last().innerText()
   assert.ok(result.startsWith(expected), 'the visible roll and integer success threshold determine the result')
-  if (expected === '[SUCCESS]' && position !== 'POSITION 15/15' && !result.includes('[GAME OVER]')) {
+  if (position !== 'POSITION 15/15' && !result.includes('[GAME OVER]') && !result.includes('[CLEAR]')) {
     await page.locator('#continue-command:not([hidden])').waitFor()
     assert.equal(await page.locator('#status-position').innerText(), position, 'a successful result holds the current position')
     assert.equal(await page.locator('.console-event-image').count(), oldImageCount, 'the next event image is absent while waiting')
@@ -399,8 +399,11 @@ try {
         await waitForChoices(page)
       } else {
         await page.locator('.console-window').click()
+        await page.locator('#continue-command:not([hidden])').waitFor()
+        assert.equal(await page.locator('#status-position').innerText(), 'POSITION 01/15', 'failure result also holds the current position')
+        assert.equal(await page.locator('.console-event-image').count(), 1, 'failure does not append the next image before continuation')
+        await page.locator('#continue-button').tap()
         await waitForChoices(page)
-        assert.equal(await page.locator('#continue-command:not([hidden])').count(), 0, 'failure keeps automatic progression')
       }
       const resultText = await page.locator('#transcript').innerText()
       const promptRows = await page.locator('#transcript .prompt-line').allInnerTexts()
@@ -568,23 +571,37 @@ try {
   assert.match(await heldSuccessPage.locator('#status-position').innerText(), /02\/15/)
   await heldSuccessContext.close()
 
-  const automaticFailureContext = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' })
-  const automaticFailurePage = await automaticFailureContext.newPage()
-  automaticFailurePage.setDefaultTimeout(5000)
-  await forceSlotValue(automaticFailurePage, 4_294_967_199)
-  await automaticFailurePage.goto(`${base}?seed=123456`)
-  await waitForChoices(automaticFailurePage)
-  await automaticFailurePage.locator('.action-command:not(:disabled)').first().click()
-  await automaticFailurePage.locator('.slot-line').waitFor()
-  assert.equal(await automaticFailurePage.locator('.slot-number').innerText(), '99', 'the failure test fixes the slot value')
-  await automaticFailurePage.keyboard.press('Enter')
-  await waitForChoices(automaticFailurePage)
-  assert.match(await automaticFailurePage.locator('#transcript').innerText(), /\[ROLL\] 99[\s\S]*\[FAILED\][\s\S]*\[EVENT\]/)
-  assert.equal(await automaticFailurePage.locator('#continue-command:not([hidden])').count(), 0, 'failure does not show a continue prompt')
-  assert.match(await automaticFailurePage.locator('#status-position').innerText(), /02\/15/)
-  assert.equal(await automaticFailurePage.locator('.console-event-image').count(), 2, 'failure appends its next event image automatically')
-  await automaticFailureContext.close()
-  console.log('fixed slot success holds and fixed slot failure auto-advances')
+  const failedTurnContext = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' })
+  const failedTurnPage = await failedTurnContext.newPage()
+  failedTurnPage.setDefaultTimeout(5000)
+  await forceSlotValue(failedTurnPage, 4_294_967_199)
+  await failedTurnPage.goto(`${base}?seed=123456`)
+  await waitForChoices(failedTurnPage)
+  await failedTurnPage.locator('.action-command:not(:disabled)').first().click()
+  await failedTurnPage.locator('.slot-line').waitFor()
+  assert.equal(await failedTurnPage.locator('.slot-number').innerText(), '99', 'the failure test fixes the slot value')
+  await failedTurnPage.keyboard.press('Enter')
+  await failedTurnPage.locator('#continue-command:not([hidden])').waitFor()
+  assert.match(await failedTurnPage.locator('#transcript').innerText(), /\[ROLL\] 99[\s\S]*\[FAILED\]/)
+  assert.equal(await failedTurnPage.locator('#status-position').innerText(), 'POSITION 01/15', 'failed result holds the solved position')
+  assert.equal(await failedTurnPage.locator('.console-event-image').count(), 1, 'failure does not append the next event image while waiting')
+  assert.equal(await failedTurnPage.locator('.action-command').count(), 0, 'failure wait does not show action choices')
+  const failedPowerDelta = Number((await failedTurnPage.locator('#transcript').innerText()).match(/\[FAILED\] 電力 ([+-]?\d+)/)[1])
+  assert.equal(await failedTurnPage.locator('#status-power').innerText(), `POWER ${20 + failedPowerDelta}/20`, 'failure power is reflected during the wait')
+  await failedTurnPage.locator('.console-window').evaluate(element => { element.scrollTop = 0 })
+  await failedTurnPage.locator('#latest-log').evaluate(button => { button.hidden = false })
+  await failedTurnPage.locator('#latest-log').click()
+  await failedTurnPage.keyboard.press('1')
+  assert.equal(await failedTurnPage.locator('#status-position').innerText(), 'POSITION 01/15', 'scroll and latest-log input cannot leave the result wait')
+  const continueBounds = await failedTurnPage.locator('#continue-button').boundingBox()
+  await failedTurnPage.mouse.click(continueBounds.x + continueBounds.width / 2, continueBounds.y + continueBounds.height / 2)
+  await failedTurnPage.mouse.click(continueBounds.x + continueBounds.width / 2, continueBounds.y + continueBounds.height / 2)
+  await waitForChoices(failedTurnPage)
+  assert.match(await failedTurnPage.locator('#status-position').innerText(), /02\/15/)
+  assert.equal(await failedTurnPage.locator('.console-event-image').count(), 2, 'one continuation appends exactly one next event image')
+  assert.equal(await failedTurnPage.locator('.slot-line').count(), 1, 'a double tap on continue cannot select an action in the new tile')
+  await failedTurnContext.close()
+  console.log('fixed slot success and failure both wait for explicit continuation')
 
   let repeatedRun = null
   for (let seed = 0; seed < 10000 && !repeatedRun; seed++) {
@@ -594,7 +611,7 @@ try {
     for (let turn = 0; turn < 12 && state.status === 'playing'; turn++) {
       state = resolveAction(state, 0, 0, random)
       if (state.status !== 'playing') break
-      if (state.pendingNextEvent) state = continueAfterSuccess(state)
+      if (state.pendingNextEvent) state = continueAfterResult(state)
       eventIds.push(state.currentEvent.eventId)
       if (new Set(eventIds).size < eventIds.length) repeatedRun = { seed, eventIds }
     }

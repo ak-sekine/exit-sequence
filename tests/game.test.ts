@@ -8,7 +8,7 @@ import {
   adjustedPower,
   createGame,
   createSeededRandom,
-  continueAfterSuccess,
+  continueAfterResult,
   displayedPowerDelta,
   estimateSuccessProbability,
   inferStableProbability,
@@ -56,7 +56,7 @@ test('event draw and seeded play are reproducible', () => {
     for (let i = 0; i < 15 && state.status === 'playing'; i++) {
       const count = EVENTS.find(event => event.id === state.currentEvent.eventId)!.actions.length
       state = resolveAction(state, action % count, Math.floor(slotRandom() * 100), gameRandom)
-      if (state.pendingNextEvent) state = continueAfterSuccess(state)
+      if (state.pendingNextEvent) state = continueAfterResult(state)
       action++
     }
     return state
@@ -141,7 +141,7 @@ test('current and past observations update a repeatable estimate exposed only as
   assert.equal(JSON.stringify(view).includes('successChance'), false)
 
   let withHistory = resolveAction(state, 0, 0, constant(0))
-  withHistory = continueAfterSuccess(withHistory)
+  withHistory = continueAfterResult(withHistory)
   withHistory = resolveAction(withHistory, 0, 0, constant(0))
   assert.equal(withHistory.history.length, 2)
   assert.notEqual(inferStableProbability(withHistory, 1), posterior)
@@ -188,7 +188,7 @@ test('slot animation draws do not change the seeded next-event sequence', () => 
   for (let tick = 0; tick < 10_000; tick++) slotAnimationRandom()
   const withLongAnimation = resolveAction(first, 0, 42, firstRandom)
   const withShortAnimation = resolveAction(second, 0, 42, secondRandom)
-  assert.deepEqual(toGameView(continueAfterSuccess(withLongAnimation)), toGameView(continueAfterSuccess(withShortAnimation)))
+  assert.deepEqual(toGameView(continueAfterResult(withLongAnimation)), toGameView(continueAfterResult(withShortAnimation)))
   assert.equal(withLongAnimation.history[0]!.success, withShortAnimation.history[0]!.success)
 })
 
@@ -197,7 +197,7 @@ test('zone assignment changes every five tiles and internal zone states stay fix
   const random = constant(0)
   let state = createGame(random, 1)
   const initialConditions = [...state.facilityConditions]
-  for (let i = 0; i < 5; i++) state = continueAfterSuccess(resolveAction(state, 0, 0, random))
+  for (let i = 0; i < 5; i++) state = continueAfterResult(resolveAction(state, 0, 0, random))
   assert.equal(state.position, 6)
   assert.equal(state.currentEvent.zone, 2)
   assert.deepEqual(state.facilityConditions, initialConditions)
@@ -214,7 +214,7 @@ test('success, failure, logged power deltas, cap, and floor are applied correctl
   assert.ok(success.pendingNextEvent)
   assert.equal(success.currentEvent.eventId, starting.currentEvent.eventId)
   assert.equal(resolveAction(success, 0, 0, constant(0)), success, 'a held success cannot resolve another action')
-  const continued = continueAfterSuccess(success)
+  const continued = continueAfterResult(success)
   assert.equal(continued.position, 2)
   assert.equal(continued.currentEvent.tile, 2)
   assert.equal(continued.pendingNextEvent, null)
@@ -223,7 +223,15 @@ test('success, failure, logged power deltas, cap, and floor are applied correctl
   assert.equal(failure.history[0]!.success, false)
   assert.equal(failure.history[0]!.powerAfter, 15)
   assert.equal(failure.history[0]!.powerChange, -5)
-  assert.equal(failure.position, 2)
+  assert.equal(failure.position, 1)
+  assert.equal(failure.currentEvent.eventId, starting.currentEvent.eventId)
+  assert.ok(failure.pendingNextEvent)
+  assert.equal(resolveAction(failure, 0, 0, constant(0)), failure, 'a held failure cannot resolve another action')
+  const continuedFailure = continueAfterResult(failure)
+  assert.equal(continuedFailure.position, 2)
+  assert.equal(continuedFailure.currentEvent.tile, 2)
+  assert.equal(continuedFailure.pendingNextEvent, null)
+  assert.equal(continueAfterResult(continuedFailure), continuedFailure, 'a duplicate continuation cannot advance another tile')
 
   assert.equal(adjustedPower(19, 8), 20)
   assert.equal(adjustedPower(2, -8), 0)
@@ -238,8 +246,14 @@ test('success, failure, logged power deltas, cap, and floor are applied correctl
   const heldSuccess = resolveAction(countedStart, 0, 0, countedRandom)
   const drawsAtResolution = draws
   assert.ok(heldSuccess.pendingNextEvent)
-  continueAfterSuccess(heldSuccess)
+  continueAfterResult(heldSuccess)
   assert.equal(draws, drawsAtResolution, 'continuing applies the next event without consuming more randomness')
+  const heldFailure = resolveAction(countedStart, 0, 99, countedRandom)
+  const drawsAtFailureResolution = draws
+  assert.ok(heldFailure.pendingNextEvent)
+  assert.equal(heldFailure.position, countedStart.position)
+  continueAfterResult(heldFailure)
+  assert.equal(draws, drawsAtFailureResolution, 'failure continuation also uses its pre-drawn event without more randomness')
 })
 
 test('power reaching zero is a game over and prevents further choices', () => {
@@ -261,6 +275,12 @@ test('reaching tile 15 with power succeeds, while zero power there is still a lo
   const finalFailure = resolveAction(fixtureAt(15, 4), 0, 99, constant(0.99999))
   assert.equal(finalFailure.status, 'lost')
   assert.equal(finalFailure.power, 0)
+
+  const finalFailureWithPower = resolveAction(fixtureAt(15, 10), 0, 99, constant(0.99999))
+  assert.equal(finalFailureWithPower.history[0]!.success, false)
+  assert.equal(finalFailureWithPower.status, 'won', 'a failed final action still clears when power remains')
+  assert.ok(finalFailureWithPower.power > 0)
+  assert.equal(finalFailureWithPower.pendingNextEvent, null, 'terminal clear does not enter the continuation wait')
 })
 
 test('restart from the same seed reconstructs a clean initial run', () => {
@@ -270,7 +290,7 @@ test('restart from the same seed reconstructs a clean initial run', () => {
   const slotRandom = createSeededRandom(271828)
   for (let index = 0; index < 15 && finished.status === 'playing'; index++) {
     finished = resolveAction(finished, 0, Math.floor(slotRandom() * 100), random)
-    if (finished.pendingNextEvent) finished = continueAfterSuccess(finished)
+    if (finished.pendingNextEvent) finished = continueAfterResult(finished)
   }
   const restarted = createGame(createSeededRandom(314159), 314159)
   assert.deepEqual(toGameView(restarted), toGameView(first))

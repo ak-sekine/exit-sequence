@@ -195,27 +195,16 @@ export function resolveAction(
 
   const nextPosition = state.position + 1
   const nextEncounter = withObservation(createEncounter(nextPosition, random), state.facilityConditions, random)
-  if (success) {
-    return {
-      ...state,
-      power: powerAfter,
-      history,
-      lastResult,
-      pendingNextEvent: nextEncounter,
-    }
-  }
   return {
     ...state,
-    position: nextPosition,
     power: powerAfter,
-    currentEvent: nextEncounter,
     history,
     lastResult,
-    pendingNextEvent: null,
+    pendingNextEvent: nextEncounter,
   }
 }
 
-export function continueAfterSuccess(state: GameState): GameState {
+export function continueAfterResult(state: GameState): GameState {
   if (state.status !== 'playing' || !state.pendingNextEvent) return state
   const nextEvent = state.pendingNextEvent
   return {

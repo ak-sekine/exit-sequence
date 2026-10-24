@@ -3,7 +3,7 @@ import { ConsoleOutput, type OutputHooks, type OutputItem } from './console-outp
 import {
   createGame,
   createSeededRandom,
-  continueAfterSuccess,
+  continueAfterResult,
   displayedPowerDelta,
   randomSeed,
   resolveAction,
@@ -41,7 +41,7 @@ const restartCommand = app.querySelector<HTMLDivElement>('#restart-command')!
 const continueCommand = app.querySelector<HTMLDivElement>('#continue-command')!
 const latestLogButton = app.querySelector<HTMLButtonElement>('#latest-log')!
 
-type Phase = 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'success-log' | 'await-continue' | 'end-log' | 'idle'
+type Phase = 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'result-log' | 'await-next' | 'end-log' | 'idle'
 type PendingChoice = { index: number; action: ActionView }
 
 let seed = seedFromAddress()
@@ -58,6 +58,7 @@ let rollTimer: number | null = null
 let suppressClickAfterStop = false
 let skipClickHandled = false
 let pointerStart: { id: number; x: number; y: number; scrollTop: number } | null = null
+let lastContinueTap: { at: number; x: number; y: number; pointerType: string } | null = null
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const output = new ConsoleOutput({
@@ -232,8 +233,8 @@ function outputBecameIdle(): void {
     appendRestartCommand()
     return
   }
-  if (phase === 'success-log') {
-    phase = 'await-continue'
+  if (phase === 'result-log') {
+    phase = 'await-next'
     continueCommand.hidden = false
   }
 }
@@ -311,8 +312,6 @@ function resultLines(view: GameView, action: ActionView): (string | OutputItem)[
     lines.push('[GAME OVER] 電力が尽きた')
   } else if (view.status === 'won') {
     lines.push('[CLEAR] 脱出成功')
-  } else if (!result.success) {
-    lines.push(...eventLines(view))
   }
   return lines
 }
@@ -384,7 +383,7 @@ function stopSlot(): void {
   if (announcement) announcement.textContent = `停止数値 ${formatRoll(roll)}。${result.success ? '成功' : '失敗'}。`
 
   if (resolvedView.status === 'playing') {
-    phase = game.pendingNextEvent ? 'success-log' : 'event-log'
+    phase = game.pendingNextEvent ? 'result-log' : 'event-log'
   } else {
     phase = 'end-log'
   }
@@ -392,21 +391,20 @@ function stopSlot(): void {
     onLineEnd(_text, lineIndex) {
       if (lineIndex !== 0) return
       updateStatus(resolvedView)
-      if (resolvedView.status === 'playing' && !game.pendingNextEvent) {
-        appendCommandLines(resolvedView.currentEvent.actions)
-      } else {
-        commandList.replaceChildren()
-        activeChoiceButtons = []
-      }
+      commandList.replaceChildren()
+      activeChoiceButtons = []
     },
   })
 }
 
-function advanceAfterSuccess(): void {
-  if (phase !== 'await-continue') return
+function continueAfterResultFlow(input?: PointerEvent): void {
+  if (phase !== 'await-next') return
   phase = 'idle'
   continueCommand.hidden = true
-  game = continueAfterSuccess(game)
+  game = continueAfterResult(game)
+  lastContinueTap = input?.pointerType
+    ? { at: Date.now(), x: input.clientX, y: input.clientY, pointerType: input.pointerType }
+    : null
   const view = toGameView(game)
   updateStatus(view)
   appendCommandLines(view.currentEvent.actions)
@@ -414,7 +412,18 @@ function advanceAfterSuccess(): void {
   appendTranscriptLines(eventLines(view))
 }
 
-function selectAction(index: number): void {
+function selectAction(index: number, input?: PointerEvent): void {
+  if (input && lastContinueTap) {
+    const elapsed = Date.now() - lastContinueTap.at
+    const samePointer = input.pointerType === lastContinueTap.pointerType
+    const sameTarget = Math.hypot(input.clientX - lastContinueTap.x, input.clientY - lastContinueTap.y) <= 24
+    if (elapsed <= 500 && samePointer && sameTarget) {
+      lastContinueTap = null
+      return
+    }
+    if (elapsed > 500) lastContinueTap = null
+  }
+  if (input) lastContinueTap = null
   if (phase !== 'waiting' || !activePromptLine || output.isBusy || game.status !== 'playing') return
   const action = toGameView(game).currentEvent.actions[index]
   if (!action) return
@@ -461,7 +470,7 @@ document.addEventListener('click', event => {
     output.skip()
     return
   }
-  advanceAfterSuccess()
+  continueAfterResultFlow(event instanceof PointerEvent ? event : undefined)
 })
 
 commandList.addEventListener('click', event => {
@@ -470,7 +479,7 @@ commandList.addEventListener('click', event => {
   const button = target.closest<HTMLButtonElement>('[data-action-index]')
   if (!button || button.disabled) return
   const index = Number(button.dataset.actionIndex)
-  if (Number.isInteger(index)) selectAction(index)
+  if (Number.isInteger(index)) selectAction(index, event instanceof PointerEvent ? event : undefined)
 })
 
 restartCommand.addEventListener('click', event => {
@@ -513,9 +522,9 @@ window.addEventListener('keydown', event => {
     } else if (output.isBusy) {
       event.preventDefault()
       output.skip()
-    } else if (phase === 'await-continue') {
+    } else if (phase === 'await-next') {
       event.preventDefault()
-      advanceAfterSuccess()
+      continueAfterResultFlow()
     }
     return
   }
