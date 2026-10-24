@@ -36,9 +36,12 @@ try {
     assert.match(resultText, /電力 [+-]\d+/)
     const posDuringWait = await page.locator('#status-position').innerText()
     assert.equal(posDuringWait, 'POSITION 01/15')
+    const continueBounds = await page.locator('#continue-button').boundingBox()
     await page.locator('#continue-button').click()
     await page.waitForFunction(() => document.querySelectorAll('.console-event-image').length === 2)
     assert.equal(await page.locator('#status-position').innerText(), 'POSITION 02/15')
+    if (continueBounds) await page.mouse.click(continueBounds.x + continueBounds.width / 2, continueBounds.y + continueBounds.height / 2)
+    assert.equal(await page.locator('.slot-line').count(), 1, 'a repeated tap at the continue target does not select the newly displayed action')
     await context.close()
     console.log(`browser ${viewport.width}×${viewport.height}: ok`)
   }
@@ -64,6 +67,7 @@ try {
     if (turn < 14) {
       await page.waitForSelector('#continue-command:not([hidden])')
       await page.locator('#continue-button').click()
+      await page.waitForTimeout(550)
     }
   }
   await page.waitForSelector('[data-restart]')
@@ -113,6 +117,7 @@ try {
     if (await overPage.locator('[data-restart]').count()) break
     await overPage.waitForSelector('#continue-command:not([hidden])')
     await overPage.locator('#continue-button').click()
+    await overPage.waitForTimeout(550)
   }
   await overPage.locator('[data-restart]').waitFor()
   assert.match(await overPage.locator('#transcript').innerText(), /\[GAME OVER\].*充電器を持ってきてー！/)

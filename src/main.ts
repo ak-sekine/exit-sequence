@@ -58,6 +58,7 @@ let rollTimer: number | null = null
 let suppressClickAfterStop = false
 let skipClickHandled = false
 let pointerStart: { id: number; x: number; y: number; scrollTop: number } | null = null
+let lastContinueTap: { at: number; x: number; y: number; pointerType: string } | null = null
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const output = new ConsoleOutput({
@@ -398,12 +399,15 @@ function stopSlot(): void {
   })
 }
 
-function advanceAfterSuccess(): void {
+function continueAfterResultFlow(input?: PointerEvent): void {
   if (phase !== 'await-continue') return
   phase = 'idle'
   continueCommand.hidden = true
   const previousZone = game.currentEvent.zone
   game = continueAfterResult(game)
+  lastContinueTap = input?.pointerType
+    ? { at: Date.now(), x: input.clientX, y: input.clientY, pointerType: input.pointerType }
+    : null
   const view = toGameView(game)
   updateStatus(view)
   appendCommandLines(view.currentEvent.actions)
@@ -416,7 +420,18 @@ function advanceAfterSuccess(): void {
   ])
 }
 
-function selectAction(index: number): void {
+function selectAction(index: number, input?: PointerEvent): void {
+  if (input && lastContinueTap) {
+    const elapsed = Date.now() - lastContinueTap.at
+    const samePointer = input.pointerType === lastContinueTap.pointerType
+    const sameTarget = Math.hypot(input.clientX - lastContinueTap.x, input.clientY - lastContinueTap.y) <= 24
+    if (elapsed <= 500 && samePointer && sameTarget) {
+      lastContinueTap = null
+      return
+    }
+    if (elapsed > 500) lastContinueTap = null
+  }
+  if (input) lastContinueTap = null
   if (phase !== 'waiting' || !activePromptLine || output.isBusy || game.status !== 'playing') return
   const action = toGameView(game).currentEvent.actions[index]
   if (!action) return
@@ -463,7 +478,7 @@ document.addEventListener('click', event => {
     output.skip()
     return
   }
-  advanceAfterSuccess()
+  continueAfterResultFlow(event instanceof PointerEvent ? event : undefined)
 })
 
 commandList.addEventListener('click', event => {
@@ -472,7 +487,7 @@ commandList.addEventListener('click', event => {
   const button = target.closest<HTMLButtonElement>('[data-action-index]')
   if (!button || button.disabled) return
   const index = Number(button.dataset.actionIndex)
-  if (Number.isInteger(index)) selectAction(index)
+  if (Number.isInteger(index)) selectAction(index, event instanceof PointerEvent ? event : undefined)
 })
 
 restartCommand.addEventListener('click', event => {
@@ -517,7 +532,7 @@ window.addEventListener('keydown', event => {
       output.skip()
     } else if (phase === 'await-continue') {
       event.preventDefault()
-      advanceAfterSuccess()
+      continueAfterResultFlow()
     }
     return
   }
