@@ -92,6 +92,13 @@ test('zone 1 content exactly matches the Phase 2 roster and each event has three
 })
 
 test('Phase 2 state links are set only by the intended successful choices', () => {
+  const batteryState = { ...atEvent('battery'), power: 10 }
+  const charged = resolveExpansionAction(batteryState, 0, 0, allTestEvents, fixedRandom)
+  const failedCharge = resolveExpansionAction(batteryState, 0, 99, allTestEvents, fixedRandom)
+  assert.equal(charged.power, 12)
+  assert.equal(charged.history.at(-1)?.powerChange, 2)
+  assert.equal(failedCharge.history.at(-1)?.powerChange, -2)
+
   const keyFound = complete('deep-key-cache', 0, 0)
   const keyMissed = complete('deep-key-cache', 0, 99)
   assert.deepEqual(keyFound.inventory, ['service-key'])
