@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "node --test --test-isolation=none tests/*.test.ts",
     "test:browser": "node tests/browser-check.mjs",
-    "simulate": "node scripts/simulate.mjs"
+    "simulate": "node scripts/simulate.mjs",
+    "validate:phase2": "node scripts/validate-phase2-catalog.mjs",
+    "render:phase2": "node scripts/render-phase2-docs.mjs"
   },
   "devDependencies": {
     "playwright": "^1.64.0",

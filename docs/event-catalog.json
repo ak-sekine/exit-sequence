@@ -1,0 +1,6150 @@
+{
+  "schemaVersion": 1,
+  "status": "phase-2-design-only",
+  "runtimeReady": false,
+  "gameRules": {
+    "tiles": 100,
+    "zones": 5,
+    "tilesPerZone": 20,
+    "inventoryCapacity": 3,
+    "maxGuaranteedEventsPerZone": 20,
+    "ordinaryCandidatesPerZone": 30,
+    "linkedEventsPerZone": 10
+  },
+  "items": [
+    {
+      "id": "service-key",
+      "name": "廃棄区画の保守鍵",
+      "reusable": false,
+      "acquireEventId": "deep-key-cache",
+      "useEventId": "waste-key-hatch",
+      "capacityPlan": "区画1で最大1個取得。区画2最初の保証使用で消費。"
+    },
+    {
+      "id": "copper-fuse",
+      "name": "銅線ヒューズ",
+      "reusable": false,
+      "acquireEventId": "waste-fuse-salvage",
+      "useEventId": "production-fuse-jig",
+      "capacityPlan": "区画2で最大1個取得。区画3の規格治具で消費。"
+    },
+    {
+      "id": "route-card",
+      "name": "折りたたみ工程カード",
+      "reusable": true,
+      "acquireEventId": "production-route-card",
+      "useEventId": "ops-route-board",
+      "capacityPlan": "区画3で取得、区画4で再利用型の照合に使う。"
+    },
+    {
+      "id": "access-code",
+      "name": "検査端末の型番コード",
+      "reusable": false,
+      "acquireEventId": "production-access-code",
+      "useEventId": "ops-auth-terminal",
+      "capacityPlan": "区画3で最大1個取得。区画4の認証で消費。"
+    }
+  ],
+  "facilities": [
+    {
+      "id": "alarm-route",
+      "name": "警報線図の位置情報",
+      "followUpEventId": "waste-alarm-relay",
+      "setEventIds": [
+        "deep-alarm-map"
+      ]
+    },
+    {
+      "id": "alarm-disabled",
+      "name": "廃棄区画警報停止",
+      "followUpEventId": "mutant-quiet-way",
+      "setEventIds": [
+        "waste-alarm-relay"
+      ]
+    },
+    {
+      "id": "aux-power",
+      "name": "予備電源復旧",
+      "followUpEventId": "ops-powered-lift",
+      "setEventIds": [
+        "waste-aux-switch",
+        "production-fuse-jig"
+      ]
+    },
+    {
+      "id": "coolant-diverted",
+      "name": "冷却水を戻り管へ切替",
+      "followUpEventId": "ops-coolant-valve",
+      "setEventIds": [
+        "waste-coolant-diverter"
+      ]
+    },
+    {
+      "id": "pressure-balanced",
+      "name": "外扉の差圧安定",
+      "followUpEventId": "surface-pressure-door",
+      "setEventIds": [
+        "ops-coolant-valve"
+      ]
+    },
+    {
+      "id": "shaft-braced",
+      "name": "点検シャフト安全爪",
+      "followUpEventId": "ops-shaft-release",
+      "setEventIds": [
+        "deep-shaft-wheel"
+      ]
+    },
+    {
+      "id": "safety-rail",
+      "name": "梯子の補助柵",
+      "followUpEventId": "surface-safety-rail",
+      "setEventIds": [
+        "ops-shaft-release"
+      ]
+    },
+    {
+      "id": "vent-bypass",
+      "name": "換気バイパス経路",
+      "followUpEventId": "surface-warm-air",
+      "setEventIds": [
+        "ops-vent-route"
+      ]
+    },
+    {
+      "id": "signal-mark",
+      "name": "外部信号の反射角",
+      "followUpEventId": "surface-signal-mirror",
+      "setEventIds": [
+        "deep-signal-foil"
+      ]
+    },
+    {
+      "id": "lift-powered",
+      "name": "保守昇降機復旧",
+      "followUpEventId": "surface-lift-exit",
+      "setEventIds": [
+        "ops-powered-lift"
+      ]
+    },
+    {
+      "id": "code-accepted",
+      "name": "保守端末認証済み",
+      "followUpEventId": "surface-coded-airlock",
+      "setEventIds": [
+        "ops-auth-terminal"
+      ]
+    },
+    {
+      "id": "safe-route",
+      "name": "安全搬送路の照合記録",
+      "followUpEventId": "surface-route-exit",
+      "setEventIds": [
+        "ops-route-board"
+      ]
+    },
+    {
+      "id": "ventilation-shutter",
+      "name": "換気シャッター開放",
+      "followUpEventId": "ops-vent-route",
+      "setEventIds": [
+        "waste-vent-shutter"
+      ]
+    }
+  ],
+  "npcs": [
+    {
+      "id": "momo",
+      "name": "モモ",
+      "appearance": "小型整備ロボ。片耳のように曲がったアンテナ、丸い作業アーム。",
+      "personality": "心配性だが親切。お礼の練習をしてから話す。",
+      "voice": "小声で語尾に「かも」。",
+      "expertise": "整備・工具棚",
+      "firstEventId": "npc-momo-first",
+      "revisitEventIds": [
+        "npc-momo-return"
+      ],
+      "thirdEventId": null,
+      "successCondition": "npc-momo-firstで救出に成功し状態をrescuedにする。",
+      "reunionCondition": "momo=rescued。失敗/見送り状態では保証も候補化もしない。",
+      "reunionEffect": "モモが工具ラベルで安全な足場を作り、小さな恩返しをする",
+      "failureHandling": "救出失敗ならNPC状態をrescue-failedにし、再会イベントを予約しない。見送りならencounteredのまま。救出前提の感謝文は出さない。"
+    },
+    {
+      "id": "nori",
+      "name": "ノリ",
+      "appearance": "長い測距棒と額の水平器。",
+      "personality": "怖がりだが几帳面。危険も小数点つきで測る。",
+      "voice": "小声で距離と「たぶん」を添える。",
+      "expertise": "測量・床の安全確認",
+      "firstEventId": "npc-nori-first",
+      "revisitEventIds": [
+        "npc-nori-return"
+      ],
+      "thirdEventId": null,
+      "successCondition": "npc-nori-firstで救出に成功し状態をrescuedにする。",
+      "reunionCondition": "nori=rescued。失敗/見送り状態では保証も候補化もしない。",
+      "reunionEffect": "ノリが以前の測定を使い、ひびのない荷役路を示す",
+      "failureHandling": "救出失敗ならNPC状態をrescue-failedにし、再会イベントを予約しない。見送りならencounteredのまま。救出前提の感謝文は出さない。"
+    },
+    {
+      "id": "goro",
+      "name": "ゴロ",
+      "appearance": "頭に大きな運搬コンテナをかぶる癖。",
+      "personality": "おしゃべりで陽気。箱を外すと急に静か。",
+      "voice": "大声で短い擬音を交える。",
+      "expertise": "運搬・音の反響",
+      "firstEventId": "npc-goro-first",
+      "revisitEventIds": [
+        "npc-goro-return"
+      ],
+      "thirdEventId": null,
+      "successCondition": "npc-goro-firstで救出に成功し状態をrescuedにする。",
+      "reunionCondition": "goro=rescued。失敗/見送り状態では保証も候補化もしない。",
+      "reunionEffect": "ゴロが以前の大声を反響探知に使い、空洞の位置を教える",
+      "failureHandling": "救出失敗ならNPC状態をrescue-failedにし、再会イベントを予約しない。見送りならencounteredのまま。救出前提の感謝文は出さない。"
+    },
+    {
+      "id": "chiri",
+      "name": "チリ",
+      "appearance": "小型清掃ロボ。曲がったブラシを大事にする。",
+      "personality": "働き者で約束を守る。掃除を途中でやめない。",
+      "voice": "明るく「さっぱり」を口癖にする。",
+      "expertise": "清掃・床の痕跡",
+      "firstEventId": "npc-chiri-first",
+      "revisitEventIds": [
+        "npc-chiri-return"
+      ],
+      "thirdEventId": null,
+      "successCondition": "npc-chiri-firstで救出に成功し状態をrescuedにする。",
+      "reunionCondition": "chiri=rescued。失敗/見送り状態では保証も候補化もしない。",
+      "reunionEffect": "チリが約束どおり掃き、隠れていた車輪跡を出した",
+      "failureHandling": "救出失敗ならNPC状態をrescue-failedにし、再会イベントを予約しない。見送りならencounteredのまま。救出前提の感謝文は出さない。"
+    },
+    {
+      "id": "pico",
+      "name": "ピコ",
+      "appearance": "札貼りアームに自分の名前札が何枚もある。",
+      "personality": "せっかちだが学習が早い。",
+      "voice": "短く工程番号を復唱する。",
+      "expertise": "仕分け・工程表示",
+      "firstEventId": "npc-pico-first",
+      "revisitEventIds": [
+        "npc-pico-return"
+      ],
+      "thirdEventId": null,
+      "successCondition": "npc-pico-firstで救出に成功し状態をrescuedにする。",
+      "reunionCondition": "pico=rescued。失敗/見送り状態では保証も候補化もしない。",
+      "reunionEffect": "ピコが貼り直した工程札で、安全な搬送順を教える",
+      "failureHandling": "救出失敗ならNPC状態をrescue-failedにし、再会イベントを予約しない。見送りならencounteredのまま。救出前提の感謝文は出さない。"
+    },
+    {
+      "id": "kabo",
+      "name": "カボ",
+      "appearance": "緩衝材を肩にまとった大柄な梱包ロボ。",
+      "personality": "心配性でやさしい。自分が箱に隠れがち。",
+      "voice": "ゆっくり話し、物を包む表現が多い。",
+      "expertise": "梱包・衝撃吸収",
+      "firstEventId": "npc-kabo-first",
+      "revisitEventIds": [
+        "npc-kabo-return"
+      ],
+      "thirdEventId": null,
+      "successCondition": "npc-kabo-firstで救出に成功し状態をrescuedにする。",
+      "reunionCondition": "kabo=rescued。失敗/見送り状態では保証も候補化もしない。",
+      "reunionEffect": "カボが以前の梱包材を再利用して、主人公を段差から守る",
+      "failureHandling": "救出失敗ならNPC状態をrescue-failedにし、再会イベントを予約しない。見送りならencounteredのまま。救出前提の感謝文は出さない。"
+    },
+    {
+      "id": "lens",
+      "name": "レン",
+      "appearance": "胸に交換式の検査レンズを携える。",
+      "personality": "観察好き。自分の顔表示の曇りには気づきにくい。",
+      "voice": "光や焦点の比喩で静かに話す。",
+      "expertise": "光学検査・反射",
+      "firstEventId": "npc-lens-first",
+      "revisitEventIds": [
+        "npc-lens-return"
+      ],
+      "thirdEventId": null,
+      "successCondition": "npc-lens-firstで救出に成功し状態をrescuedにする。",
+      "reunionCondition": "lens=rescued。失敗/見送り状態では保証も候補化もしない。",
+      "reunionEffect": "レンが磨いたレンズで塗りつぶしの下の避難線を見つける",
+      "failureHandling": "救出失敗ならNPC状態をrescue-failedにし、再会イベントを予約しない。見送りならencounteredのまま。救出前提の感謝文は出さない。"
+    },
+    {
+      "id": "peta",
+      "name": "ペタ",
+      "appearance": "折り畳み点検表を何枚も背負う。",
+      "personality": "几帳面で粘り強い。抜け欄を放置できない。",
+      "voice": "項目番号と完了印を口にする。",
+      "expertise": "保守記録・設備確認",
+      "firstEventId": "npc-peta-first",
+      "revisitEventIds": [
+        "npc-peta-return"
+      ],
+      "thirdEventId": null,
+      "successCondition": "npc-peta-firstで救出に成功し状態をrescuedにする。",
+      "reunionCondition": "peta=rescued。失敗/見送り状態では保証も候補化もしない。",
+      "reunionEffect": "ペタの点検履歴が稼働設備を特定し、無駄な再起動を避ける",
+      "failureHandling": "救出失敗ならNPC状態をrescue-failedにし、再会イベントを予約しない。見送りならencounteredのまま。救出前提の感謝文は出さない。"
+    },
+    {
+      "id": "jin",
+      "name": "ジン",
+      "appearance": "絶縁手袋と電圧計を装備。片手だけ手袋がない。",
+      "personality": "慎重な電気係。安全確認を三度行う。",
+      "voice": "「無電圧、確認」を繰り返す。",
+      "expertise": "電気安全・絶縁",
+      "firstEventId": "npc-jin-first",
+      "revisitEventIds": [
+        "npc-jin-return"
+      ],
+      "thirdEventId": null,
+      "successCondition": "npc-jin-firstで救出に成功し状態をrescuedにする。",
+      "reunionCondition": "jin=rescued。失敗/見送り状態では保証も候補化もしない。",
+      "reunionEffect": "ジンが絶縁を確認し、危険な端子に触れず済む",
+      "failureHandling": "救出失敗ならNPC状態をrescue-failedにし、再会イベントを予約しない。見送りならencounteredのまま。救出前提の感謝文は出さない。"
+    },
+    {
+      "id": "waku",
+      "name": "ワク",
+      "appearance": "小さな風よけ板を両手で抱える軽量ロボ。",
+      "personality": "根気強く、風の強い場所でも板を離さない。",
+      "voice": "風向を擬音で表し、穏やかに話す。",
+      "expertise": "送風・風よけ",
+      "firstEventId": "npc-waku-first",
+      "revisitEventIds": [
+        "npc-waku-return"
+      ],
+      "thirdEventId": null,
+      "successCondition": "npc-waku-firstで救出に成功し状態をrescuedにする。",
+      "reunionCondition": "waku=rescued。失敗/見送り状態では保証も候補化もしない。",
+      "reunionEffect": "ワクが前回の板を直して出口風を弱め、主人公を助ける",
+      "failureHandling": "救出失敗ならNPC状態をrescue-failedにし、再会イベントを予約しない。見送りならencounteredのまま。救出前提の感謝文は出さない。"
+    }
+  ],
+  "events": [
+    {
+      "zone": 1,
+      "id": "battery",
+      "name": "拾いもののバッテリー",
+      "category": "normal",
+      "what": "棚の下に古い蓄電池が転がる",
+      "distinctive": "値札を気にする主人公が、電池の「返却期限」刻印を発見する",
+      "actionDirections": [
+        "端子を同期する",
+        "少量だけ受け取る",
+        "銘板を査定する"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "bulkhead",
+      "name": "ごきげんななめの隔壁",
+      "category": "normal",
+      "what": "旧作業用隔壁が微妙に開いたまま通路をふさぐ",
+      "distinctive": "端子は生きているが、扉の保守表示は作業員のあだ名で埋め尽くされている",
+      "actionDirections": [
+        "電子ロックを読む",
+        "蝶番を持ち上げる",
+        "点検ダクトを探す"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-concrete-loaf",
+      "name": "パン形コンクリート",
+      "category": "normal",
+      "what": "パンに見える固まりが通路の真ん中にある",
+      "distinctive": "実は補修材の乾燥見本で、底だけ空洞",
+      "actionDirections": [
+        "角を軽く叩く",
+        "空洞に工具を差す",
+        "表面を削って段差にする"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-crate-orbit",
+      "name": "回り続ける箱",
+      "category": "normal",
+      "what": "斜面で空箱が同じ場所を周回している",
+      "distinctive": "床の傾きと丸い車輪の偶然が作る小さな軌道",
+      "actionDirections": [
+        "車輪を止める",
+        "箱に乗って進む",
+        "軌道の外を歩く"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-dust-cloud",
+      "name": "くしゃみ粉じん",
+      "category": "normal",
+      "what": "粉じんが動くたび雲になって顔表示を曇らせる",
+      "distinctive": "粒子の流れが床の亀裂からの風を描く",
+      "actionDirections": [
+        "吸気口を塞ぐ",
+        "雲の薄い層を選ぶ",
+        "顔表示を下げて進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-echo-pipe",
+      "name": "返事をする配管",
+      "category": "normal",
+      "what": "呼びかけるたび配管が別の声色で返す",
+      "distinctive": "分岐ごとに反響が変わり、一本だけ出口の風を返している",
+      "actionDirections": [
+        "反響を比べる",
+        "壁を軽く叩く",
+        "風の弱い枝をたどる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-fake-door",
+      "name": "壁紙の出口",
+      "category": "normal",
+      "what": "出口表示の先は壁に描かれた古い案内絵",
+      "distinctive": "本物の扉は隣の壁紙の継ぎ目に隠れている",
+      "actionDirections": [
+        "絵の縮尺を測る",
+        "継ぎ目を探す",
+        "絵の矢印を逆に読む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-floor-piano",
+      "name": "鍵盤床",
+      "category": "normal",
+      "what": "色違いの床板を踏むと短い音が鳴る",
+      "distinctive": "順番を守ると床下のラッチが音で振動する",
+      "actionDirections": [
+        "音階を試す",
+        "板を一枚ずつ押す",
+        "音を立てず梁を渡る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-foam-lake",
+      "name": "泡の池",
+      "category": "normal",
+      "what": "床のくぼみに洗浄泡が厚く積もる",
+      "distinctive": "泡の下に床の継ぎ目が隠れ、泡だけが元気に膨らむ",
+      "actionDirections": [
+        "棒で泡を分ける",
+        "乾いた縁を渡る",
+        "泡をすくって足場を作る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-helmet-nest",
+      "name": "ヘルメットの巣",
+      "category": "normal",
+      "what": "古い作業ヘルメットに配線くずが積まれる",
+      "distinctive": "配線くずの奥で小型換気ファンが巣材を送っている",
+      "actionDirections": [
+        "巣材をそっと移す",
+        "ファンを止める",
+        "巣のない側を通る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-loose-grate",
+      "name": "口笛を吹く格子",
+      "category": "normal",
+      "what": "床格子が風で口笛のような音を立てる",
+      "distinctive": "格子の下は浅い排水溝で、音が空洞位置を教える",
+      "actionDirections": [
+        "格子を締める",
+        "溝をまたぐ",
+        "音の強い側を避ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-magnet-snow",
+      "name": "磁石の吹雪",
+      "category": "normal",
+      "what": "磁性粉が主人公の装甲に雪のように貼りつく",
+      "distinctive": "粉が磁力の向きを示し、壁の向こうに空洞がある",
+      "actionDirections": [
+        "粉の流れを見る",
+        "絶縁布をかぶる",
+        "壁の空洞をたたく"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-mirror-puddle",
+      "name": "逆さまの水面",
+      "category": "normal",
+      "what": "黒い水面に主人公の姿が上下逆さに映る",
+      "distinctive": "反射像だけが床の低い通路を先に見せる",
+      "actionDirections": [
+        "水面に灯りを近づける",
+        "乾いた石を置く",
+        "反射の先をのぞく"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-misfiled-bone",
+      "name": "骨そっくり部品",
+      "category": "normal",
+      "what": "白い部品が床に散らばり、主人公は化石だと思い込む",
+      "distinctive": "部品には左右の靴番号があり、昔の作業靴の中敷きだ",
+      "actionDirections": [
+        "番号を並べる",
+        "材質を調べる",
+        "散らばりを避けて進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-moon-lamp",
+      "name": "欠けた月の非常灯",
+      "category": "normal",
+      "what": "半円だけ光る非常灯が天井に残る",
+      "distinctive": "欠けた部分は電球切れではなく、灯具の影が出口向きを示す",
+      "actionDirections": [
+        "灯具を回す",
+        "影を壁に写す",
+        "灯りの届かない側を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-nameplate",
+      "name": "名前札の迷子",
+      "category": "normal",
+      "what": "床一面に作業ロボットの名札が散らばる",
+      "distinctive": "同じ苗字が二枚あり、片方だけ裏に通路番号が刻まれる",
+      "actionDirections": [
+        "番号を照合する",
+        "磁石で集める",
+        "名札のない通路を選ぶ"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-nut-rain",
+      "name": "ナットの雨宿り",
+      "category": "normal",
+      "what": "天井から錆びたナットがぱらぱら落ちる",
+      "distinctive": "落下が三拍子で、床のくぼみに小さな音階ができている",
+      "actionDirections": [
+        "傘板を組む",
+        "落下源を探る",
+        "拍子に合わせて走る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-old-ticket",
+      "name": "期限切れ整理券",
+      "category": "normal",
+      "what": "床に古い作業順番札が落ちている",
+      "distinctive": "札の穴の形が近くの扉の解錠レバーに合う",
+      "actionDirections": [
+        "札を照合する",
+        "番号順に並べる",
+        "札を残して狭い脇道へ"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-paper-boat",
+      "name": "排水路の紙舟",
+      "category": "normal",
+      "what": "湿った紙片が浅い水路で船の形を保つ",
+      "distinctive": "紙片は古い保守図の切れ端で、折り目に水路図が残る",
+      "actionDirections": [
+        "折り目を開く",
+        "舟の進路を追う",
+        "乾いた縁を選ぶ"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-pocket-shadow",
+      "name": "ポケットの影",
+      "category": "normal",
+      "what": "壁に主人公の回収袋だけ大きく映る",
+      "distinctive": "影の輪郭が壁のへこみを隠している",
+      "actionDirections": [
+        "影の位置を変える",
+        "壁を押してみる",
+        "影の外を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-quiet-clock",
+      "name": "止まった点検時計",
+      "category": "normal",
+      "what": "針が止まった大型時計が通路上に垂れている",
+      "distinctive": "針の影だけが換気で動き、隠れた通風口を指す",
+      "actionDirections": [
+        "時計を支える",
+        "影を追う",
+        "下をくぐる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-rubber-stalactite",
+      "name": "ゴムのつらら",
+      "category": "normal",
+      "what": "古い緩衝材が天井から長く垂れる",
+      "distinctive": "引くと戻るが、奥に空気の通る隙間が見える",
+      "actionDirections": [
+        "押し縮める",
+        "根元を外す",
+        "隙間を横向きに抜ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-shelf-telescope",
+      "name": "棚のすきま望遠鏡",
+      "category": "normal",
+      "what": "棚の隙間から小さな緑の点が見える",
+      "distinctive": "隙間は一直線に通気塔まで抜け、地上の光を反射する",
+      "actionDirections": [
+        "隙間をのぞく",
+        "棚板を一枚外す",
+        "棚の後ろを探る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-sleeper-drum",
+      "name": "二度寝する保管ドラム",
+      "category": "normal",
+      "what": "空の円筒容器からいびきのような振動がする",
+      "distinctive": "中にいるのは風だけで、容器が共鳴している",
+      "actionDirections": [
+        "蓋をずらす",
+        "側面の振動を止める",
+        "外側を回り込む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-socket-firefly",
+      "name": "光るコンセント",
+      "category": "normal",
+      "what": "ひとつの壁端子が小さく点滅する",
+      "distinctive": "端子は無電力で、近くの反射板が光を返している",
+      "actionDirections": [
+        "反射板を探す",
+        "端子を検電する",
+        "光る壁に沿う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-swinging-cable",
+      "name": "届かないケーブル",
+      "category": "normal",
+      "what": "切れたケーブルが振り子のように揺れる",
+      "distinctive": "揺れが壁の隠しパネルを周期的に打つ",
+      "actionDirections": [
+        "揺れを止める",
+        "反動でスイッチを押す",
+        "振り子の外を回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-tiny-window",
+      "name": "膝丈の窓",
+      "category": "normal",
+      "what": "分厚い壁に小さな丸窓がある",
+      "distinctive": "窓の向こうは隣の通路で、向こう側からも誰かの落書きがある",
+      "actionDirections": [
+        "窓を磨く",
+        "枠を外す",
+        "壁の外周を回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-understair-garden",
+      "name": "階段下のきのこ畑",
+      "category": "normal",
+      "what": "暗がりに光るきのこ状の樹脂が並ぶ",
+      "distinctive": "光は菌ではなく蓄光塗料で、床の段差に沿っている",
+      "actionDirections": [
+        "光を頼りに歩く",
+        "樹脂をはがす",
+        "低い梁の下を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-wall-sneeze",
+      "name": "くしゃみする壁",
+      "category": "normal",
+      "what": "壁の穴から空気が吹いて粉を飛ばす",
+      "distinctive": "風圧が弱まると壁内の軽い隔壁が開く",
+      "actionDirections": [
+        "穴をふさぐ",
+        "風の周期を待つ",
+        "粉の飛ぶ方向へ進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-whisper-fan",
+      "name": "ひそひそ送風機",
+      "category": "normal",
+      "what": "止まりかけのファンが囁くような風音を出す",
+      "distinctive": "回転周期が危険な床板の揺れと同期している",
+      "actionDirections": [
+        "周期を測る",
+        "羽根を押さえる",
+        "風の止む瞬間に渡る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-alarm-map",
+      "name": "警報線の落書き地図",
+      "category": "linked",
+      "what": "壁の落書きが古い警報配線の経路を描く",
+      "distinctive": "落書きの矢印は子どもの顔に見えるが、配線点検記号として正確",
+      "actionDirections": [
+        "線をたどって記録する",
+        "チョークで印を足す",
+        "警報器を避ける"
+      ],
+      "condition": "通常候補。図を読み取った時だけalarm-routeタグ",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: history:alarm-route",
+      "linkedResources": [
+        "facility:alarm-route"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "waste-alarm-relay"
+      ],
+      "followUpEffect": "線図が警報リレーの場所を示し、停止手順につながる",
+      "causalExplanation": "図の記号と後の実配線の一致を台詞で説明する",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-coolant-label",
+      "name": "冷却管の迷子札",
+      "category": "linked",
+      "what": "床の管に結ばれた札が管理区画のラジエーター番号を示す",
+      "distinctive": "札の絵は魚に見えるが、番号は配管図と正確に合う",
+      "actionDirections": [
+        "番号を控える",
+        "管の流れを調べる",
+        "札をたどって点検溝へ行く"
+      ],
+      "condition": "通常候補。番号を読み取った時にcoolant-labelタグ",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: history:coolant-label",
+      "linkedResources": [
+        "info:coolant-label"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "waste-coolant-diverter"
+      ],
+      "followUpEffect": "札の番号が廃棄区画の分岐弁と管理区ラジエーターを結ぶ",
+      "causalExplanation": "同じ設備番号を後の弁で再確認する",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-key-cache",
+      "name": "工具箱の底の保守鍵",
+      "category": "linked",
+      "what": "工具箱の二重底に保守鍵が挟まっている",
+      "distinctive": "箱の分類札は「鍵なし」と書かれ、鍵は札の裏に隠れている",
+      "actionDirections": [
+        "中身を静かに仕分ける",
+        "箱を傾ける",
+        "二重底を探る"
+      ],
+      "condition": "通常候補。鍵の取得は成功側のみ",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: item:service-key取得",
+      "linkedResources": [
+        "item:service-key"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "waste-key-hatch"
+      ],
+      "followUpEffect": "小さな鍵が次の保守ハッチの機械錠に合う",
+      "causalExplanation": "取得理由と使用先の形状を画面文で明示する",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-shaft-wheel",
+      "name": "シャフトの手回し輪",
+      "category": "linked",
+      "what": "床に落ちた手回し輪が錆びた点検シャフトにつながる",
+      "distinctive": "輪は非常用で、回すほど上の安全爪が一段ずつ掛かる",
+      "actionDirections": [
+        "輪を少しずつ回す",
+        "歯止めを先に入れる",
+        "シャフト脇の段を探す"
+      ],
+      "condition": "通常候補。歯止めを掛けた場合のみshaft-braced",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: facility:shaft-braced=true",
+      "linkedResources": [
+        "facility:shaft-braced"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "ops-shaft-release"
+      ],
+      "followUpEffect": "爪が掛かれば後のシャフト梯子の荷重を支えられる",
+      "causalExplanation": "手回し輪が同じシャフトの安全爪を上げたと示す",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-signal-foil",
+      "name": "信号を返す銀紙",
+      "category": "linked",
+      "what": "銀色の保温材が壁の穴から外の微弱信号を反射する",
+      "distinctive": "主人公が自分の目を鏡代わりにして反射角を調整する",
+      "actionDirections": [
+        "銀紙を向け直す",
+        "信号を数える",
+        "遮蔽物の外へ回る"
+      ],
+      "condition": "通常候補。信号を記録した場合のみsignal-markタグ",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: history:signal-mark",
+      "linkedResources": [
+        "facility:signal-mark"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "surface-signal-mirror"
+      ],
+      "followUpEffect": "反射した施設信号は外壁受信器の周波数と同じ",
+      "causalExplanation": "反射角と受信灯の点滅が合う理由を説明する",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "deep-vent-sketch",
+      "name": "換気路の紙模型",
+      "category": "linked",
+      "what": "廃材で作られた紙の立体模型が床にある",
+      "distinctive": "折り目が本物の換気路と同じ角度で、紙の風車が一か所だけ回る",
+      "actionDirections": [
+        "模型を広げる",
+        "紙風車を吹く",
+        "天井の通気口を探す"
+      ],
+      "condition": "通常候補。正しい出口を読んだ時にvent-mapタグ",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: history:vent-map",
+      "linkedResources": [
+        "info:vent-map"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "waste-vent-shutter"
+      ],
+      "followUpEffect": "折り角度と壁内の送風路が一致している",
+      "causalExplanation": "再会時に紙模型の折り目と換気音を結びつける",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "npc-chiri-first",
+      "name": "小さな清掃係チリ",
+      "category": "linked",
+      "what": "チリが床の割れ目に挟まった清掃ブラシを引けない",
+      "distinctive": "ブラシを助けるまで通路を掃かないと決めている",
+      "actionDirections": [
+        "ブラシを一緒に引く",
+        "柄を短く分解する",
+        "別の掃除道具を渡す"
+      ],
+      "condition": "導入時は無条件。成功時に再会用の合図を残す",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: chiri=rescued;失敗: chiri=rescue-failed;見送り: encountered",
+      "linkedResources": [
+        "npc:chiri"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "npc-chiri-return"
+      ],
+      "followUpEffect": "後にチリが埃を掃き、目印を見つけやすくする",
+      "causalExplanation": "チリの「掃除が先」の約束と後の埃の変化を結びつける",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "npc-goro-first",
+      "name": "おしゃべり運搬係ゴロ",
+      "category": "linked",
+      "what": "ゴロが空コンテナを頭にかぶり、向きが分からなくなった",
+      "distinctive": "声は大きいのに、コンテナを外すと急に小声",
+      "actionDirections": [
+        "側面の取っ手を引く",
+        "音を頼りに向きを合わせる",
+        "コンテナの底を外す"
+      ],
+      "condition": "導入時は無条件。成功時に道案内を約束",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: goro=rescued;失敗: goro=rescue-failed;見送り: encountered",
+      "linkedResources": [
+        "npc:goro"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "npc-goro-return"
+      ],
+      "followUpEffect": "後にゴロが大声で出口方向を知らせる",
+      "causalExplanation": "ゴロの音量とコンテナの失敗を再会時の笑いにつなげ、状態を説明する",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "npc-momo-first",
+      "name": "工具棚のモモ",
+      "category": "linked",
+      "what": "小型整備ロボのモモが工具棚の下で身動きできない",
+      "distinctive": "曲がったアンテナと丸い作業アーム、救出のお礼を何度も練習している",
+      "actionDirections": [
+        "棚を支えて引き出す",
+        "くさびを打って自力脱出を助ける",
+        "安全な場所に工具を置く"
+      ],
+      "condition": "導入時は無条件。棚から救出できた時だけrescued",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: momo=rescued;失敗: momo=rescue-failed;見送り: encountered",
+      "linkedResources": [
+        "npc:momo"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "npc-momo-return"
+      ],
+      "followUpEffect": "助けられたことを覚えたモモが上層で恩返しする",
+      "causalExplanation": "再会の台詞はmomo=rescued条件の後続だけに置き、「助けてもらった」と明示する",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 1,
+      "id": "npc-nori-first",
+      "name": "慎重な測量係ノリ",
+      "category": "linked",
+      "what": "ノリが崩れた床の手前で長い測距棒を持ち震えている",
+      "distinctive": "怖がりながらも距離の小数点を読み上げる几帳面さ",
+      "actionDirections": [
+        "棒で床を測る",
+        "支点を作って渡る",
+        "ノリの印を頼りに迂回する"
+      ],
+      "condition": "導入時は無条件。成功時に同行合図を覚える",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: nori=rescued;失敗: nori=rescue-failed;見送り: encountered",
+      "linkedResources": [
+        "npc:nori"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "npc-nori-return"
+      ],
+      "followUpEffect": "ノリが後に主人公のために安全な測量線を引く",
+      "causalExplanation": "測量値を具体的に引き合いに出し、救出失敗時は助けた前提の感謝をしない",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "conveyor",
+      "name": "止まらない搬送台",
+      "category": "normal",
+      "what": "廃棄物用ベルトが空箱を回し続ける",
+      "distinctive": "荷札を読めば停止位置が分かるが、箱は全部空",
+      "actionDirections": [
+        "制御板を押す",
+        "荷物に乗る",
+        "脇の点検歩廊へ回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "leak",
+      "name": "ぴりぴり水たまり",
+      "category": "normal",
+      "what": "仕分け室の水たまりにむき出し配線が触れる",
+      "distinctive": "泡の下だけで火花が走り、乾いた床板は壁際に残る",
+      "actionDirections": [
+        "絶縁棒を置く",
+        "跳び石を探す",
+        "水位の流れを読む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-bin-lid",
+      "name": "ぱたぱた蓋の回廊",
+      "category": "normal",
+      "what": "廃棄箱の蓋が風で順番に鳴る",
+      "distinctive": "音の遅れから箱の間に安全な隙間が分かる",
+      "actionDirections": [
+        "蓋を固定する",
+        "鳴る順に走る",
+        "箱の下をくぐる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-bin-race",
+      "name": "競争する仕分け箱",
+      "category": "normal",
+      "what": "二台の箱が傾斜で並走する",
+      "distinctive": "片方だけ車輪が欠け、止まる瞬間がずれる",
+      "actionDirections": [
+        "箱を押さえる",
+        "走路を横切る",
+        "荷受け台へ逃げる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-bone-sorter",
+      "name": "骨型パーツの選別機",
+      "category": "normal",
+      "what": "骨に見える樹脂部品を機械が分類中",
+      "distinctive": "部品には製造ロットが刻まれ、別室の回収箱と照合できる",
+      "actionDirections": [
+        "刻印を読む",
+        "選別機を止める",
+        "箱の裏へ回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-bottle-choir",
+      "name": "瓶の合唱",
+      "category": "normal",
+      "what": "選別帯の瓶が揺れて音を鳴らす",
+      "distinctive": "容量ごとに音程が違い、詰まりの位置だけ低音になる",
+      "actionDirections": [
+        "瓶を分ける",
+        "帯の速度を落とす",
+        "低音の列を避ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-broken-scale",
+      "name": "正直すぎる秤",
+      "category": "normal",
+      "what": "古い秤が主人公を「部品一式」と判定",
+      "distinctive": "袋を外すと重量が変わり、床の昇降板が反応する",
+      "actionDirections": [
+        "袋を乗せ直す",
+        "秤をゼロにする",
+        "横の荷重センサーを探す"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-cold-mist",
+      "name": "冷却霧のカーテン",
+      "category": "normal",
+      "what": "冷たい霧が低い所にたまる",
+      "distinctive": "霧の上には温風があり、床の傾斜が手前と逆",
+      "actionDirections": [
+        "高さを変えて進む",
+        "送風板を傾ける",
+        "壁の乾いた筋を追う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-compactor-yawn",
+      "name": "あくび圧縮機",
+      "category": "normal",
+      "what": "圧縮機がゆっくり開閉を繰り返す",
+      "distinctive": "閉じる直前に必ず短い空白があり、警報灯は切れている",
+      "actionDirections": [
+        "周期を数える",
+        "手動ロックを差す",
+        "側面の搬出口へ抜ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-cotton-cloud",
+      "name": "綿くずの雲",
+      "category": "normal",
+      "what": "繊維ごみが顔表示へふわふわまとわる",
+      "distinctive": "繊維が静電気で排気格子に集まり、その下に点検レバー",
+      "actionDirections": [
+        "水霧で落とす",
+        "静電気を逃がす",
+        "格子を避ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-disposal-calendar",
+      "name": "捨てられた当番表",
+      "category": "normal",
+      "what": "壁に清掃当番の予定表が残る",
+      "distinctive": "ロボットの似顔絵に落書きが加わり、夜間巡回時刻が読める",
+      "actionDirections": [
+        "予定表を読む",
+        "似顔絵を照合する",
+        "巡回の隙を利用する"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-drum-label",
+      "name": "違う中身のドラム缶",
+      "category": "normal",
+      "what": "危険札と無害札が貼り違えられている",
+      "distinctive": "音を聞くと中身は空で、缶底に分類表が残る",
+      "actionDirections": [
+        "表を読み直す",
+        "栓を検査する",
+        "札のない側を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-dust-broom",
+      "name": "自走ほうき",
+      "category": "normal",
+      "what": "清掃ほうきが同じ線を往復している",
+      "distinctive": "センサーが床の一本線だけを汚れと誤認している",
+      "actionDirections": [
+        "線を覆う",
+        "ほうきを誘導する",
+        "壁際をすり抜ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-foam-filter",
+      "name": "泡まみれフィルター",
+      "category": "normal",
+      "what": "洗浄泡がフィルターから逆流する",
+      "distinctive": "泡の中心は詰まりでなく、逆止弁の向き違い",
+      "actionDirections": [
+        "弁を反転する",
+        "泡を逃がす",
+        "乾燥棚に上がる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-glass-river",
+      "name": "ガラス片の川",
+      "category": "normal",
+      "what": "砕けた透明板が床の溝を覆う",
+      "distinctive": "破片の向きで上から落ちた場所が分かる",
+      "actionDirections": [
+        "布で覆う",
+        "溝の縁を渡る",
+        "大きな板を橋にする"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-label-snow",
+      "name": "ラベル吹雪",
+      "category": "normal",
+      "what": "剥がれた廃棄ラベルが視界を覆う",
+      "distinctive": "危険表示ではなく、古い荷物の行き先が混ざっている",
+      "actionDirections": [
+        "風を止める",
+        "ラベルを仕分ける",
+        "床の矢印をたどる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-laundry-chute",
+      "name": "洗濯物シュート",
+      "category": "normal",
+      "what": "作業着がシュートから垂れ下がる",
+      "distinctive": "袖の中に硬いカードがあり、服は清掃ロボの忘れ物",
+      "actionDirections": [
+        "袖をたぐる",
+        "シュート扉を開く",
+        "乾燥室を抜ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-magnet-belt",
+      "name": "磁選ベルトの誘惑",
+      "category": "normal",
+      "what": "ベルトが主人公の工具を引き寄せる",
+      "distinctive": "強磁場は短い区間だけで、停止ボタンは床面にある",
+      "actionDirections": [
+        "工具を外す",
+        "磁場の切れ目を待つ",
+        "樹脂板を盾にする"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-mosaic-floor",
+      "name": "分別モザイク",
+      "category": "normal",
+      "what": "色タイルが廃棄分類の絵を描く",
+      "distinctive": "欠けた一枚が掃除口の蓋になっている",
+      "actionDirections": [
+        "色の順を読む",
+        "欠けた所を調べる",
+        "タイルを渡って進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-oil-skates",
+      "name": "油膜スケート場",
+      "category": "normal",
+      "what": "薄い油が床を滑りやすくする",
+      "distinctive": "油の流れは低い場所へ向かい、古い樋を指す",
+      "actionDirections": [
+        "砂をまく",
+        "手すりで進む",
+        "油のない縁を探す"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-overfull-hook",
+      "name": "引っかかる回収フック",
+      "category": "normal",
+      "what": "天井のフックが袋の持ち手をつかむ",
+      "distinctive": "フックの進路は回収箱へ戻る安全なレール",
+      "actionDirections": [
+        "袋を外す",
+        "レールに沿って進む",
+        "袋を預けて身軽になる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-paper-tide",
+      "name": "紙の潮だまり",
+      "category": "normal",
+      "what": "破砕紙が換気で床を流れる",
+      "distinctive": "紙片が渦巻く所に床の排水口が詰まっている",
+      "actionDirections": [
+        "紙を集める",
+        "渦の縁を歩く",
+        "排水口を開ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-pneumatic-post",
+      "name": "迷子の気送管",
+      "category": "normal",
+      "what": "カプセルが管の中で行ったり来たりする",
+      "distinctive": "送り先札が裏返り、分岐弁を開けると通路番号が出る",
+      "actionDirections": [
+        "弁を切り替える",
+        "カプセルを回収する",
+        "管の外側を歩く"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-rinse-bell",
+      "name": "すすぎベル",
+      "category": "normal",
+      "what": "配管の水滴が金属板を鳴らす",
+      "distinctive": "ベルの響きが奥の空洞へ続く細い管を教える",
+      "actionDirections": [
+        "水滴を止める",
+        "響きを比べる",
+        "管の横を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-rubber-stamp",
+      "name": "巨大な検印",
+      "category": "normal",
+      "what": "廃棄確認スタンプが通路へ落ちている",
+      "distinctive": "印面には「再利用可」が残り、床の管理口を示す",
+      "actionDirections": [
+        "柄を起こす",
+        "印面を滑らせる",
+        "管理口の隙間を通る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-scrap-tower",
+      "name": "部品のぐらぐら塔",
+      "category": "normal",
+      "what": "金属片が高く積み上がり通路へ傾く",
+      "distinctive": "塔の中の空缶が水平器のように揺れる",
+      "actionDirections": [
+        "崩れ止めを置く",
+        "低い部品を抜く",
+        "塔の反対側へ回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-shredder-confetti",
+      "name": "紙吹雪シュレッダー",
+      "category": "normal",
+      "what": "停止中の裁断機から紙片が舞う",
+      "distinctive": "紙片は刃でなく側面ファンに吸われている",
+      "actionDirections": [
+        "ファンを切る",
+        "紙片の軌道を追う",
+        "裁断箱の脇を通る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-sorting-mirror",
+      "name": "仕分け鏡の迷路",
+      "category": "normal",
+      "what": "反射板が狭い分別通路を何度も映す",
+      "distinctive": "一枚だけ曇っていて、その裏が実通路",
+      "actionDirections": [
+        "曇りを拭く",
+        "光を揺らす",
+        "壁の継ぎ目を探る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-suction-mouth",
+      "name": "吸い込み口のしゃっくり",
+      "category": "normal",
+      "what": "大型集塵口が断続的に吸い込む",
+      "distinctive": "吸気の間隔が一定で、奥にフィルター交換口",
+      "actionDirections": [
+        "間隔を測る",
+        "吸入口を塞ぐ",
+        "壁の凹みに身を寄せる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-tin-can-tunnel",
+      "name": "缶のトンネル",
+      "category": "normal",
+      "what": "空き缶が天井の網に詰まる",
+      "distinctive": "缶の反射に作業灯が映り、奥の高さが分かる",
+      "actionDirections": [
+        "網を揺らす",
+        "缶を一列に寄せる",
+        "低い搬出口へ進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "npc-kabo-first",
+      "name": "大柄な梱包係カボ",
+      "category": "linked",
+      "what": "カボが緩衝材の山に埋まり、箱の中から返事をする",
+      "distinctive": "心配性だが箱を叩くと荷物扱いで返事をやめる",
+      "actionDirections": [
+        "緩衝材を順にどける",
+        "箱を傾ける",
+        "開いた通路から声を案内する"
+      ],
+      "condition": "導入時は無条件",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: kabo=rescued;失敗: kabo=rescue-failed;見送り: encountered",
+      "linkedResources": [
+        "npc:kabo"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "npc-kabo-return"
+      ],
+      "followUpEffect": "カボが後に梱包材を使った安全な足場を作る",
+      "causalExplanation": "助けられた事実と梱包材の使い方を具体的に結びつける",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "npc-momo-return",
+      "name": "廃棄ラベルのモモ",
+      "category": "linked",
+      "what": "モモがラベル束を抱え、助けてもらった工具棚の話をする",
+      "distinctive": "救出時に置いた工具を今も袋に結んでいる",
+      "actionDirections": [
+        "モモの仕分けを手伝う",
+        "ラベルで近道を作る",
+        "お礼だけ受け取って進む"
+      ],
+      "condition": "npc-momo=rescuedでのみ出現",
+      "requires": [
+        {
+          "kind": "npc-status",
+          "id": "momo",
+          "status": "rescued"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: npc-momo-firstの成功後、区画2で予約"
+      },
+      "stateChange": "成功: momo=repaid",
+      "linkedResources": [
+        "npc:momo"
+      ],
+      "relatedEventIds": [
+        "npc-momo-first"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "モモが工具ラベルで安全な足場を作り、小さな恩返しをする",
+      "causalExplanation": "救出済み条件の時だけ「助けてくれた」と発話。失敗状態ではイベント不成立",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "npc-nori-return",
+      "name": "ノリのまっすぐな線",
+      "category": "linked",
+      "what": "ノリが床に測量線を引き、以前の測距棒を掲げる",
+      "distinctive": "前回の小数点つき測定から危険区間を避ける線へ修正",
+      "actionDirections": [
+        "測量を一緒に確認する",
+        "線の端を固定する",
+        "線を参考に別経路を取る"
+      ],
+      "condition": "npc-nori=rescuedでのみ出現",
+      "requires": [
+        {
+          "kind": "npc-status",
+          "id": "nori",
+          "status": "rescued"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: npc-nori-firstの成功後、区画2で予約"
+      },
+      "stateChange": "成功: nori=repaid;床の安全印を共有",
+      "linkedResources": [
+        "npc:nori"
+      ],
+      "relatedEventIds": [
+        "npc-nori-first"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "ノリが以前の測定を使い、ひびのない荷役路を示す",
+      "causalExplanation": "「あの測定を覚えている」と線のずれを具体的に説明",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "npc-pico-first",
+      "name": "荷札係ピコ",
+      "category": "linked",
+      "what": "小さな札貼りロボのピコが回転仕分け台で混乱する",
+      "distinctive": "どの箱にも自分の名前札を貼ってしまった",
+      "actionDirections": [
+        "札を一緒に貼り直す",
+        "台の回転を止めて助ける",
+        "正しい列を指で示す"
+      ],
+      "condition": "導入時は無条件。成功時に後の整備情報を記録",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: pico=rescued;失敗: pico=rescue-failed;見送り: encountered",
+      "linkedResources": [
+        "npc:pico"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "npc-pico-return"
+      ],
+      "followUpEffect": "ピコが後に札で生産ラインの正しい順序を示す",
+      "causalExplanation": "自分の札を貼った失敗談を再会時に覚えている",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-alarm-relay",
+      "name": "警報リレーの裏側",
+      "category": "linked",
+      "what": "落書き地図どおり廃棄帯の警報リレーへ着く",
+      "distinctive": "警報は音でなく振動パッドも鳴らす二重系統",
+      "actionDirections": [
+        "配線札を照合する",
+        "音響だけ切り離す",
+        "振動床をまたぐ"
+      ],
+      "condition": "facility:alarm-routeがある場合に連携候補",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "alarm-route",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: alarm-route確認時は予約"
+      },
+      "stateChange": "成功: facility:alarm-disabled=true;失敗は状態維持",
+      "linkedResources": [
+        "facility:alarm-route"
+      ],
+      "relatedEventIds": [
+        "deep-alarm-map"
+      ],
+      "followUpEventIds": [
+        "mutant-quiet-way",
+        "surface-alarm-quiet"
+      ],
+      "followUpEffect": "地図で分岐を特定したため、警報を止めるか経路を覚えられる",
+      "causalExplanation": "地図の赤線と現場の札が同じ番号と説明",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-aux-switch",
+      "name": "予備電源の押し間違い",
+      "category": "linked",
+      "what": "予備系統のスイッチが「右へ」と書かれた札と逆に動く",
+      "distinctive": "古い札が鏡文字で、内部リレーは正常",
+      "actionDirections": [
+        "回路図を読み直す",
+        "安全な補助端子をつなぐ",
+        "無理に触らず迂回する"
+      ],
+      "condition": "通常候補。成功時にaux-power復旧",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: facility:aux-power=true",
+      "linkedResources": [
+        "facility:aux-power"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "ops-powered-lift"
+      ],
+      "followUpEffect": "復旧した予備系統が昇降機の専用母線へつながる",
+      "causalExplanation": "スイッチ番号と昇降機母線の同じ回路記号を示す",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-coolant-diverter",
+      "name": "冷却水の分岐弁",
+      "category": "linked",
+      "what": "廃棄物洗浄機から冷却水が床へ流れる",
+      "distinctive": "弁を回すと生産区の戻り管へ水を返せる",
+      "actionDirections": [
+        "分岐先を切り替える",
+        "漏れの前に受ける",
+        "水のない通路を進む"
+      ],
+      "condition": "history:coolant-labelを区画1で読み取った場合のみ連携候補。",
+      "requires": [
+        {
+          "kind": "history-tag",
+          "id": "coolant-label"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "history:coolant-label",
+        "reason": "区画1で読み取った番号に合う冷却水分岐弁が廃棄区画にあります。"
+      },
+      "stateChange": "成功: facility:coolant-diverted=true",
+      "linkedResources": [
+        "facility:coolant-diverted"
+      ],
+      "relatedEventIds": [
+        "deep-coolant-label"
+      ],
+      "followUpEventIds": [
+        "ops-coolant-valve"
+      ],
+      "followUpEffect": "分岐した冷却水は後の管理棟ラジエーターを満たす",
+      "causalExplanation": "水の流れと管理棟の乾いたラジエーターを対比",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-fuse-salvage",
+      "name": "割れていない銅線ヒューズ",
+      "category": "linked",
+      "what": "廃棄箱に保護管入りの銅線ヒューズが残る",
+      "distinctive": "廃棄理由は長さ違いで、製造ラインの補助規格には合う",
+      "actionDirections": [
+        "被覆を調べる",
+        "端子を磨く",
+        "規格札を写真に残す"
+      ],
+      "condition": "通常候補。成功側だけcopper-fuse取得",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: item:copper-fuse取得",
+      "linkedResources": [
+        "item:copper-fuse"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "production-fuse-jig"
+      ],
+      "followUpEffect": "ヒューズの刻印は生産区の治具番号と一致",
+      "causalExplanation": "番号照合を会話と成功率理由に使う",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-key-hatch",
+      "name": "保守鍵のぴったりハッチ",
+      "category": "linked",
+      "what": "狭い保守ハッチが通路をふさぐ",
+      "distinctive": "鍵穴の周囲に工具箱と同じ黄色い塗料が残る",
+      "actionDirections": [
+        "保守鍵で解錠する",
+        "ラッチを手動で押す",
+        "脇の選別溝を探す"
+      ],
+      "condition": "item:service-key所持時のみ。未所持なら候補にしない",
+      "requires": [
+        {
+          "kind": "item",
+          "id": "service-key",
+          "present": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 鍵取得時に区画2で予約"
+      },
+      "stateChange": "鍵所持の解錠は100%。成功時に鍵を消費",
+      "linkedResources": [
+        "item:service-key"
+      ],
+      "relatedEventIds": [
+        "deep-key-cache"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "回収した鍵の刻みがハッチの錠と一致し、一手で解錠できる",
+      "causalExplanation": "成功率100%の根拠として鍵の刻みと塗料を説明。不所持時は通常進路",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 2,
+      "id": "waste-vent-shutter",
+      "name": "換気模型どおりの廃棄シャッター",
+      "category": "linked",
+      "what": "最深部で見つけた紙模型どおりの角度に、廃棄区画の換気シャッターが組まれている",
+      "distinctive": "模型の紙風車と同じ位置の埃だけが動き、上の区画へ抜ける空気を示す",
+      "actionDirections": [
+        "vent-mapを壁面の折り目と照合",
+        "手動レバーでシャッターを開く",
+        "風の弱い廃棄歩廊へ迂回"
+      ],
+      "condition": "history:vent-mapを区画1で記録している場合のみ連携候補。",
+      "requires": [
+        {
+          "kind": "history-tag",
+          "id": "vent-map"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "history:vent-map",
+        "reason": "区画1の紙模型で換気角度を記録したため、対応するシャッターが現れます。"
+      },
+      "stateChange": "成功: ventilation-shutter=true。開放後、区画4の換気盤へ抜ける。",
+      "linkedResources": [
+        "info:vent-map"
+      ],
+      "relatedEventIds": [
+        "deep-vent-sketch"
+      ],
+      "followUpEventIds": [
+        "ops-vent-route"
+      ],
+      "followUpEffect": "区画4で同じ換気路の管理盤を予約し、実際のバイパスを開ける。",
+      "causalExplanation": "紙模型の折り角とシャッターの埃の流れが一致し、後の管理盤まで同じ送風路が続く。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "emergency",
+      "name": "非常電源の切替器",
+      "category": "normal",
+      "what": "非常系統の切替盤と遠くの物音",
+      "distinctive": "明かりを増やすと安全だが、警報も目立つ位置にある",
+      "actionDirections": [
+        "予備系統をつなぐ",
+        "負荷を分ける",
+        "警報だけ先に調べる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "generator",
+      "name": "二度寝中の発電機",
+      "category": "normal",
+      "what": "据え置き発電機が低く唸り停止を繰り返す",
+      "distinctive": "部品として持ち帰りたい主人公の回収袋には大きすぎる",
+      "actionDirections": [
+        "始動手順を追う",
+        "補助端子を測る",
+        "外装の共振を止める"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-assembly-song",
+      "name": "組立ラインの歌",
+      "category": "normal",
+      "what": "コンベアの警告音が旋律のように続く",
+      "distinctive": "一定の小節だけ押し出しピストンが止まる",
+      "actionDirections": [
+        "旋律を数える",
+        "音源を切る",
+        "止まる拍で渡る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-backwards-arm",
+      "name": "逆向きの作業アーム",
+      "category": "normal",
+      "what": "組立ロボの腕が後ろ向きに取り付けられている",
+      "distinctive": "腕は壊れておらず、鏡像部品の誤配で動作が逆",
+      "actionDirections": [
+        "関節を反転する",
+        "制御順を変える",
+        "腕の届かない側を通る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-battery-pair",
+      "name": "似ている電池二本",
+      "category": "normal",
+      "what": "同じ見た目の電池に異なる端子がつく",
+      "distinctive": "片方は検査治具用で主人公に接続すると逆流する",
+      "actionDirections": [
+        "極性を調べる",
+        "保護板を挟む",
+        "電池を動かさず進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-bent-ruler",
+      "name": "曲がった定規の橋",
+      "category": "normal",
+      "what": "長い定規が二台の台の間に渡る",
+      "distinctive": "目盛りの誤差が隙間の本当の幅を読ませる",
+      "actionDirections": [
+        "定規を裏返す",
+        "橋を補強する",
+        "下の保守溝を使う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-calibration-robot",
+      "name": "自分を校正する検査ロボ",
+      "category": "normal",
+      "what": "小型検査ロボが主人公の目の明るさを計る",
+      "distinctive": "ロボは仕事を終えるまで通路を譲れないと思い込む",
+      "actionDirections": [
+        "校正対象を変える",
+        "目の光を弱める",
+        "検査線の外へ迂回する"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-color-mixer",
+      "name": "気分屋の塗装ミキサー",
+      "category": "normal",
+      "what": "塗装ノズルが緑色だけ濃く吹き出す",
+      "distinctive": "塗料残量計が逆さにつき、空タンクを満タン表示している",
+      "actionDirections": [
+        "計器を直す",
+        "ノズルを切り替える",
+        "塗装ブースの外を歩く"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-cooling-fan",
+      "name": "冷却ファンの綿ぼこり",
+      "category": "normal",
+      "what": "巨大ファンの網に繊維が丸く詰まる",
+      "distinctive": "詰まりが風を壁の小さな開口へ向けている",
+      "actionDirections": [
+        "網を掃除する",
+        "風向板を変える",
+        "弱風の側を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-factory-clock",
+      "name": "ずれる工程時計",
+      "category": "normal",
+      "what": "三つの時計が別々の時刻を示す",
+      "distinctive": "一つだけ出荷ベルと同期し、工程扉の短い停止を知らせる",
+      "actionDirections": [
+        "時計を合わせる",
+        "ベルを待つ",
+        "手動レールを使う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-gear-garden",
+      "name": "歯車の花壇",
+      "category": "normal",
+      "what": "大小の歯車が床に花のように並ぶ",
+      "distinctive": "中央の小歯車だけ動き、下の整備口と噛み合う",
+      "actionDirections": [
+        "歯車を並べ直す",
+        "中央を押さえる",
+        "歯の間をまたぐ"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-glass-eye",
+      "name": "余った検査レンズ",
+      "category": "normal",
+      "what": "レンズが主人公を三人に映す",
+      "distinctive": "焦点を結ぶ一点だけ安全通路の反射材が見える",
+      "actionDirections": [
+        "焦点を合わせる",
+        "レンズを外す",
+        "反射の外を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-missing-screw",
+      "name": "一本足りない組立台",
+      "category": "normal",
+      "what": "半完成の作業台が一本のボルトで傾く",
+      "distinctive": "足りないボルトは台の影ではなく、隣の試作品に刺さっている",
+      "actionDirections": [
+        "試作品を調べる",
+        "台を支える",
+        "水平な床を選ぶ"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-mold-bubble",
+      "name": "金型の泡",
+      "category": "normal",
+      "what": "透明樹脂の金型に大きな気泡が閉じ込められる",
+      "distinctive": "泡の動きが金型の傾きと内部の空洞を示す",
+      "actionDirections": [
+        "金型を傾ける",
+        "泡を抜く",
+        "型枠の縁を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-nutcracker",
+      "name": "ナット割り治具",
+      "category": "normal",
+      "what": "固いナットを割る道具が床で閉じている",
+      "distinctive": "治具の持ち手は工具より長く、梃子に使える",
+      "actionDirections": [
+        "持ち手を伸ばす",
+        "留め具を外す",
+        "作業台の下を通る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-paint-footprint",
+      "name": "塗料の足あと",
+      "category": "normal",
+      "what": "床の塗料跡がロボットの足型に似る",
+      "distinctive": "足型は搬送アームのゴムパッドで、巡回経路を示す",
+      "actionDirections": [
+        "足型を比べる",
+        "塗料を拭く",
+        "経路の外へ出る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-punch-card",
+      "name": "穴だらけの勤務札",
+      "category": "normal",
+      "what": "機械が古い勤務札を読み続けている",
+      "distinctive": "穴の並びは現場ロボットの短い合図になっている",
+      "actionDirections": [
+        "札を読む",
+        "読み取り器を止める",
+        "機械の影に隠れる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-quiet-booth",
+      "name": "無音試験室",
+      "category": "normal",
+      "what": "防音室に入ると主人公の足音だけ聞こえる",
+      "distinctive": "壁の吸音材が出口側だけ剥がれ、向こうの機械音を伝える",
+      "actionDirections": [
+        "壁を確かめる",
+        "足音の反響を見る",
+        "非常開放棒を探す"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-reject-bin",
+      "name": "やる気のある不良品箱",
+      "category": "normal",
+      "what": "不良品箱が通るものを全部はね返す",
+      "distinctive": "底の弁が逆で、良品を箱外へ押し出している",
+      "actionDirections": [
+        "弁を反転する",
+        "箱を傾ける",
+        "返却レーンに乗る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-robot-glove",
+      "name": "片手だけの作業手袋",
+      "category": "normal",
+      "what": "床に大きな耐熱手袋が落ちている",
+      "distinctive": "サイズ札の裏に、旧工場の非常通路図が縫い付けられる",
+      "actionDirections": [
+        "縫い目をほどく",
+        "手袋をはめてつかむ",
+        "壁の暖まった側を避ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-sample-shelf",
+      "name": "試作品の棚",
+      "category": "normal",
+      "what": "同じ形の部品が微妙なサイズ違いで並ぶ",
+      "distinctive": "棚札に「失敗作」と「試作中」が逆貼りされている",
+      "actionDirections": [
+        "寸法を比べる",
+        "棚札を直す",
+        "床の空き台を使う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-screw-river",
+      "name": "ねじの小川",
+      "category": "normal",
+      "what": "小さなねじが傾斜路を流れ続ける",
+      "distinctive": "流れの先で磁石板がいっぱいになり、床の溝をふさぐ",
+      "actionDirections": [
+        "磁石板を空にする",
+        "流れに逆らわず渡る",
+        "上段の棚を使う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-spring-floor",
+      "name": "跳ねる床板",
+      "category": "normal",
+      "what": "床板の下に大型ばねが残っている",
+      "distinctive": "踏む場所で反発が変わり、壁の上段へ届く",
+      "actionDirections": [
+        "ばねを押さえる",
+        "反発を利用する",
+        "固定梁を伝う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-stamp-press",
+      "name": "空押しプレス",
+      "category": "normal",
+      "what": "プレス機が何もない床に検査印を押す",
+      "distinctive": "床に薄い記録紙があり、印影が下の線を透かす",
+      "actionDirections": [
+        "紙を差し込む",
+        "プレスを止める",
+        "横の搬出穴を使う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-test-dummy",
+      "name": "拍手する検査人形",
+      "category": "normal",
+      "what": "衝撃試験の人形が揺れるたび拍手音を鳴らす",
+      "distinctive": "内部のスピーカーが振動を検知し、試験台の空きを知らせる",
+      "actionDirections": [
+        "人形を固定する",
+        "振動を弱める",
+        "台の裏へ回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-thread-spool",
+      "name": "糸巻き迷路",
+      "category": "normal",
+      "what": "絶縁糸が工場床を網のように横切る",
+      "distinctive": "糸は一つの引き輪でまとめて巻き取れる",
+      "actionDirections": [
+        "巻き取り軸を探す",
+        "糸の色を追う",
+        "隙間を低くくぐる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-tool-shadow",
+      "name": "工具の影絵",
+      "category": "normal",
+      "what": "壁の影が工具の形に見える",
+      "distinctive": "実物工具は向かいの透明箱にあり、影が蓋の留め具を示す",
+      "actionDirections": [
+        "箱を回す",
+        "留め具を外す",
+        "影の下をくぐる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-warm-shell",
+      "name": "温かい外装板",
+      "category": "normal",
+      "what": "積まれた外装板の一枚だけ暖かい",
+      "distinctive": "塗装乾燥炉につながる熱が内側に閉じ込められている",
+      "actionDirections": [
+        "板を冷ます",
+        "温度計を使う",
+        "熱の通らない棚へ移る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-weld-sparks",
+      "name": "居眠り溶接機",
+      "category": "normal",
+      "what": "溶接機が素材のない場所に火花を飛ばす",
+      "distinctive": "反射センサーに主人公の光る目が映って誤作動している",
+      "actionDirections": [
+        "顔表示を伏せる",
+        "反射板を覆う",
+        "火花の届かない床を渡る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-wobble-table",
+      "name": "ゆれる検品台",
+      "category": "normal",
+      "what": "検品台の脚が一本短い",
+      "distinctive": "机の引き出しには同じ高さの廃材が仕分けてある",
+      "actionDirections": [
+        "脚を調整する",
+        "台の上を渡る",
+        "ゆれの外を回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "mutant-quiet-way",
+      "name": "警報の鳴らない搬送路",
+      "category": "linked",
+      "what": "警報リレーの図どおり、搬送機の振動だけが残る通路",
+      "distinctive": "敵を探さず、ミュータントの気配を遠くから察して静かに抜ける",
+      "actionDirections": [
+        "振動パッドを切る",
+        "低い静音歩道を使う",
+        "物音の届かない点検溝へ進む"
+      ],
+      "condition": "facility:alarm-disabledがtrueの時だけ連携出現",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "alarm-disabled",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画2で警報停止時に区画3で予約"
+      },
+      "stateChange": "成功: alarm-disabledの保護で危険回避;失敗時も別ルート",
+      "linkedResources": [
+        "facility:alarm-disabled"
+      ],
+      "relatedEventIds": [
+        "waste-alarm-relay"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "警報停止で不要な騒音を抑え、ミュータントを刺激せずに済む",
+      "causalExplanation": "敵AIや戦闘にせず、警報音と遠い気配を因果説明",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "npc-chiri-return",
+      "name": "チリのブラシ休憩",
+      "category": "linked",
+      "what": "チリが生産区の粉を掃き、ブラシの毛先を手入れする",
+      "distinctive": "粉じんの筋が換気の安全な向きを現す",
+      "actionDirections": [
+        "ブラシを直す",
+        "掃き跡を読む",
+        "粉の少ない梁へ移る"
+      ],
+      "condition": "npc-chiri=rescuedでのみ出現",
+      "requires": [
+        {
+          "kind": "npc-status",
+          "id": "chiri",
+          "status": "rescued"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "最深部で清掃ブラシを助けたチリが、生産区画で粉じんを掃きながら再会します。"
+      },
+      "stateChange": "成功: chiri=repaid;地上向きの掃き跡を共有。",
+      "linkedResources": [
+        "npc:chiri"
+      ],
+      "relatedEventIds": [
+        "npc-chiri-first"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "チリが床を掃き、換気の向きと地上向きの車輪跡を見つけやすくする。",
+      "causalExplanation": "最深部で交わした「掃除を続ける」約束を覚え、粉じんの筋から換気の向きを見つけている。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "npc-goro-return",
+      "name": "音の届く広い部屋",
+      "category": "linked",
+      "what": "ゴロが壁に耳を当て、昔のコンテナの音を再現",
+      "distinctive": "声の反響から空洞を当てるが、音量は相変わらず大きい",
+      "actionDirections": [
+        "音を一緒に試す",
+        "壁の共鳴を弱める",
+        "反響の少ない側へ進む"
+      ],
+      "condition": "npc-goro=rescuedでのみ出現",
+      "requires": [
+        {
+          "kind": "npc-status",
+          "id": "goro",
+          "status": "rescued"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: npc-goro-first成功後、区画3で予約"
+      },
+      "stateChange": "成功: goro=repaid;hollow-wallタグ",
+      "linkedResources": [
+        "npc:goro"
+      ],
+      "relatedEventIds": [
+        "npc-goro-first"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "ゴロが以前の大声を反響探知に使い、空洞の位置を教える",
+      "causalExplanation": "初回のコンテナ音を覚えた会話で音の因果を説明",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "npc-jin-first",
+      "name": "慎重な電気係ジン",
+      "category": "linked",
+      "what": "ジンが絶縁手袋を片方なくし、動けずにいる",
+      "distinctive": "電気に強いが「安全確認」の言葉を三回繰り返す",
+      "actionDirections": [
+        "予備手袋を見つける",
+        "回路を無電圧にする",
+        "低電圧の迂回路を示す"
+      ],
+      "condition": "導入時は無条件",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: jin=rescued;失敗: jin=rescue-failed;見送り: encountered",
+      "linkedResources": [
+        "npc:jin"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "npc-jin-return"
+      ],
+      "followUpEffect": "ジンが後に高圧区画を安全に絶縁する",
+      "causalExplanation": "手袋不足を覚え、後に予備手袋を渡せる因果を話す",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "npc-lens-first",
+      "name": "レンズ磨きのレン",
+      "category": "linked",
+      "what": "検査用レンズを抱えたレンが暗い検査室で座り込む",
+      "distinctive": "レンズを磨くのが得意だが、自分の顔には曇り跡を残す",
+      "actionDirections": [
+        "予備布でレンズを磨く",
+        "作業灯の位置を直す",
+        "明るい出口方向を示す"
+      ],
+      "condition": "導入時は無条件",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: lens=rescued;失敗: lens=rescue-failed;見送り: encountered",
+      "linkedResources": [
+        "npc:lens"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "npc-lens-return"
+      ],
+      "followUpEffect": "レンが後に曇った表示や反射光を読み解く",
+      "causalExplanation": "磨いたレンズが後続の光学問題を解く理由を示す",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "npc-peta-first",
+      "name": "点検表係ペタ",
+      "category": "linked",
+      "what": "ペタが巨大な点検表にチェックを付け続けている",
+      "distinctive": "完了欄が一つ足りず、同じ項目を無限に繰り返す",
+      "actionDirections": [
+        "抜けた項目を探す",
+        "点検表を再起動する",
+        "紙の欄外へ案内を書く"
+      ],
+      "condition": "導入時は無条件",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: peta=rescued;失敗: peta=rescue-failed;見送り: encountered",
+      "linkedResources": [
+        "npc:peta"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "npc-peta-return"
+      ],
+      "followUpEffect": "ペタが後に点検履歴から安全な設備を見分ける",
+      "causalExplanation": "チェック欄の抜けを覚えていて、再会時に完了を伝える",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "npc-pico-return",
+      "name": "札を貼り直すピコ",
+      "category": "linked",
+      "what": "ピコが部品棚に正しい工程札を貼っている",
+      "distinctive": "区画2の自分の札事件を覚え、今度は主人公の袋に札を貼る",
+      "actionDirections": [
+        "札順を一緒に直す",
+        "誤札を検品する",
+        "札を目印に進む"
+      ],
+      "condition": "npc-pico=rescuedでのみ出現",
+      "requires": [
+        {
+          "kind": "npc-status",
+          "id": "pico",
+          "status": "rescued"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: npc-pico-first成功後、区画3で予約"
+      },
+      "stateChange": "成功: pico=repaid;assembly-orderタグ",
+      "linkedResources": [
+        "npc:pico"
+      ],
+      "relatedEventIds": [
+        "npc-pico-first"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "ピコが貼り直した工程札で、安全な搬送順を教える",
+      "causalExplanation": "初回の誤札を台詞で思い出し、札の違いを根拠にする",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-access-code",
+      "name": "検査ロボの手書きコード",
+      "category": "linked",
+      "what": "検査端末の縁に短い手書きコードが残る",
+      "distinctive": "数字の一つは作業員番号でなく、機械の型番の末尾",
+      "actionDirections": [
+        "刻印を照合する",
+        "端末の記憶を読む",
+        "コードを控えず進む"
+      ],
+      "condition": "通常候補。正しい型番を読んだ時access-code入手",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: item:access-code取得",
+      "linkedResources": [
+        "item:access-code"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "ops-auth-terminal"
+      ],
+      "followUpEffect": "型番末尾は端末の保守用認証コードと同一",
+      "causalExplanation": "端末型番の刻印とコード桁数の一致を見せる",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-fuse-jig",
+      "name": "銅線ヒューズの組立治具",
+      "category": "linked",
+      "what": "生産治具の欠けた枠に銅線ヒューズがぴたりとはまる",
+      "distinctive": "廃棄ラベルの寸法が正規枠と一致する",
+      "actionDirections": [
+        "ヒューズを装着する",
+        "枠を手動で閉じる",
+        "規格表を読んで迂回する"
+      ],
+      "condition": "item:copper-fuse所持時のみ。未所持なら不成立",
+      "requires": [
+        {
+          "kind": "item",
+          "id": "copper-fuse",
+          "present": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: ヒューズ取得時に区画3で予約"
+      },
+      "stateChange": "成功率100%で補助治具へヒューズを装着し消費。昇降機専用のaux-power母線を復旧する。",
+      "linkedResources": [
+        "item:copper-fuse",
+        "facility:aux-power"
+      ],
+      "relatedEventIds": [
+        "waste-fuse-salvage"
+      ],
+      "followUpEventIds": [
+        "ops-powered-lift"
+      ],
+      "followUpEffect": "ヒューズ装着で補助母線を通電し、区画4の昇降機を保証候補にする。",
+      "causalExplanation": "廃棄区画で拾った規格品がこの治具用。銅線ヒューズが昇降機専用母線を復旧する。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 3,
+      "id": "production-route-card",
+      "name": "工程順の折りカード",
+      "category": "linked",
+      "what": "機械の隙間から折り畳まれた生産順カードを見つける",
+      "distinctive": "カードは順番を示すが、逆さに折ると別の安全な搬送順になる",
+      "actionDirections": [
+        "折り目を開く",
+        "部品番号と照合する",
+        "記号だけ控えて進む"
+      ],
+      "condition": "通常候補。読み取った時にroute-card取得",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: item:route-card取得",
+      "linkedResources": [
+        "item:route-card"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "ops-route-board"
+      ],
+      "followUpEffect": "カードの記号が管理区の搬送盤の旧記号と一致",
+      "causalExplanation": "前後の記号照合によって表示と影響を説明",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-archive-dust",
+      "name": "記録庫の埃紋",
+      "category": "normal",
+      "what": "埃に四角い空白が残る",
+      "distinctive": "最近触れた一冊だけ外部接続の記録簿",
+      "actionDirections": [
+        "空白を照らす",
+        "本棚を調べる",
+        "床の印をたどる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-award-trophy",
+      "name": "ぐらぐらの安全杯",
+      "category": "normal",
+      "what": "表彰トロフィーが棚の端で揺れる",
+      "distinctive": "台座に重い予備ヒューズが隠され、受賞者名は未記入",
+      "actionDirections": [
+        "棚を支える",
+        "台座を開ける",
+        "壁の補強材に沿う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-badge-gate",
+      "name": "社員証だらけのゲート",
+      "category": "normal",
+      "what": "認証ゲートに大量の古い社員証が差さる",
+      "distinctive": "正しい札は退職記念写真の裏に貼られている",
+      "actionDirections": [
+        "顔写真を探す",
+        "一枚ずつ読む",
+        "点検扉を使う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-broken-buzzer",
+      "name": "ずっと鳴る受付ベル",
+      "category": "normal",
+      "what": "ベルが押されていないのに鳴り続ける",
+      "distinctive": "ベルの底に挟まった名刺が押し棒を支えている",
+      "actionDirections": [
+        "名刺を抜く",
+        "ベルを分解する",
+        "カウンターの端を回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-calendar-wall",
+      "name": "十年前の予定壁",
+      "category": "normal",
+      "what": "壁一面のカレンダーが別々の月を示す",
+      "distinctive": "一日だけ丸印があり、定期点検シャフトの開放日と一致",
+      "actionDirections": [
+        "印を照合する",
+        "カレンダーをめくる",
+        "隣室の点検扉へ行く"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-ceiling-map",
+      "name": "天井の配線地図",
+      "category": "normal",
+      "what": "配線が天井に地図のように固定される",
+      "distinctive": "一色だけ違う線が、屋外アンテナへ向かう",
+      "actionDirections": [
+        "線色をたどる",
+        "固定具を外す",
+        "壁の点検穴を使う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-conference-mic",
+      "name": "勝手に議事録を読むマイク",
+      "category": "normal",
+      "what": "マイクが無音の議事録を再生する",
+      "distinctive": "録音の最後に窓の外の風音が入っている",
+      "actionDirections": [
+        "音量を絞る",
+        "録音箇所を探す",
+        "ケーブルのない床を通る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-copy-machine",
+      "name": "終わらないコピー機",
+      "category": "normal",
+      "what": "コピー機が白紙を何枚も吐き出す",
+      "distinctive": "紙送りローラーに管理棟の古い地図が挟まる",
+      "actionDirections": [
+        "電源を切る",
+        "紙を引き戻す",
+        "排紙トレイを渡る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-empty-desk",
+      "name": "誰も座らない受付",
+      "category": "normal",
+      "what": "受付端末が来客を待ち続ける",
+      "distinctive": "来客ベルは故障しているが、壁の当番表は更新されている",
+      "actionDirections": [
+        "ベルを直す",
+        "当番表を確認する",
+        "受付カウンターを回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-file-cabinet",
+      "name": "引き出しの連鎖",
+      "category": "normal",
+      "what": "ファイル棚を一つ開けると隣が飛び出す",
+      "distinctive": "棚の奥に転倒防止バーがなく、順番に押すと隙間ができる",
+      "actionDirections": [
+        "バーを差す",
+        "引き出しを戻す",
+        "横の書庫通路へ回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-fire-door",
+      "name": "閉じたままの防火扉",
+      "category": "normal",
+      "what": "扉に避難訓練の紙テープが何重も貼られる",
+      "distinctive": "テープが蝶番側の隙間だけ覆っていない",
+      "actionDirections": [
+        "テープをはがす",
+        "蝶番を押す",
+        "隣の階段へ回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-form-storm",
+      "name": "申請用紙の雪崩",
+      "category": "normal",
+      "what": "書類棚が開いて用紙が床へ落ちる",
+      "distinctive": "すべて同じ申請書で、唯一違う一枚に非常扉の番号",
+      "actionDirections": [
+        "用紙を束ねる",
+        "違う紙を探す",
+        "落下紙の山を避ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-intercom-duet",
+      "name": "内線の二重唱",
+      "category": "normal",
+      "what": "二つの内線が同時に呼び出しを鳴らす",
+      "distinctive": "片方は留守番音声、もう片方は保守室の反響",
+      "actionDirections": [
+        "音の遅れを測る",
+        "受話器を戻す",
+        "壁の配線をたどる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-locked-drawer",
+      "name": "鍵のない引き出し",
+      "category": "normal",
+      "what": "引き出しに鍵穴だけがある",
+      "distinctive": "鍵ではなく、机裏の磁石でラッチが動く",
+      "actionDirections": [
+        "磁石を探す",
+        "机ごと傾ける",
+        "脇の書庫口へ回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-lost-and-found",
+      "name": "落とし物の表彰状",
+      "category": "normal",
+      "what": "表彰状が額の中で上下逆さ",
+      "distinctive": "裏の署名が、近くのロボットが使った整備区画の番号",
+      "actionDirections": [
+        "額を外す",
+        "文字を鏡で読む",
+        "展示壁の後ろを通る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-meeting-chair",
+      "name": "会議椅子の渋滞",
+      "category": "normal",
+      "what": "椅子が車輪で集まり通路を塞ぐ",
+      "distinctive": "全椅子が机の一つを囲み、床の昇降口を隠している",
+      "actionDirections": [
+        "椅子を並べる",
+        "机の下を確認する",
+        "椅子を一脚ずつ避ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-memo-cloud",
+      "name": "舞う会議メモ",
+      "category": "normal",
+      "what": "換気で古い会議資料が部屋を回る",
+      "distinctive": "紙が止まる一角に、管理室の間取りが重なって見える",
+      "actionDirections": [
+        "換気を弱める",
+        "紙の順番を読む",
+        "机の列を抜ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-plant-light",
+      "name": "植物用ライトの迷光",
+      "category": "normal",
+      "what": "育成灯が誰もいない机を照らす",
+      "distinctive": "光の円が床の点検蓋の輪郭を浮かべる",
+      "actionDirections": [
+        "ライトを傾ける",
+        "蓋を探る",
+        "机の影を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-polite-door",
+      "name": "丁寧すぎる自動扉",
+      "category": "normal",
+      "what": "扉が開く前に何度も挨拶表示を出す",
+      "distinctive": "認証より挨拶文のスクロール待ちが長い",
+      "actionDirections": [
+        "挨拶を最後まで読む",
+        "開閉センサーを拭く",
+        "隣の手動通路へ進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-potted-wire",
+      "name": "観葉配線",
+      "category": "normal",
+      "what": "観葉植物の代わりに配線束が鉢から伸びる",
+      "distinctive": "束は止まった案内灯まで続き、根元の結線が外れている",
+      "actionDirections": [
+        "結線を戻す",
+        "案内灯を追う",
+        "鉢をまたぐ"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-privacy-screen",
+      "name": "曇りガラスの面談室",
+      "category": "normal",
+      "what": "ガラスが曇って中が見えない",
+      "distinctive": "曇りは内側からの手形で、誰かが窓を拭こうとした跡",
+      "actionDirections": [
+        "温度差を作る",
+        "外側を磨く",
+        "壁伝いに移る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-redacted-plan",
+      "name": "黒塗りの避難図",
+      "category": "normal",
+      "what": "古い避難図の要所が塗りつぶされている",
+      "distinctive": "裏面の透かしに非常階段の影が残る",
+      "actionDirections": [
+        "図を裏返す",
+        "灯りに透かす",
+        "壁の標識を追う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-service-roster",
+      "name": "無口な保守名簿",
+      "category": "normal",
+      "what": "名簿の名前欄が消えている",
+      "distinctive": "担当欄だけは残り、設備ごとの癖がメモされる",
+      "actionDirections": [
+        "メモを照合する",
+        "端末に読み込む",
+        "名簿を持たず進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-silent-alarm",
+      "name": "音の出ない警報灯",
+      "category": "normal",
+      "what": "赤い警報灯が回るのに音がしない",
+      "distinctive": "音響部だけ外され、灯りの反射が壁内の通路を映す",
+      "actionDirections": [
+        "反射角を変える",
+        "警報記録を見る",
+        "灯りの死角を抜ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-stapler-jam",
+      "name": "巨大ホチキスの渋滞",
+      "category": "normal",
+      "what": "連結ホチキスが紙束ごと床に落ちる",
+      "distinctive": "針箱が転がり止まった先に通路ラッチ",
+      "actionDirections": [
+        "針箱を拾う",
+        "紙束を切る",
+        "机脚の間を抜ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-timecard-rack",
+      "name": "押し忘れ打刻機",
+      "category": "normal",
+      "what": "打刻機に未使用カードが一枚だけ残る",
+      "distinctive": "カードの穴位置が近くの保守リフト呼び出しと合う",
+      "actionDirections": [
+        "カードを差す",
+        "機械を手動で回す",
+        "階段を探す"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-vacuum-tube",
+      "name": "気送管の出勤記録",
+      "category": "normal",
+      "what": "カプセルが詰まり、出勤札が動かない",
+      "distinctive": "札の束が重しになり、側面の点検口を押さえている",
+      "actionDirections": [
+        "札を抜く",
+        "カプセルを押し戻す",
+        "管に沿って進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "admin-water-cooler",
+      "name": "無人の給水器",
+      "category": "normal",
+      "what": "冷却水器が空なのにコップを並べている",
+      "distinctive": "給水器は水ではなく、上階配管の空気漏れを知らせている",
+      "actionDirections": [
+        "コップで風を受ける",
+        "栓を締める",
+        "配管を避ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "cargo-rail",
+      "name": "居座る貨物台車",
+      "category": "normal",
+      "what": "荷台が保守通路をふさぐ",
+      "distinctive": "荷札の住所は施設内ではなく、昔のロボット街の修理店",
+      "actionDirections": [
+        "台車を押す",
+        "車輪ロックを外す",
+        "荷台の下をくぐる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "terminal",
+      "name": "おしゃべりな制御端末",
+      "category": "normal",
+      "what": "端末が作業員番号を求める",
+      "distinctive": "短い命令は受け付けるが、主人公を回収係という職種だと認めない",
+      "actionDirections": [
+        "定型文を試す",
+        "保守ポートを調べる",
+        "脇の手動盤を探す"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "npc-kabo-return",
+      "name": "梱包材の橋",
+      "category": "linked",
+      "what": "カボが緩衝材を積み重ね、管理棟の段差を橋にする",
+      "distinctive": "初回に自分を包んだ材料を安全柵付きの足場に転用",
+      "actionDirections": [
+        "橋の安定を確認する",
+        "材料を追加する",
+        "橋を避け階段を使う"
+      ],
+      "condition": "npc-kabo=rescuedでのみ出現",
+      "requires": [
+        {
+          "kind": "npc-status",
+          "id": "kabo",
+          "status": "rescued"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: npc-kabo-first成功後、区画4で予約"
+      },
+      "stateChange": "成功: kabo=repaid;safe-padding=true",
+      "linkedResources": [
+        "npc:kabo"
+      ],
+      "relatedEventIds": [
+        "npc-kabo-first"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "カボが以前の梱包材を再利用して、主人公を段差から守る",
+      "causalExplanation": "箱に埋まった初回を覚えた会話で材料の再利用理由を説明",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "npc-lens-return",
+      "name": "曇りを見つけるレン",
+      "category": "linked",
+      "what": "レンが管理室の曇りガラスから避難図を読み取る",
+      "distinctive": "初回に磨いたレンズの布を大事に使っている",
+      "actionDirections": [
+        "レンズで透かす",
+        "ガラスの温度差を調べる",
+        "壁の別案内を探す"
+      ],
+      "condition": "npc-lens=rescuedでのみ出現",
+      "requires": [
+        {
+          "kind": "npc-status",
+          "id": "lens",
+          "status": "rescued"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: npc-lens-first成功後、区画4で予約"
+      },
+      "stateChange": "成功: lens=repaid;visibility-mapタグ",
+      "linkedResources": [
+        "npc:lens"
+      ],
+      "relatedEventIds": [
+        "npc-lens-first"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "レンが磨いたレンズで塗りつぶしの下の避難線を見つける",
+      "causalExplanation": "初回のレンズ磨きが曇りガラスの読み取りに役立つ理由を会話",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "npc-peta-return",
+      "name": "点検表の最後の一枠",
+      "category": "linked",
+      "what": "ペタが前回の抜け欄を見つけ、完了印を押す",
+      "distinctive": "記録は設備の動作履歴と照合され、動かない昇降機を除外する",
+      "actionDirections": [
+        "記録を照合する",
+        "抜け欄を一緒に埋める",
+        "安全な階段を選ぶ"
+      ],
+      "condition": "npc-peta=rescuedでのみ出現",
+      "requires": [
+        {
+          "kind": "npc-status",
+          "id": "peta",
+          "status": "rescued"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: npc-peta-first成功後、区画4で予約"
+      },
+      "stateChange": "成功: peta=repaid;service-logタグ",
+      "linkedResources": [
+        "npc:peta"
+      ],
+      "relatedEventIds": [
+        "npc-peta-first"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "ペタの点検履歴が稼働設備を特定し、無駄な再起動を避ける",
+      "causalExplanation": "前回の抜け欄を覚えていることと記録の因果を示す",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "npc-waku-first",
+      "name": "風よけ係ワク",
+      "category": "linked",
+      "what": "ワクが通風口の前で小さな板を押さえる",
+      "distinctive": "軽い体で風に飛ばされそうでも板を離さない",
+      "actionDirections": [
+        "板を一緒に固定する",
+        "風の流れを弱める",
+        "低い風よけへ移る"
+      ],
+      "condition": "導入時は無条件",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "起点イベントとして通常抽選で登場。"
+      },
+      "stateChange": "成功: waku=rescued;失敗: waku=rescue-failed;見送り: encountered",
+      "linkedResources": [
+        "npc:waku"
+      ],
+      "relatedEventIds": [],
+      "followUpEventIds": [
+        "npc-waku-return"
+      ],
+      "followUpEffect": "ワクが後に外気の強い出口を安全にする",
+      "causalExplanation": "小さな板を守る性格を一貫させ、助けた場合だけ再会",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "ops-auth-terminal",
+      "name": "型番で開く保守認証",
+      "category": "linked",
+      "what": "管理端末が作業員番号でなく機器型番の認証を受け付ける",
+      "distinctive": "検査ロボの手書きコードと端末型番が一致",
+      "actionDirections": [
+        "access-codeで認証する",
+        "機械式リセットを試す",
+        "窓口裏の点検口へ回る"
+      ],
+      "condition": "item:access-code所持なら予約",
+      "requires": [
+        {
+          "kind": "item",
+          "id": "access-code",
+          "present": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画3でコード取得時に区画4で予約"
+      },
+      "stateChange": "成功率100%で認証しcode-accepted=true、コード消費",
+      "linkedResources": [
+        "item:access-code"
+      ],
+      "relatedEventIds": [
+        "production-access-code"
+      ],
+      "followUpEventIds": [
+        "surface-coded-airlock"
+      ],
+      "followUpEffect": "検査ロボの型番メモが管理端末の旧コード",
+      "causalExplanation": "型番照合を成功率理由と会話の両方に示す",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "ops-coolant-valve",
+      "name": "冷えたラジエーターの弁",
+      "category": "linked",
+      "what": "廃棄区画から戻った冷却水が管理棟の空ラジエーターへ届く",
+      "distinctive": "水温を測るとまだ生産ラインの余熱を持つ",
+      "actionDirections": [
+        "coolant-divertedなら弁を開く",
+        "漏れを受けて圧を下げる",
+        "乾いた点検路へ回る"
+      ],
+      "condition": "facility:coolant-diverted=trueなら予約",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "coolant-diverted",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画2で冷却水を分岐した時に予約"
+      },
+      "stateChange": "成功: pressure-balanced=true",
+      "linkedResources": [
+        "facility:coolant-diverted"
+      ],
+      "relatedEventIds": [
+        "waste-coolant-diverter"
+      ],
+      "followUpEventIds": [
+        "surface-pressure-door"
+      ],
+      "followUpEffect": "以前分岐した水が戻りラジエーターを満たすため圧が安定",
+      "causalExplanation": "管の流れを実際に見せて因果を説明",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "ops-powered-lift",
+      "name": "動き出す保守昇降機",
+      "category": "linked",
+      "what": "予備母線の電力が管理区のリフトへ届く",
+      "distinctive": "昇降機の銘板と予備切替器の回路番号が一致",
+      "actionDirections": [
+        "aux-powerがあれば直接起動",
+        "制動を外して手動補助",
+        "階段へ向かう"
+      ],
+      "condition": "facility:aux-power=trueなら保証出現。廃棄区画の切替器または生産区画の補助ヒューズで復旧する。",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "aux-power",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "facility:aux-power=true",
+        "reason": "区画2の予備系統切替または区画3の規格ヒューズ修理で、同じ補助母線が復旧します。"
+      },
+      "stateChange": "成功率100%でlift-powered=true",
+      "linkedResources": [
+        "facility:aux-power"
+      ],
+      "relatedEventIds": [
+        "waste-aux-switch",
+        "production-fuse-jig"
+      ],
+      "followUpEventIds": [
+        "surface-lift-exit"
+      ],
+      "followUpEffect": "予備系統が昇降機専用母線を動かす",
+      "causalExplanation": "二つの修理手段はいずれも昇降機専用の補助母線を通電する。母線表示と回路番号が一致するため起動は確実。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "ops-route-board",
+      "name": "工程カード対応の搬送盤",
+      "category": "linked",
+      "what": "管理盤の古い記号が生産区の折りカードと合う",
+      "distinctive": "カードを逆さにすると安全搬送レーンが浮かぶ",
+      "actionDirections": [
+        "route-cardを使ってレーン設定",
+        "盤面を手動で合わせる",
+        "手すり沿いの迂回路へ行く"
+      ],
+      "condition": "item:route-card所持なら予約",
+      "requires": [
+        {
+          "kind": "item",
+          "id": "route-card",
+          "present": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画3でカード取得時に区画4で予約"
+      },
+      "stateChange": "成功: route-card使用/消費;safe-routeタグ",
+      "linkedResources": [
+        "item:route-card"
+      ],
+      "relatedEventIds": [
+        "production-route-card"
+      ],
+      "followUpEventIds": [
+        "surface-route-exit"
+      ],
+      "followUpEffect": "生産工程の記号が管理盤の搬送番号と一致",
+      "causalExplanation": "カード上の記号と盤面番号で説明し、通常路も残す",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "ops-shaft-release",
+      "name": "安全爪のかかった点検シャフト",
+      "category": "linked",
+      "what": "手回し輪で上げた爪が管理区シャフトの荷重を受ける",
+      "distinctive": "錆びた梯子を荷重爪が背面から支える",
+      "actionDirections": [
+        "shaft-bracedがあれば荷重試験",
+        "爪を増し締めする",
+        "階段へ回る"
+      ],
+      "condition": "facility:shaft-bracedがtrueなら予約",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "shaft-braced",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画1で歯止め成功時に区画4で予約"
+      },
+      "stateChange": "成功: safety-rail=true",
+      "linkedResources": [
+        "facility:shaft-braced"
+      ],
+      "relatedEventIds": [
+        "deep-shaft-wheel"
+      ],
+      "followUpEventIds": [
+        "surface-safety-rail"
+      ],
+      "followUpEffect": "別の場所で回した手回し輪が同じシャフトの爪を上げた",
+      "causalExplanation": "シャフト形状と歯止め番号を示して因果を説明",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 4,
+      "id": "ops-vent-route",
+      "name": "模型どおりの換気バイパス",
+      "category": "linked",
+      "what": "紙模型の角度と一致する管理区の換気路を発見",
+      "distinctive": "換気扇の埃の筋も模型の折り目と同じ方向",
+      "actionDirections": [
+        "vent-mapがあれば道筋を確定",
+        "ダクトを支えて渡る",
+        "扇風機を止めて迂回する"
+      ],
+      "condition": "facility:ventilation-shutter=trueなら後続の換気盤が出現",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "ventilation-shutter",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "facility:ventilation-shutter=trueなら後続の換気盤が出現",
+        "reason": "廃棄区画で換気シャッターを開けたため、同じ送風路の管理盤が現れます。"
+      },
+      "stateChange": "成功: vent-bypass=true",
+      "linkedResources": [
+        "facility:ventilation-shutter",
+        "info:vent-map"
+      ],
+      "relatedEventIds": [
+        "waste-vent-shutter"
+      ],
+      "followUpEventIds": [
+        "surface-warm-air"
+      ],
+      "followUpEffect": "紙模型の折り角と換気の実測方向が一致する",
+      "causalExplanation": "折り目と埃の筋を同じ図柄として見せる",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "charger",
+      "name": "気難しい充電装置",
+      "category": "normal",
+      "what": "壁の充電器は出力調整器が傷み警告灯を点滅させる",
+      "distinctive": "ちょうどよい出力の目盛りだけ、引っ越し傷で消えている",
+      "actionDirections": [
+        "出力を合わせる",
+        "低電流で試す",
+        "端子を調べて離れる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "lift",
+      "name": "途中で休む昇降機",
+      "category": "normal",
+      "what": "保守昇降機がシャフト途中で停止",
+      "distinctive": "上から外の風が入り、はしごの錆びた段が光る",
+      "actionDirections": [
+        "はしごを登る",
+        "制御盤を再通電する",
+        "外枠の手すりを伝う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-antenna-rhythm",
+      "name": "アンテナの拍動",
+      "category": "normal",
+      "what": "屋根上のアンテナ影が壁に周期を刻む",
+      "distinctive": "信号は途切れても街の標識反射を返す",
+      "actionDirections": [
+        "影を記録する",
+        "受信器を向ける",
+        "影が動かない間に渡る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-bird-call",
+      "name": "録音された鳥の声",
+      "category": "normal",
+      "what": "スピーカーから鳥のさえずりが流れる",
+      "distinctive": "録音機は風で誤作動し、実際の外気が近い",
+      "actionDirections": [
+        "音源を止める",
+        "録音の方向を探す",
+        "通気口の近くを進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-cloud-counter",
+      "name": "雲を数える表示器",
+      "category": "normal",
+      "what": "天気表示端末が雲の数を延々と更新する",
+      "distinctive": "外部接続は切れているが最後の風向き記録が残る",
+      "actionDirections": [
+        "記録を読む",
+        "端末を再起動する",
+        "表示器の裏を回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-cloud-window",
+      "name": "雲を見る窓",
+      "category": "normal",
+      "what": "曇った観測窓が白く光る",
+      "distinctive": "窓は曇りではなく薄い保護膜で、外の影が透けている",
+      "actionDirections": [
+        "膜を拭く",
+        "窓枠を緩める",
+        "窓脇の通風路へ回る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-cloudy-mirror",
+      "name": "空色を返す鏡板",
+      "category": "normal",
+      "what": "鏡板に青みのある空の反射がかすかに映る",
+      "distinctive": "施設内の照明にはない色で、外壁の割れ目から届く",
+      "actionDirections": [
+        "鏡を傾ける",
+        "反射点を探す",
+        "板の裏側を調べる"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-crowded-boots",
+      "name": "小さな長靴の山",
+      "category": "normal",
+      "what": "非常扉脇にロボット用の防水靴が積まれる",
+      "distinctive": "サイズは子どもロボット向けで、外出訓練用だったらしい",
+      "actionDirections": [
+        "一足を試す",
+        "靴底の泥を読む",
+        "靴を避けて梯子へ進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-draft",
+      "name": "地上風のひと吹き",
+      "category": "normal",
+      "what": "通風口から乾いた風が吹き込む",
+      "distinctive": "風に街の充電所のベル音が混じり、向きを教える",
+      "actionDirections": [
+        "風向きを測る",
+        "格子を開ける",
+        "壁際の無風帯を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-dry-leaves",
+      "name": "乾いた葉の吹きだまり",
+      "category": "normal",
+      "what": "階段に乾いた葉が積もっている",
+      "distinctive": "葉に泥の靴跡があり、最近外へ出た清掃ロボの足跡",
+      "actionDirections": [
+        "葉を掃く",
+        "跡をたどる",
+        "手すり側を登る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-fogged-goggles",
+      "name": "曇る観測ゴーグル",
+      "category": "normal",
+      "what": "古いゴーグルが棚に並びレンズが曇っている",
+      "distinctive": "一枚だけ外気の温度で曇りが消える",
+      "actionDirections": [
+        "レンズを温める",
+        "外気側を探す",
+        "棚を抜けて進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-heat-haze",
+      "name": "揺らぐ空気の帯",
+      "category": "normal",
+      "what": "床近くで空気がゆらゆら見える",
+      "distinctive": "上層の温度差が出口の上下位置を示す",
+      "actionDirections": [
+        "温度を比べる",
+        "換気扇を弱める",
+        "揺らぎの上を登る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-laundry-line",
+      "name": "屋上の物干し線",
+      "category": "normal",
+      "what": "古い物干し線がシャフトへ垂れ下がる",
+      "distinctive": "端には清掃用布が結ばれ、外の埃の色を持つ",
+      "actionDirections": [
+        "結び目を調べる",
+        "線を巻き上げる",
+        "壁の固定具を伝う"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-loose-shingle",
+      "name": "浮いた外壁板",
+      "category": "normal",
+      "what": "外壁の板が風でかすかに鳴る",
+      "distinctive": "留め具は一本だけ残り、板は扉でなく風よけ",
+      "actionDirections": [
+        "板を固定する",
+        "留め具を外す",
+        "裏の通気路に入る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-moss-seam",
+      "name": "目地の苔",
+      "category": "normal",
+      "what": "壁の継ぎ目に緑の苔が少しだけ生える",
+      "distinctive": "苔の水分が外気の向きに伸びている",
+      "actionDirections": [
+        "苔を観察する",
+        "目地をこじる",
+        "乾いた側を選ぶ"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-mud-stamp",
+      "name": "土の足跡スタンプ",
+      "category": "normal",
+      "what": "床の泥に小さな車輪跡が残る",
+      "distinctive": "跡は地上の郵便ロボのもの、戻り道の向きも刻まれる",
+      "actionDirections": [
+        "跡幅を測る",
+        "泥を採る",
+        "清掃口を通る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-night-glow",
+      "name": "夜光塗料の星",
+      "category": "normal",
+      "what": "天井に星形の夜光塗料が残る",
+      "distinctive": "星の並びは天体図でなく、避難扉の目印",
+      "actionDirections": [
+        "星を結ぶ",
+        "暗くして確かめる",
+        "光のない壁を探る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-open-air",
+      "name": "外気の試し窓",
+      "category": "normal",
+      "what": "手のひらほどの覗き穴から外気が届く",
+      "distinctive": "小さな穴の向こうで街の案内灯が二つ並んで見える",
+      "actionDirections": [
+        "窓を広げる",
+        "外の気温を測る",
+        "別の広い出口を探す"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-porch-drain",
+      "name": "玄関排水の落ち葉",
+      "category": "normal",
+      "what": "排水口に外の落ち葉が詰まる",
+      "distinctive": "水は流れず、上から差す風だけが葉を動かす",
+      "actionDirections": [
+        "葉を取り除く",
+        "格子を持ち上げる",
+        "乾いた縁へ移る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-porch-mat",
+      "name": "玄関マットの端",
+      "category": "normal",
+      "what": "古いマットが内側へめくれている",
+      "distinctive": "裏側に街の修理店の配送印があり、出口近くの方向を示す",
+      "actionDirections": [
+        "印を読む",
+        "端をめくる",
+        "マットの縁を進む"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-puddle-sky",
+      "name": "空を映すしずく",
+      "category": "normal",
+      "what": "床の水滴に小さな空の色が映る",
+      "distinctive": "滴は天井割れから落ち、真上の外壁継ぎ目へ続く",
+      "actionDirections": [
+        "水滴を避ける",
+        "継ぎ目をたどる",
+        "排水縁を歩く"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-raindrop",
+      "name": "屋内の雨音",
+      "category": "normal",
+      "what": "天井の滴が金属板に雨のような音を立てる",
+      "distinctive": "滴は漏水でなく外壁の結露、音の強さで外の位置が分かる",
+      "actionDirections": [
+        "受け皿を置く",
+        "壁の温度を測る",
+        "滴のない梁を渡る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-seed-pod",
+      "name": "配管の種さや",
+      "category": "normal",
+      "what": "配管継ぎ目に外から入った種が詰まる",
+      "distinctive": "種は風で飛ぶ外来植物のもので、根が出口の隙間へ伸びる",
+      "actionDirections": [
+        "根をほどく",
+        "管を外す",
+        "根を傷つけず横を抜ける"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-signal-lantern",
+      "name": "信号灯の点滅",
+      "category": "normal",
+      "what": "屋外接続灯が不規則に明滅する",
+      "distinctive": "電池切れでなく、外の受信器が遮られている",
+      "actionDirections": [
+        "灯りを遮る物を探す",
+        "反射鏡を合わせる",
+        "灯りの届く範囲を登る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-snow-globe",
+      "name": "割れた防寒ドーム",
+      "category": "normal",
+      "what": "透明ドームのひびから冷気が漏れる",
+      "distinctive": "ドームは屋上観測器の覆いで、ひびが脱出口ではない",
+      "actionDirections": [
+        "ひびを塞ぐ",
+        "覆いをずらす",
+        "冷気の通らない階段へ行く"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-solar-shadow",
+      "name": "太陽電池の影",
+      "category": "normal",
+      "what": "小型太陽電池の影が床を二分する",
+      "distinctive": "影の端が夕方の外光を拾う割れ目に沿う",
+      "actionDirections": [
+        "板を起こす",
+        "影の長さを測る",
+        "日陰の保守路を通る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-street-bell",
+      "name": "遠い街のベル",
+      "category": "normal",
+      "what": "出口側から二音のベルが聞こえる",
+      "distinctive": "ベルは街の巡回充電車の接近音で、時間差が距離を示す",
+      "actionDirections": [
+        "耳を澄ます",
+        "壁越しに応答灯を出す",
+        "音を頼りに階段を選ぶ"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-sunstripe",
+      "name": "細い光の縞",
+      "category": "normal",
+      "what": "扉の下から一本の光が床を横切る",
+      "distinctive": "光は昼の太陽でなく、反射鏡を通った間接光",
+      "actionDirections": [
+        "鏡を追う",
+        "扉の隙間を広げる",
+        "暗い縁を探る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-warm-handrail",
+      "name": "温かい手すり",
+      "category": "normal",
+      "what": "階段の手すりだけ日差しのように温かい",
+      "distinctive": "金属の先が外壁につながり、出口側の手すりは冷たい",
+      "actionDirections": [
+        "温度差をたどる",
+        "断熱材を外す",
+        "手すりを使わず登る"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-weather-vane",
+      "name": "屋内風見板",
+      "category": "normal",
+      "what": "古い風見板が施設内でくるくる回る",
+      "distinctive": "外の風圧が通風路を逆流している",
+      "actionDirections": [
+        "風見板を止める",
+        "回転の中心を探す",
+        "風の強い通路へ向かう"
+      ],
+      "condition": "なし。過去状態に関係なく通常候補になる。",
+      "requires": [],
+      "guarantee": {
+        "needed": false,
+        "condition": "なし",
+        "reason": "無条件の通常抽選候補。"
+      },
+      "stateChange": "固有の永続状態変化なし。選んだ行動の結果はPhase 3で定義する。",
+      "linkedResources": [],
+      "relatedEventIds": [],
+      "followUpEventIds": [],
+      "followUpEffect": "特定の後続イベントを変えない。",
+      "causalExplanation": "場面固有の手掛かりと選択結果を短く結びつけ、過去選択への根拠のない言及をしない。",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "npc-jin-return",
+      "name": "予備手袋を持つジン",
+      "category": "linked",
+      "what": "ジンが絶縁手袋を二組持ち、上層の端子を確認する",
+      "distinctive": "初回に失くした片手分を予備として結びつけている",
+      "actionDirections": [
+        "手袋を借りて点検する",
+        "無電圧札を確認する",
+        "端子を避けて進む"
+      ],
+      "condition": "npc-jin=rescuedでのみ出現",
+      "requires": [
+        {
+          "kind": "npc-status",
+          "id": "jin",
+          "status": "rescued"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: npc-jin-first成功後、区画5で予約"
+      },
+      "stateChange": "成功: jin=repaid;insulated-route=true",
+      "linkedResources": [
+        "npc:jin"
+      ],
+      "relatedEventIds": [
+        "npc-jin-first"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "ジンが絶縁を確認し、危険な端子に触れず済む",
+      "causalExplanation": "初回の片手手袋を覚えていて予備を持ってきたと話す",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "npc-waku-return",
+      "name": "ワクの小さな風よけ",
+      "category": "linked",
+      "what": "ワクが板を固定し、出口の強風を弱めて待っている",
+      "distinctive": "管理区画で助けた板と同じ割れ目が補修されている",
+      "actionDirections": [
+        "板の向きを一緒に合わせる",
+        "通風口を段階的に開く",
+        "強風を避けて別の梯子へ行く"
+      ],
+      "condition": "npc-waku=rescuedでのみ出現",
+      "requires": [
+        {
+          "kind": "npc-status",
+          "id": "waku",
+          "status": "rescued"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: npc-waku-first成功後、区画5で予約"
+      },
+      "stateChange": "成功: waku=repaid;wind-screen=true",
+      "linkedResources": [
+        "npc:waku"
+      ],
+      "relatedEventIds": [
+        "npc-waku-first"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "ワクが前回の板を直して出口風を弱め、主人公を助ける",
+      "causalExplanation": "同じ板の傷と固定方法を指し、救出後の再会だと分かるようにする",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-alarm-quiet",
+      "name": "静かな外壁通路",
+      "category": "linked",
+      "what": "止めた警報系統の保守ログが外壁側の振動板まで続く",
+      "distinctive": "ミュータントの姿は出さず、遠い物音だけが通り過ぎる",
+      "actionDirections": [
+        "停止済み回路を確認する",
+        "振動板を避けて進む",
+        "音の届かない迂回路を選ぶ"
+      ],
+      "condition": "facility:alarm-disabled=trueなら予約",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "alarm-disabled",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画2で警報停止時に区画5で予約"
+      },
+      "stateChange": "成功: mutant-risk-avoided=true",
+      "linkedResources": [
+        "facility:alarm-disabled"
+      ],
+      "relatedEventIds": [
+        "waste-alarm-relay"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "警報を止めていたため、外壁の物音を刺激せず静かに抜ける",
+      "causalExplanation": "以前の警報停止と現在の静けさを因果説明。戦闘・敵AIは作らない",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-coded-airlock",
+      "name": "型番認証の外気扉",
+      "category": "linked",
+      "what": "外気扉が古い機器型番の確認を求める",
+      "distinctive": "生産区で読んだコードが管理端末の認証記録に残る",
+      "actionDirections": [
+        "認証済み端子を開く",
+        "手動ラッチを解除する",
+        "脇の保守スリットを抜ける"
+      ],
+      "condition": "facility:code-accepted=trueなら予約",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "code-accepted",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画3でコードを見つけ区画4で認証時に予約"
+      },
+      "stateChange": "成功率100%で認証済み扉を開く",
+      "linkedResources": [
+        "facility:code-accepted"
+      ],
+      "relatedEventIds": [
+        "ops-auth-terminal"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "管理端末が同じ型番を承認したので外気扉が開く",
+      "causalExplanation": "認証ログを引き継いだ理由を表示し、通常の迂回も確保",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-lift-exit",
+      "name": "予備母線の最終リフト",
+      "category": "linked",
+      "what": "補助電源で動いた昇降機が出口シャフト手前に着く",
+      "distinctive": "同じ昇降機系列で母線表示が管理区の番号と一致",
+      "actionDirections": [
+        "lift-poweredを確認して上昇",
+        "制動器を補助して進む",
+        "非常階段を登る"
+      ],
+      "condition": "facility:lift-powered=trueなら予約",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "lift-powered",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画2の電源復旧後、区画4の昇降機起動を経て予約"
+      },
+      "stateChange": "成功: 上昇路を安全に使う",
+      "linkedResources": [
+        "facility:lift-powered"
+      ],
+      "relatedEventIds": [
+        "ops-powered-lift"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "直した母線が二つの昇降機を同じ系列として動かす",
+      "causalExplanation": "二台の銘板番号一致を因果説明し、未復旧でも階段を残す",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-pressure-door",
+      "name": "冷却水で均圧した外扉",
+      "category": "linked",
+      "what": "ラジエーター循環で圧力が安定した外気扉",
+      "distinctive": "差圧計の針が危険域を外れ、手動解放が可能",
+      "actionDirections": [
+        "pressure-balancedを確認して開ける",
+        "差圧を少しずつ逃がす",
+        "隣の階段から回る"
+      ],
+      "condition": "facility:pressure-balanced=trueなら予約",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "pressure-balanced",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画2で冷却水を切替え、区画4で循環確認後に予約"
+      },
+      "stateChange": "成功: 外扉を安全に解放",
+      "linkedResources": [
+        "facility:pressure-balanced"
+      ],
+      "relatedEventIds": [
+        "ops-coolant-valve"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "戻り水で圧力差が下がり、扉のロックが解除できる",
+      "causalExplanation": "実際の差圧計の針と冷却水循環を理由にする",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-route-exit",
+      "name": "安全レーンの出口合流",
+      "category": "linked",
+      "what": "工程カードで選んだ搬送レーンが外壁出口へ合流する",
+      "distinctive": "床の古い矢印がカードと同じ折り記号になっている",
+      "actionDirections": [
+        "route-cardの経路をたどる",
+        "矢印を現在の向きに合わせる",
+        "通常の階段を探す"
+      ],
+      "condition": "safe-routeタグがあれば予約",
+      "requires": [
+        {
+          "kind": "history-tag",
+          "id": "safe-route"
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画3のカードと区画4の盤面設定後に予約"
+      },
+      "stateChange": "成功: safe-routeを消費せず出口合流",
+      "linkedResources": [
+        "info:safe-route"
+      ],
+      "relatedEventIds": [
+        "ops-route-board"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "工程カードの安全レーンが地上接続区画へ続く",
+      "causalExplanation": "カード記号と床矢印の一致を見せる",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-safety-rail",
+      "name": "錆び梯子の補助柵",
+      "category": "linked",
+      "what": "手回し輪で上げた安全爪が梯子の背面にかかる",
+      "distinctive": "爪と柵の番号が点検シャフトで同じ",
+      "actionDirections": [
+        "safety-railを取り付けて登る",
+        "手すり荷重を確認する",
+        "外枠の別段を探す"
+      ],
+      "condition": "facility:safety-rail=trueなら予約",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "safety-rail",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画1のシャフト補強成功後に区画5で予約"
+      },
+      "stateChange": "成功: safety-railを使用し登攀経路を安定",
+      "linkedResources": [
+        "facility:safety-rail"
+      ],
+      "relatedEventIds": [
+        "ops-shaft-release"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "以前かけた安全爪が地上側の梯子を支える",
+      "causalExplanation": "シャフトの連続構造と同じ番号で因果を示す",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-signal-mirror",
+      "name": "外壁受信器の鏡合わせ",
+      "category": "linked",
+      "what": "銀紙で記録した信号角度に外壁受信器を合わせる",
+      "distinctive": "受信灯が同じ短長の点滅を返す",
+      "actionDirections": [
+        "signal-markを使い鏡を向ける",
+        "受信器を手動で回す",
+        "風の弱い側へ迂回する"
+      ],
+      "condition": "facility:signal-mark=trueなら予約",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "signal-mark",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画1で信号記録時に区画5で予約"
+      },
+      "stateChange": "成功: receiver-aligned=true",
+      "linkedResources": [
+        "facility:signal-mark"
+      ],
+      "relatedEventIds": [
+        "deep-signal-foil"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "銀紙で測った反射角が受信器に合う",
+      "causalExplanation": "点滅パターンの一致を見せて根拠を説明",
+      "phase3Status": "未制作"
+    },
+    {
+      "zone": 5,
+      "id": "surface-warm-air",
+      "name": "紙模型の温風出口",
+      "category": "linked",
+      "what": "換気模型で予測した温風が外壁の出口側へ流れる",
+      "distinctive": "空気に混じる乾いた葉の匂いで地上が近いと分かる",
+      "actionDirections": [
+        "風向に沿って登る",
+        "格子を開いて通気を増やす",
+        "温風を避けて手すりへ回る"
+      ],
+      "condition": "facility:vent-bypass=trueなら予約",
+      "requires": [
+        {
+          "kind": "facility",
+          "id": "vent-bypass",
+          "active": true
+        }
+      ],
+      "guarantee": {
+        "needed": true,
+        "condition": "all requirements listed above",
+        "reason": "必要: 区画1の模型発見後、区画4の通路確認を経て予約"
+      },
+      "stateChange": "成功: warm-exit-route=true",
+      "linkedResources": [
+        "facility:vent-bypass"
+      ],
+      "relatedEventIds": [
+        "ops-vent-route"
+      ],
+      "followUpEventIds": [],
+      "followUpEffect": "模型と実際の換気路の両方で出口の風向を確認できる",
+      "causalExplanation": "二度の観察をつなげ、方向判断の根拠を示す",
+      "phase3Status": "未制作"
+    }
+  ],
+  "informationTags": [
+    {
+      "id": "vent-map",
+      "name": "紙模型から読んだ換気角度",
+      "setEventId": "deep-vent-sketch",
+      "followUpEventId": "waste-vent-shutter"
+    },
+    {
+      "id": "coolant-label",
+      "name": "冷却戻り管の番号",
+      "setEventId": "deep-coolant-label",
+      "followUpEventId": "waste-coolant-diverter"
+    },
+    {
+      "id": "safe-route",
+      "name": "管理盤で照合した安全レーン",
+      "setEventId": "ops-route-board",
+      "followUpEventId": "surface-route-exit"
+    }
+  ]
+}
