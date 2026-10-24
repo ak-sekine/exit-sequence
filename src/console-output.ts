@@ -12,6 +12,7 @@ export interface OutputText {
 
 export interface OutputImage {
   type: 'image'
+  kind?: 'event' | 'prologue'
   eventId: string
   src: string
   alt: string

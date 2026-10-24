@@ -102,6 +102,19 @@ test('image entries do not receive character-by-character output', () => {
   assert.deepEqual(order, ['A', 'image:battery', 'B'])
 })
 
+test('prologue images retain their own kind and are emitted once when skipped', () => {
+  const clock = new ManualClock()
+  const typer = output(clock)
+  const emitted: string[] = []
+  typer.enqueueSequence([
+    { type: 'text', text: '導入' },
+    { type: 'image', kind: 'prologue', eventId: 'prologue', src: '/story/prologue.svg', alt: '落下', width: 320, height: 200 },
+  ], { onImage: image => emitted.push(`${image.kind}:${image.eventId}`) })
+  clock.step()
+  typer.skip()
+  assert.deepEqual(emitted, ['prologue:prologue'])
+})
+
 test('skip drains queued output immediately without touching game state', () => {
   const clock = new ManualClock()
   const state = { position: 3, power: 15, randomDraws: 4 }

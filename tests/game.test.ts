@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { EVENTS } from '../src/events.ts'
 import {
   INITIAL_POWER, MAX_POWER, TOTAL_TILES, adjustedPower, createGame, createSeededRandom,
@@ -8,6 +9,18 @@ import {
 import type { GameState, RandomSource } from '../src/game.ts'
 
 const constant = (value: number): RandomSource => () => value
+const expectedActionRules = [
+  ['bulkhead','electronic',57,-1,-5],['bulkhead','manual',63,-3,-4],['bulkhead','force',43,1,-8],
+  ['generator','restart',48,5,-4],['generator','bypass',68,2,-2],['generator','overload',34,9,-8],
+  ['battery','synchronize',66,4,-1],['battery','direct',45,8,-6],['battery','trickle',80,2,-2],
+  ['leak','insulate',61,-1,-4],['leak','jump',45,1,-7],['leak','crawl',74,-3,-2],
+  ['charger','calibrate',55,5,-3],['charger','full',39,8,-7],['charger','trickle',79,2,-1],
+  ['conveyor','ride',53,3,-5],['conveyor','override',68,-1,-3],['conveyor','counterflow',40,1,-7],
+  ['emergency','switch',48,6,-4],['emergency','reserve',75,3,-2],['emergency','draw',32,10,-8],
+  ['terminal','reboot',56,4,-3],['terminal','manual',82,2,-1],['terminal','exploit',42,8,-7],
+  ['cargo-rail','ride',60,-1,-5],['cargo-rail','unlock',47,3,-5],['cargo-rail','bypass',78,-2,-2],
+  ['lift','ladder',67,-2,-4],['lift','lift-power',71,-4,-2],['lift','climb-fast',43,1,-8],
+] as const
 function fixtureAt(tile: number, power: number, eventId = 'bulkhead'): GameState {
   const initial = createGame(constant(0.25), 7)
   return { ...initial, position: tile, power, currentEvent: { tile, zone: zoneForTile(tile), eventId } }
@@ -34,6 +47,7 @@ test('seeded event draws and seeded choices are reproducible', () => {
   }
   assert.deepEqual(toGameView(play(0xdeadbeef)), toGameView(play(0xdeadbeef)))
   assert.notDeepEqual(toGameView(play(1)).currentEvent, toGameView(play(2)).currentEvent)
+  assert.equal(createGame(createSeededRandom(42), 42).currentEvent.eventId, 'emergency', 'the first seeded draw remains the existing event draw')
 })
 
 test('all ten events have descriptions and all thirty actions have unique result text and fixed integer chances', () => {
@@ -50,6 +64,34 @@ test('all ten events have descriptions and all thirty actions have unique result
     assert.ok(Number.isInteger(action.successProbabilityPercent))
     assert.ok(action.successProbabilityPercent > 0 && action.successProbabilityPercent < 100)
     assert.ok(action.successText && action.failureText)
+  }
+})
+
+test('manual copy review covers all 30 failure texts without changing success text or action rules', () => {
+  const actions = EVENTS.flatMap(event => event.actions.map(action => [event.id, action.id, action.successProbabilityPercent, action.successDelta, action.failureDelta] as const))
+  assert.deepEqual(actions, expectedActionRules)
+  const successTextDigest = createHash('sha256').update(EVENTS.flatMap(event => event.actions.map(action => action.successText)).join('\n')).digest('hex')
+  assert.equal(successTextDigest, '9b4165b9845e0c8733539c1c3732274a081e7ff7711f9a0c4d5422df3e7d2def')
+  assert.equal(EVENTS.flatMap(event => event.actions).length, 30)
+})
+
+test('each failed action advances when power remains and reaches GAME OVER at zero', () => {
+  for (const event of EVENTS) {
+    for (let index = 0; index < event.actions.length; index++) {
+      const action = event.actions[index]!
+      const withPower = resolveAction(fixtureAt(1, 20, event.id), index, 99, constant(0.5))
+      assert.equal(withPower.lastResult?.success, false, `${event.id}/${action.id} is forced to fail`)
+      assert.equal(toGameView(withPower).lastResult?.failureText, action.failureText)
+      assert.equal(withPower.power, 20 + action.failureDelta)
+      assert.ok(withPower.power > 0)
+      assert.ok(withPower.pendingNextEvent)
+      assert.equal(continueAfterResult(withPower).position, 2)
+
+      const atZero = resolveAction(fixtureAt(1, -action.failureDelta, event.id), index, 99, constant(0.5))
+      assert.equal(atZero.power, 0)
+      assert.equal(atZero.status, 'lost')
+      assert.equal(atZero.pendingNextEvent, null)
+    }
   }
 })
 

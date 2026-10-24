@@ -41,7 +41,7 @@ const restartCommand = app.querySelector<HTMLDivElement>('#restart-command')!
 const continueCommand = app.querySelector<HTMLDivElement>('#continue-command')!
 const latestLogButton = app.querySelector<HTMLButtonElement>('#latest-log')!
 
-type Phase = 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'result-log' | 'await-continue' | 'end-log' | 'idle'
+type Phase = 'prologue-log' | 'prologue-wait' | 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'result-log' | 'await-continue' | 'end-log' | 'idle'
 type PendingChoice = { index: number; action: ActionView }
 
 let seed = seedFromAddress()
@@ -119,8 +119,9 @@ function appendTranscriptLines(entries: readonly (string | OutputItem)[], extraH
       const frame = document.createElement('div')
       frame.className = 'console-image-row'
       const element = document.createElement('img')
-      element.className = 'console-event-image'
+      element.className = image.kind === 'prologue' ? 'console-prologue-image' : 'console-event-image'
       element.dataset.eventId = image.eventId
+      element.dataset.imageKind = image.kind ?? 'event'
       element.width = image.width
       element.height = image.height
       element.alt = image.alt
@@ -211,6 +212,11 @@ function appendRestartCommand(): void {
 }
 
 function outputBecameIdle(): void {
+  if (phase === 'prologue-log') {
+    phase = 'prologue-wait'
+    continueCommand.hidden = false
+    return
+  }
   if (phase === 'event-log') {
     phase = 'waiting'
     activeChoiceButtons.forEach(button => { button.disabled = false })
@@ -270,6 +276,24 @@ function eventLines(view: GameView): OutputItem[] {
   ]
 }
 
+function prologueLines(): (string | OutputItem)[] {
+  return [
+    '[SYSTEM] EXIT SEQUENCE',
+    {
+      type: 'image', kind: 'prologue', eventId: 'prologue',
+      src: `${import.meta.env.BASE_URL}story/prologue.svg`,
+      alt: '床を踏み抜き、手足を広げて廃棄施設の奥へ落下する主人公ロボット',
+      width: 320, height: 200,
+    },
+    'ぼくの仕事は、廃墟から部品を拾って',
+    '街へ持ち帰ること。',
+    '今日もお宝探し……のはずが、',
+    '床が抜けて最深部まで落下！',
+    'ミュータントに会う前に、',
+    '電力が切れる前に地上へ帰ろう！',
+  ]
+}
+
 function beginRunOutput(): void {
   stopSlotTimer()
   transcript.replaceChildren()
@@ -282,20 +306,17 @@ function beginRunOutput(): void {
   pendingChoice = null
   currentRoll = null
   rollText = null
-  phase = 'event-log'
+  pointerStart = null
+  lastContinueTap = null
+  skipClickHandled = false
+  suppressClickAfterStop = false
+  phase = 'prologue-log'
   followTail = true
   consoleWindow.scrollTop = 0
   latestLogButton.hidden = true
   const view = toGameView(game)
   updateStatus(view)
-  appendCommandLines(view.currentEvent.actions)
-  appendTranscriptLines([
-    '[SYSTEM] EXIT SEQUENCE',
-    'ぼくの仕事は、廃墟から部品を拾って街へ持ち帰ること。',
-    '今日もお宝探し……のはずが、床が抜けて最深部まで落下！',
-    'ミュータントに会う前に、電力が切れる前に地上へ帰ろう！',
-    ...eventLines(view),
-  ])
+  appendTranscriptLines(prologueLines())
 }
 
 function resultLines(view: GameView, action: ActionView): (string | OutputItem)[] {
@@ -400,6 +421,15 @@ function stopSlot(): void {
 }
 
 function continueAfterResultFlow(input?: PointerEvent): void {
+  if (phase === 'prologue-wait') {
+    phase = 'idle'
+    continueCommand.hidden = true
+    const view = toGameView(game)
+    appendCommandLines(view.currentEvent.actions)
+    phase = 'event-log'
+    appendTranscriptLines(eventLines(view))
+    return
+  }
   if (phase !== 'await-continue') return
   phase = 'idle'
   continueCommand.hidden = true
@@ -478,6 +508,7 @@ document.addEventListener('click', event => {
     output.skip()
     return
   }
+  if (phase === 'prologue-wait' && !(target instanceof Element && target.closest('.console-window, #continue-button'))) return
   continueAfterResultFlow(event instanceof PointerEvent ? event : undefined)
 })
 
@@ -530,7 +561,7 @@ window.addEventListener('keydown', event => {
     } else if (output.isBusy) {
       event.preventDefault()
       output.skip()
-    } else if (phase === 'await-continue') {
+    } else if (phase === 'await-continue' || phase === 'prologue-wait') {
       event.preventDefault()
       continueAfterResultFlow()
     }
