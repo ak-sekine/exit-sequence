@@ -117,7 +117,7 @@ function appendTranscriptLines(entries: readonly (string | OutputItem)[], extraH
     },
     onImage(image, lineIndex) {
       const frame = document.createElement('div')
-      frame.className = 'console-image-row'
+      frame.className = `console-image-row ${image.kind === 'prologue' ? 'prologue-image-row' : 'event-image-row'}`
       const element = document.createElement('img')
       element.className = image.kind === 'prologue' ? 'console-prologue-image' : 'console-event-image'
       element.dataset.eventId = image.eventId
@@ -277,6 +277,21 @@ function eventLines(view: GameView): OutputItem[] {
 }
 
 function prologueLines(): (string | OutputItem)[] {
+  const compactLandscape = window.matchMedia('(max-height: 440px) and (min-width: 700px)').matches
+  const introduction = compactLandscape
+    ? [
+        'ぼくの仕事は、廃墟から部品を拾って街へ持ち帰ること。',
+        '今日もお宝探し……のはずが、床が抜けて最深部まで落下！',
+        'ミュータントに会う前に、電力が切れる前に地上へ帰ろう！',
+      ]
+    : [
+        'ぼくの仕事は、廃墟から部品を拾って',
+        '街へ持ち帰ること。',
+        '今日もお宝探し……のはずが、',
+        '床が抜けて最深部まで落下！',
+        'ミュータントに会う前に、',
+        '電力が切れる前に地上へ帰ろう！',
+      ]
   return [
     '[SYSTEM] EXIT SEQUENCE',
     {
@@ -285,12 +300,7 @@ function prologueLines(): (string | OutputItem)[] {
       alt: '床を踏み抜き、手足を広げて廃棄施設の奥へ落下する主人公ロボット',
       width: 320, height: 200,
     },
-    'ぼくの仕事は、廃墟から部品を拾って',
-    '街へ持ち帰ること。',
-    '今日もお宝探し……のはずが、',
-    '床が抜けて最深部まで落下！',
-    'ミュータントに会う前に、',
-    '電力が切れる前に地上へ帰ろう！',
+    ...introduction,
   ]
 }
 
