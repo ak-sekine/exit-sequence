@@ -8,6 +8,7 @@
 - 今回追加したもの: 100マス・5区画向けの未接続エンジン (`src/expansion-engine.ts`)、連携確認用の6プロトタイプ、単体テストと設計資料。
 - 100マスエンジンは通常UIから起動しない。40候補×5区画の完成カタログ、画面、100マス用電力調整が揃うまでは公開対象にしない。
 - GitHub APIで確認した作業時点の最新 `origin/main`: `221bae7c6e1f1324f20d95ee3df1d80be60b0cbd`。ローカル `main` と一致する。`git fetch` のHTTPプロキシは接続拒否されたため、SHA確認はGitHub連携APIで代替した。
+- 作業後のGitHub `main` は `9b4a0bcae124dcd82983418a5b1f2606faf72a40` を確認。ローカル `main` の `2ef8d35` とtreeは同一 (`17c87ba45d9b852126cbc35c358f54d08c235e59`) だが、fetch経路が使えずcommit履歴は同期できていない。ローカル `origin/main` tracking refは作業開始SHAのまま。
 - 既存イベント本文や旧15マスの成功率・UIを拡張エンジンへ移植した扱いにはしない。旧イベントの100マス内の配置はPhase 2で確定する。
 
 ## フェーズ一覧
@@ -32,7 +33,7 @@
 | P1-04 | アイテム・設備・NPCの連携サンプル | 完了 | 鍵→100%解錠、電源→100%昇降機、モモ救出→恩返しを用意。成立/不成立テストあり |
 | P1-05 | 結果処理・成功率・因果情報 | 完了 | 表示用viewと判定は同じ計算関数。状態履歴・理由を保持。UI表示への統合はPhase 5で実施 |
 | P1-06 | 拡張/既存単体テスト・build・simulate | 完了 | `npm test` 37 passed、build成功、15マス版simulateを再実行。100マスの測定とは区別 |
-| P1-07 | main追従・commit・push | 完了 | 最新main上でcommitし、main更新後のSHAをGitHub APIで照合 |
+| P1-07 | main追従・commit・push | 完了 | GitHub APIでcommit `5342ef0058913e13a3b5b9352d098ba3880ccf20` を作成しmainを更新、追記commit `9b4a0bcae124dcd82983418a5b1f2606faf72a40` まで照合。ローカルtreeも同じ。fetch不可のためローカルcommit SHAは別 |
 | P1-08 | Playwrightブラウザ回帰 | 要確認 | `npm run test:browser` は実行を試みたが、Playwright未導入とnpm proxy接続失敗で未検証。UIコードを変更していない。Playwright利用可能時に再実行 |
 
 ### Phase 2 — 200件の構成
@@ -83,12 +84,13 @@
 | `npm run simulate` | 完了 | 12,000 runs×5方針。現行15マス版基準値と一致。100マス性能値には使用しない |
 | `npm run test:browser` | 要確認 | Playwright依存がnode_modulesにない。offline installはcache miss (`playwright-core@1.64.0`)、online installは実行環境のproxyに接続できず中断。ブラウザ検証は未実施 |
 | `git fetch origin main` | 要確認 | HTTPプロキシ接続拒否。GitHub APIで開始時SHA `221bae7c6e1f1324f20d95ee3df1d80be60b0cbd` を確認 |
-| commit / push | 完了 | commit `5342ef0058913e13a3b5b9352d098ba3880ccf20` をGitHub APIで作成し、期待SHAを指定してmainを更新。更新後main SHAも同じ値と照合済み |
+| commit / push | 完了 | code commit `5342ef0058913e13a3b5b9352d098ba3880ccf20`、WBS追記commit `9b4a0bcae124dcd82983418a5b1f2606faf72a40`。更新後のmainをAPIで照合。ローカルGitHub fetch/push経路はproxy拒否のため、GitHub APIで期待head SHAを照合してref更新 |
 
 ## 次回Codexの開始手順
 
 1. `AGENTS.md` を再確認し、最新 `origin/main` SHAと作業ツリーを確認する。
 2. Playwrightが使用可能ならP1-08を実行して結果を追記する。依存が使えない場合は、未検証のまま理由を維持する。
-3. Phase 2は旧10イベントのID/配置を決め、5区画40枠ずつのイベントID/名前/概要を `docs/event-catalog.md` に作る。
-4. アイテム・設備・NPCの依存を `docs/event-dependencies.md` に更新し、到達不能な連携がないか確認する。
-5. サンプルイベントやテストfixtureは完成イベント200件へ数えない。
+3. GitHub接続が戻ったら `git fetch origin main`。ローカル `main` はtreeが一致するがcommit SHAが異なるため、clean状態とtree一致を確認してから `git reset --hard origin/main` で履歴を同期する。
+4. Phase 2は旧10イベントのID/配置を決め、5区画40枠ずつのイベントID/名前/概要を `docs/event-catalog.md` に作る。
+5. アイテム・設備・NPCの依存を `docs/event-dependencies.md` に更新し、到達不能な連携がないか確認する。
+6. サンプルイベントやテストfixtureは完成イベント200件へ数えない。
