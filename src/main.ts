@@ -1,5 +1,5 @@
 import './style.css'
-import { ConsoleOutput, type OutputHooks } from './console-output.ts'
+import { ConsoleOutput, type OutputHooks, type OutputItem } from './console-output.ts'
 import {
   createGame,
   createSeededRandom,
@@ -15,13 +15,9 @@ const app = document.querySelector<HTMLDivElement>('#app')!
 app.innerHTML = `
   <main class="terminal-shell">
     <header class="status-bar" aria-label="ゲーム状態">
-      <h1 class="wordmark">EXIT SEQUENCE</h1>
-      <div class="status-content">
-        <img id="event-image" class="event-image" width="160" height="100" alt="" />
-        <div class="status-values" aria-live="polite">
-          <span id="status-position">POSITION 01/${TOTAL_TILES}</span>
-          <span id="status-power">POWER 20/20</span>
-        </div>
+      <div class="status-values" aria-live="polite">
+        <span id="status-position">POSITION 01/${TOTAL_TILES}</span>
+        <span id="status-power">POWER 20/20</span>
       </div>
     </header>
     <section class="console-window" aria-label="コンソールログ。文字送り中はクリックでスキップし、スロット回転中はタップまたはクリックで停止します">
@@ -38,7 +34,6 @@ const transcript = app.querySelector<HTMLDivElement>('#transcript')!
 const consoleWindow = app.querySelector<HTMLElement>('.console-window')!
 const positionOutput = app.querySelector<HTMLSpanElement>('#status-position')!
 const powerOutput = app.querySelector<HTMLSpanElement>('#status-power')!
-const eventImage = app.querySelector<HTMLImageElement>('#event-image')!
 const commandList = app.querySelector<HTMLDivElement>('#command-list')!
 const restartCommand = app.querySelector<HTMLDivElement>('#restart-command')!
 const latestLogButton = app.querySelector<HTMLButtonElement>('#latest-log')!
@@ -91,7 +86,13 @@ function randomSlotNumber(): number {
   return values[0]! % 100
 }
 
-function appendTranscriptLines(lines: readonly string[], extraHooks: OutputHooks = {}): void {
+function mutateTranscript(mutation: () => void): void {
+  const previousTop = consoleWindow.scrollTop
+  mutation()
+  consoleWindow.scrollTop = followTail ? consoleWindow.scrollHeight : previousTop
+}
+
+function appendTranscriptLines(entries: readonly (string | OutputItem)[], extraHooks: OutputHooks = {}): void {
   let activeText: Text | null = null
   const hooks: OutputHooks = {
     onLineStart(text, lineIndex) {
@@ -99,20 +100,34 @@ function appendTranscriptLines(lines: readonly string[], extraHooks: OutputHooks
       row.className = `console-line${text.startsWith('[SUCCESS]') || text.startsWith('[CLEAR]') ? ' line-good' : ''}${text.startsWith('[FAILED]') || text.startsWith('[GAME OVER]') ? ' line-bad' : ''}`
       activeText = document.createTextNode('')
       row.append(activeText)
-      transcript.append(row)
-      scrollIfFollowing()
+      mutateTranscript(() => transcript.append(row))
       extraHooks.onLineStart?.(text, lineIndex)
     },
     onCharacter(character, text, lineIndex) {
-      activeText?.appendData(character)
-      scrollIfFollowing()
+      if (activeText) mutateTranscript(() => activeText?.appendData(character))
       extraHooks.onCharacter?.(character, text, lineIndex)
     },
     onLineEnd(text, lineIndex) {
       extraHooks.onLineEnd?.(text, lineIndex)
     },
+    onImage(image, lineIndex) {
+      const frame = document.createElement('div')
+      frame.className = 'console-image-row'
+      const element = document.createElement('img')
+      element.className = 'console-event-image'
+      element.dataset.eventId = image.eventId
+      element.width = image.width
+      element.height = image.height
+      element.alt = image.alt
+      element.decoding = 'async'
+      element.src = image.src
+      frame.append(element)
+      mutateTranscript(() => transcript.append(frame))
+      extraHooks.onImage?.(image, lineIndex)
+    },
   }
-  output.enqueue(lines, hooks)
+  const items: OutputItem[] = entries.map(entry => typeof entry === 'string' ? { type: 'text', text: entry } : entry)
+  output.enqueueSequence(items, hooks)
 }
 
 function appendPromptLine(): void {
@@ -126,9 +141,8 @@ function appendPromptLine(): void {
   cursor.className = 'console-cursor'
   cursor.setAttribute('aria-hidden', 'true')
   row.append(prefix, text, cursor)
-  transcript.append(row)
+  mutateTranscript(() => transcript.append(row))
   activePromptLine = { row, text, cursor }
-  scrollIfFollowing()
 }
 
 function appendSelectionEcho(index: number, action: ActionView): void {
@@ -137,8 +151,7 @@ function appendSelectionEcho(index: number, action: ActionView): void {
   phase = 'selection-echo'
   output.enqueue([`${index + 1}. ${action.label}`], {
     onCharacter(character) {
-      prompt.text.appendData(character)
-      scrollIfFollowing()
+      mutateTranscript(() => prompt.text.appendData(character))
     },
     onLineEnd() {
       prompt.row.classList.add('committed-prompt')
@@ -228,17 +241,22 @@ function scrollToLatest(): void {
 function updateStatus(view: GameView): void {
   positionOutput.textContent = `POSITION ${String(view.position).padStart(2, '0')}/${TOTAL_TILES}`
   powerOutput.textContent = `POWER ${view.power}/20`
-  eventImage.src = `${import.meta.env.BASE_URL}events/${view.currentEvent.id}.svg`
-  eventImage.dataset.eventId = view.currentEvent.id
-  eventImage.alt = `${view.currentEvent.title}の設備`
 }
 
-function eventLines(view: GameView): string[] {
+function eventLines(view: GameView): OutputItem[] {
   const event = view.currentEvent
   return [
-    `[EVENT] ${event.title}`,
-    event.description,
-    `観測：${event.observationText}`,
+    { type: 'text', text: `[EVENT] ${event.title}` },
+    {
+      type: 'image',
+      eventId: event.id,
+      src: `${import.meta.env.BASE_URL}events/${event.id}.svg`,
+      alt: `${event.title}の設備`,
+      width: 320,
+      height: 200,
+    },
+    { type: 'text', text: event.description },
+    { type: 'text', text: `観測：${event.observationText}` },
   ]
 }
 
@@ -261,12 +279,13 @@ function beginRunOutput(): void {
   updateStatus(view)
   appendCommandLines(view.currentEvent.actions)
   appendTranscriptLines([
+    '[SYSTEM] EXIT SEQUENCE',
     '[SYSTEM] 脱出シーケンス開始',
     ...eventLines(view),
   ])
 }
 
-function resultLines(view: GameView, action: ActionView): string[] {
+function resultLines(view: GameView, action: ActionView): (string | OutputItem)[] {
   const result = view.lastResult!
   const expectedDelta = result.success ? action.successDelta : action.failureDelta
   const capNote = result.powerChange !== expectedDelta && expectedDelta > 0 && result.powerAfter === 20
@@ -274,7 +293,7 @@ function resultLines(view: GameView, action: ActionView): string[] {
     : result.powerChange !== expectedDelta && expectedDelta < 0 && result.powerAfter === 0
       ? '（最低値0）'
       : ''
-  const lines = [
+  const lines: (string | OutputItem)[] = [
     `[${result.success ? 'SUCCESS' : 'FAILED'}] 電力 ${signed(result.powerChange)}${capNote}`,
   ]
   if (view.status === 'lost') {
@@ -306,7 +325,7 @@ function beginSlot(): void {
   announcement.setAttribute('aria-live', 'polite')
   announcement.setAttribute('aria-atomic', 'true')
   row.append(visibleText, number, announcement)
-  transcript.append(row)
+  mutateTranscript(() => transcript.append(row))
   phase = 'slot'
   scrollToLatest()
   resumeSlotTimer()

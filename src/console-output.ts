@@ -2,7 +2,24 @@ export interface OutputHooks {
   onLineStart?: (text: string, lineIndex: number) => void
   onCharacter?: (character: string, text: string, lineIndex: number) => void
   onLineEnd?: (text: string, lineIndex: number) => void
+  onImage?: (image: OutputImage, lineIndex: number) => void
 }
+
+export interface OutputText {
+  type: 'text'
+  text: string
+}
+
+export interface OutputImage {
+  type: 'image'
+  eventId: string
+  src: string
+  alt: string
+  width: number
+  height: number
+}
+
+export type OutputItem = OutputText | OutputImage
 
 export interface ConsoleOutputOptions {
   delayMs?: number
@@ -12,7 +29,8 @@ export interface ConsoleOutputOptions {
   onIdle?: () => void
 }
 
-interface OutputLine {
+interface PendingOutputItem {
+  item: OutputItem
   text: string
   characters: string[]
   lineIndex: number
@@ -33,7 +51,7 @@ export class ConsoleOutput {
   private readonly schedule: (callback: () => void, delayMs: number) => unknown
   private readonly cancel: (handle: unknown) => void
   private readonly onIdle?: () => void
-  private queue: OutputLine[] = []
+  private queue: PendingOutputItem[] = []
   private timer: unknown = null
   private generation = 0
   private running = false
@@ -54,16 +72,23 @@ export class ConsoleOutput {
   }
 
   enqueue(lines: readonly string[], hooks: OutputHooks = {}): void {
-    if (lines.length === 0) return
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-      const text = lines[lineIndex]!
-      this.queue.push({ text, characters: splitGraphemes(text), lineIndex, hooks, cursor: 0, started: false })
+    this.enqueueSequence(lines.map(text => ({ type: 'text', text })), hooks)
+  }
+
+  enqueueSequence(items: readonly OutputItem[], hooks: OutputHooks = {}): void {
+    if (items.length === 0) return
+    for (let lineIndex = 0; lineIndex < items.length; lineIndex++) {
+      const item = items[lineIndex]!
+      const text = item.type === 'text' ? item.text : ''
+      this.queue.push({ item, text, characters: splitGraphemes(text), lineIndex, hooks, cursor: 0, started: false })
     }
     this.running = true
     if (this.reducedMotion) {
       this.drain()
     } else if (!this.paused) {
-      this.scheduleNext()
+      this.writeLeadingImages()
+      if (this.isBusy) this.scheduleNext()
+      else this.finish()
     }
   }
 
@@ -79,7 +104,9 @@ export class ConsoleOutput {
     if (paused) {
       this.cancelTimer()
     } else if (this.isBusy && !this.reducedMotion) {
-      this.scheduleNext()
+      this.writeLeadingImages()
+      if (this.isBusy) this.scheduleNext()
+      else this.finish()
     }
   }
 
@@ -107,6 +134,7 @@ export class ConsoleOutput {
       if (generation !== this.generation) return
       this.timer = null
       this.writeOneCharacter()
+      this.writeLeadingImages()
       if (this.isBusy) this.scheduleNext()
       else this.finish()
     }, this.delayMs)
@@ -115,6 +143,11 @@ export class ConsoleOutput {
   private writeOneCharacter(): void {
     const line = this.queue[0]
     if (!line) return
+    if (line.item.type === 'image') {
+      line.hooks.onImage?.(line.item, line.lineIndex)
+      this.queue.shift()
+      return
+    }
     if (!line.started) {
       line.started = true
       line.hooks.onLineStart?.(line.text, line.lineIndex)
@@ -128,6 +161,10 @@ export class ConsoleOutput {
       line.hooks.onLineEnd?.(line.text, line.lineIndex)
       this.queue.shift()
     }
+  }
+
+  private writeLeadingImages(): void {
+    while (this.queue[0]?.item.type === 'image') this.writeOneCharacter()
   }
 
   private drain(): void {

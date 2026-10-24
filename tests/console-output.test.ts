@@ -61,6 +61,47 @@ test('writes one grapheme per tick and preserves line order', () => {
   assert.deepEqual(lines, ['Aか\u3099', '二行目'])
 })
 
+test('inserts images between text immediately and exactly once when output is skipped', () => {
+  const clock = new ManualClock()
+  const typer = output(clock)
+  const order: string[] = []
+  const image = { type: 'image' as const, eventId: 'bulkhead', src: '/events/bulkhead.svg', alt: '隔壁', width: 320, height: 200 }
+  typer.enqueueSequence([
+    { type: 'text', text: '見出し' },
+    image,
+    { type: 'text', text: '説明' },
+  ], {
+    onCharacter: character => order.push(character),
+    onImage: inserted => order.push(`image:${inserted.eventId}`),
+  })
+
+  clock.step()
+  assert.deepEqual(order, ['見'])
+  typer.skip()
+  assert.deepEqual(order, ['見', '出', 'し', 'image:bulkhead', '説', '明'])
+  assert.equal(order.filter(item => item === 'image:bulkhead').length, 1)
+  assert.equal(typer.isBusy, false)
+})
+
+test('image entries do not receive character-by-character output', () => {
+  const clock = new ManualClock()
+  const typer = output(clock)
+  const order: string[] = []
+  typer.enqueueSequence([
+    { type: 'text', text: 'A' },
+    { type: 'image', eventId: 'battery', src: '/events/battery.svg', alt: '蓄電池', width: 320, height: 200 },
+    { type: 'text', text: 'B' },
+  ], {
+    onCharacter: character => order.push(character),
+    onImage: image => order.push(`image:${image.eventId}`),
+  })
+
+  clock.step()
+  assert.deepEqual(order, ['A', 'image:battery'])
+  clock.step()
+  assert.deepEqual(order, ['A', 'image:battery', 'B'])
+})
+
 test('skip drains queued output immediately without touching game state', () => {
   const clock = new ManualClock()
   const state = { position: 3, power: 15, randomDraws: 4 }

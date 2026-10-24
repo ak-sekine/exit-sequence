@@ -1,9 +1,12 @@
 import { chromium } from 'playwright'
 import assert from 'node:assert/strict'
+import { mkdir } from 'node:fs/promises'
 import { EVENTS } from '../src/events.ts'
-import { createGame, createSeededRandom } from '../src/game.ts'
+import { createGame, createSeededRandom, resolveAction } from '../src/game.ts'
 
 const base = process.env.EXIT_SEQUENCE_URL ?? 'http://127.0.0.1:5173/exit-sequence/'
+const screenshotDir = process.env.EXIT_SEQUENCE_SCREENSHOT_DIR
+if (screenshotDir) await mkdir(screenshotDir, { recursive: true })
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium', args: ['--no-sandbox'] })
 
 async function waitForChoices(page) {
@@ -92,7 +95,8 @@ async function finishCurrentTurn(page, index = 0, stopMethod = 'Enter') {
   await page.waitForFunction(() => document.querySelector('.action-command:not(:disabled)') || document.querySelector('[data-restart]'))
   if (await page.locator('.action-command:not(:disabled)').count()) await waitForChoices(page)
   await page.waitForFunction(() => {
-    const image = document.querySelector('.event-image')
+    const images = [...document.querySelectorAll('.console-event-image')]
+    const image = images.at(-1)
     return image?.complete && image.naturalWidth > 0 && new URL(image.currentSrc).pathname.endsWith(`/events/${image.dataset.eventId}.svg`)
   })
 }
@@ -112,7 +116,6 @@ async function measureRegions(page) {
       viewport: { width: innerWidth, height: innerHeight },
       document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
       fontSizes: {
-        title: getComputedStyle(document.querySelector('.wordmark')).fontSize,
         status: getComputedStyle(document.querySelector('.status-values')).fontSize,
         log: getComputedStyle(document.querySelector('.transcript')).fontSize,
         action: getComputedStyle(document.querySelector('.command-number')).fontSize,
@@ -123,21 +126,30 @@ async function measureRegions(page) {
       },
       shell: rect('.terminal-shell'),
       status: rect('.status-bar'),
-      statusContent: rect('.status-content'),
       statusValues: rect('.status-values'),
-      wordmark: rect('.wordmark'),
-      image: rect('.event-image'),
       log: rect('.console-window'),
       dock: rect('.command-dock'),
       logOverflow: getComputedStyle(document.querySelector('.console-window')).overflowY,
       dockOverflow: getComputedStyle(document.querySelector('.command-dock')).overflowY,
-      imageState: {
-        eventId: document.querySelector('.event-image').dataset.eventId,
-        src: document.querySelector('.event-image').currentSrc,
-        loaded: document.querySelector('.event-image').complete,
-        naturalWidth: document.querySelector('.event-image').naturalWidth,
-        naturalHeight: document.querySelector('.event-image').naturalHeight,
-      },
+      statusItems: [...document.querySelectorAll('.status-values span')].map(element => {
+        const { left, right, top, bottom } = element.getBoundingClientRect()
+        return { text: element.textContent, left, right, top, bottom }
+      }),
+      imageRows: [...document.querySelectorAll('.console-image-row')].map(frame => {
+        const { width, height, left, right } = frame.getBoundingClientRect()
+        const image = frame.querySelector('img')
+        return {
+          width, height, left, right,
+          eventId: image.dataset.eventId,
+          src: image.currentSrc,
+          loaded: image.complete,
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+        }
+      }),
+      fixedTitleCount: document.querySelectorAll('.wordmark').length,
+      fixedImageCount: document.querySelectorAll('.status-bar img, #event-image').length,
+      consoleHasVerticalSpace: document.querySelector('.console-window').clientHeight > document.querySelector('.status-bar').clientHeight * 5,
       buttons: [...document.querySelectorAll('.action-command')].map(button => {
         const { top, right, bottom, left, width, height } = button.getBoundingClientRect()
         return { top, right, bottom, left, width, height }
@@ -155,27 +167,34 @@ function assertRegions(measurements, layout) {
   assert.equal(measurements.document.height, layout.height, `no page scroll at ${layout.width}×${layout.height}`)
   assert.ok(Math.abs(measurements.shell.height - layout.height) <= 1, 'terminal fills the viewport')
   assert.ok(measurements.status.bottom <= measurements.log.top + 1, 'status does not overlap the log')
-  assert.ok(Math.abs(measurements.wordmark.left - measurements.status.left) <= 1, 'title stays at the top left of the status area')
-  assert.ok(measurements.image.left >= measurements.statusContent.left - 1 && measurements.image.right <= measurements.statusContent.right + 1, 'event image stays inside the two-column status content')
-  assert.ok(measurements.image.right <= measurements.statusValues.left + 1, 'event image and right-side status values do not overlap')
-  assert.ok(measurements.image.bottom <= measurements.status.bottom + 1, 'event image stays inside the top status area')
-  assert.ok(measurements.statusContent.right <= measurements.status.right + 1, 'status content stays inside the viewport column')
-  assert.equal(measurements.imageState.loaded, true, 'event image finishes loading')
-  assert.equal(measurements.imageState.naturalWidth, 320, 'event image has its authored width')
-  assert.equal(measurements.imageState.naturalHeight, 200, 'event image has its authored height')
-  assert.ok(measurements.image.width >= 116 && measurements.image.width <= 160, 'event image adapts to the layout')
-  assert.ok(measurements.image.width > 120 || layout.height <= 440, 'portrait and desktop event images exceed the former 120px size')
-  assert.ok(measurements.imageState.src.endsWith(`/events/${measurements.imageState.eventId}.svg`), 'displayed image matches the current event ID')
+  assert.equal(measurements.fixedTitleCount, 0, 'the fixed title is removed')
+  assert.equal(measurements.fixedImageCount, 0, 'the fixed event image is removed')
+  assert.ok(measurements.status.height <= 40, 'the compact status row stays below 40px high')
+  assert.ok(measurements.statusValues.left >= measurements.status.left - 1 && measurements.statusValues.right <= measurements.status.right + 1, 'both status values stay inside the top area')
+  assert.equal(measurements.statusItems.length, 2, 'the top area contains only position and power')
+  assert.match(measurements.statusItems[0].text, /^POSITION /)
+  assert.match(measurements.statusItems[1].text, /^POWER /)
+  assert.ok(measurements.statusItems[0].left < measurements.statusItems[1].left, 'position stays to the left of power')
+  assert.ok(measurements.consoleHasVerticalSpace, 'the central log is much taller than the compact status')
+  assert.ok(measurements.imageRows.length >= 1, 'event art is inside the log')
+  const latestImage = measurements.imageRows.at(-1)
+  assert.equal(latestImage.loaded, true, 'event image finishes loading')
+  assert.equal(latestImage.naturalWidth, 320, 'event image has its authored width')
+  assert.equal(latestImage.naturalHeight, 200, 'event image has its authored height')
+  assert.ok(latestImage.width <= 320 && latestImage.width > 0, 'event image stays within 320px and adapts to the log')
+  assert.ok(Math.abs(latestImage.width / latestImage.height - 8 / 5) < 0.01, 'event image keeps its 8:5 ratio')
+  assert.ok(latestImage.left >= measurements.log.left - 1 && latestImage.right <= measurements.log.right + 1, 'event image is left aligned and stays within the log')
+  assert.ok(latestImage.src.endsWith(`/events/${latestImage.eventId}.svg`), 'displayed image matches its event ID')
   assert.ok(measurements.log.bottom <= measurements.dock.top + 1, 'log does not overlap the fixed input dock')
   assert.ok(measurements.dock.bottom <= measurements.shell.bottom + 1, 'input dock stays inside the safe-area padded shell')
   assert.ok(measurements.log.height > 0, 'central log retains a scrollable viewport')
   assert.equal(measurements.logOverflow, 'auto', 'only the log scrolls vertically in the middle region')
   assert.equal(measurements.dockOverflow, 'auto', 'the input dock can scroll internally on short screens')
-  assert.ok(measurements.dock.height <= 150, 'the three-row input dock stays compact')
+  assert.ok(Math.abs(measurements.dock.height - 142) <= 1, 'the three-row input dock stays exactly 142px high')
   assert.deepEqual(measurements.overflowing, [], `no clipped console or choice text at ${layout.width}px`)
   assert.ok(measurements.choiceTextOverflow.every(value => value !== 'ellipsis'), 'action labels never use ellipsis')
   assert.deepEqual(measurements.fontSizes, {
-    title: '18px', status: '16px', log: '15px', action: '15px', probability: '14px', delta: '14px', latest: '14px', restart: '15px',
+    status: '16px', log: '15px', action: '15px', probability: '14px', delta: '14px', latest: '14px', restart: '15px',
   }, `required text sizes are used at ${layout.width}px`)
   assert.ok(Object.values(measurements.fontSizes).every(size => Number.parseFloat(size) >= 14), 'no game UI text is smaller than 14px')
   assert.ok(measurements.buttons.every(button => button.left >= measurements.dock.left - 1 && button.right <= measurements.dock.right + 1), 'choices stay inside the input dock')
@@ -208,15 +227,11 @@ try {
     assert.equal(await page.locator('.action-command:disabled').count(), 3, 'choices stay disabled until the event log finishes')
     assert.doesNotMatch(await page.locator('.command-dock').innerText(), /\[SELECT ACTION\]/, 'the command heading is omitted')
     assert.equal(await page.locator('#status-position').innerText(), 'POSITION 01/15')
-    await page.waitForFunction(() => {
-      const image = document.querySelector('.event-image')
-      return image?.complete && image.naturalWidth > 0
-    })
     const eventAssets = await page.evaluate(async ids => Promise.all(ids.map(id => new Promise(resolve => {
       const image = new Image()
       image.onload = () => resolve({ id, loaded: true, width: image.naturalWidth, height: image.naturalHeight })
       image.onerror = () => resolve({ id, loaded: false, width: 0, height: 0 })
-      image.src = new URL(`${id}.svg`, document.querySelector('.event-image').src).href
+      image.src = new URL(`${id}.svg`, new URL('events/', document.baseURI)).href
     }))), ['battery', 'bulkhead', 'cargo-rail', 'charger', 'conveyor', 'emergency', 'generator', 'leak', 'lift', 'terminal'])
     assert.ok(eventAssets.every(asset => asset.loaded && asset.width === 320 && asset.height === 200), 'all ten local event SVGs load at the same size')
 
@@ -228,15 +243,16 @@ try {
       assert.equal(await page.locator('#status-position').innerText(), 'POSITION 01/15')
     }
     await skipOutput(page)
+    assert.equal(await page.locator('.console-event-image').count(), 1, 'skipping initial output inserts the event image once')
 
     const measurements = await measureRegions(page)
     assertRegions(measurements, layout)
+    if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/layout-${layout.width}x${layout.height}.png` })
 
     const palette = await page.evaluate(() => {
       const color = selector => getComputedStyle(document.querySelector(selector)).color
       return {
         root: getComputedStyle(document.documentElement).color,
-        title: color('.wordmark'),
         status: color('#status-position'),
         log: color('.transcript'),
         logLine: color('.console-line'),
@@ -249,7 +265,7 @@ try {
       }
     })
     const terminalGreen = 'rgb(79, 214, 106)'
-    assert.deepEqual(Object.values(palette), Array(11).fill(terminalGreen), 'all text and the cursor use one deep green')
+    assert.deepEqual(Object.values(palette), Array(10).fill(terminalGreen), 'all text and the cursor use one deep green')
     const activeChoice = page.locator('.action-command:not(:disabled)').first()
     await activeChoice.hover()
     assert.equal(await activeChoice.evaluate(button => getComputedStyle(button).color), terminalGreen, 'hover keeps the terminal text color')
@@ -259,6 +275,7 @@ try {
     assert.equal(focusStyle.outline, terminalGreen, 'focus outline stays in the terminal palette')
 
     const transcript = await page.locator('#transcript').innerText()
+    assert.equal(await page.locator('#transcript').getByText('[SYSTEM] EXIT SEQUENCE', { exact: true }).count(), 1, 'the game title appears once at the start of the log')
     assert.match(transcript, /\[SYSTEM\] 脱出シーケンス開始/)
     assert.match(transcript, /\[EVENT\]/)
     assert.match(transcript, /観測：/)
@@ -278,12 +295,31 @@ try {
     }
     assert.doesNotMatch(bodyText, /facilityConditions|baseChance|\b(?:stable|degraded)\b/i)
     assert.doesNotMatch(await page.locator('body').evaluate(element => element.innerHTML), /facilityConditions|baseChance|stableModifier|degraded/i)
-    assert.equal(await page.locator('.wordmark').innerText(), 'EXIT SEQUENCE')
+    assert.equal(await page.locator('.wordmark').count(), 0, 'the fixed game title is removed')
     assert.equal(await page.locator('#status-position').innerText(), 'POSITION 01/15')
     assert.equal(await page.locator('#status-power').innerText(), 'POWER 20/20')
 
+    const eventStructure = await page.locator('#transcript .console-line').filter({ hasText: '[EVENT]' }).first().evaluate(heading => {
+      const image = heading.nextElementSibling
+      return {
+        heading: heading.textContent,
+        imageClass: image?.className,
+        imageId: image?.querySelector('img')?.dataset.eventId,
+        imageAlt: image?.querySelector('img')?.alt,
+        description: image?.nextElementSibling?.textContent,
+        observation: image?.nextElementSibling?.nextElementSibling?.textContent,
+      }
+    })
+    const initialEvent = EVENTS.find(event => event.title === eventStructure.heading.replace(/^\[EVENT\] /, ''))
+    assert.equal(eventStructure.imageClass, 'console-image-row', 'the image is a distinct transcript element immediately after its heading')
+    assert.ok(initialEvent && eventStructure.imageId === initialEvent.id, 'the event image matches the event heading ID')
+    assert.equal(eventStructure.imageAlt, `${initialEvent.title}の設備`)
+    assert.equal(eventStructure.description, initialEvent.description)
+    assert.ok(Object.values(initialEvent.clues).includes(eventStructure.observation?.replace(/^観測：/, '')))
+
     if (layout.width === 320) {
       await page.evaluate(() => { window.__originalFirstLine = document.querySelector('.console-line') })
+      await page.evaluate(() => { window.__originalImage = document.querySelector('.console-event-image') })
       const priorLines = await page.locator('#transcript .console-line:not(.prompt-line)').allInnerTexts()
       const selectedLabel = await page.locator('.action-command:not(:disabled) .command-number').nth(1).innerText()
       const dockTop = measurements.dock.top
@@ -325,6 +361,8 @@ try {
       assert.doesNotMatch(resultText, /\[(?:ACTION|STATUS|POSITION|MOVE)\]/, 'duplicate action and status log lines are omitted')
       const priorLinesAfter = await page.locator('#transcript .console-line:not(.prompt-line)').allInnerTexts()
       assert.deepEqual(priorLinesAfter.slice(0, priorLines.length), priorLines, 'past console lines stay in order')
+      assert.equal(await page.locator('.console-event-image').count(), 2, 'the next event appends an image without replacing the past image')
+      assert.equal(await page.evaluate(() => window.__originalImage === document.querySelector('.console-event-image')), true, 'the first event image DOM node is retained')
       assert.match(await page.locator('#status-position').innerText(), /02\/15/)
       const powerDelta = resultText.match(/\[(?:SUCCESS|FAILED)\] 電力 ([+-]?\d+)/)
       assert.ok(powerDelta, 'action result includes the actual power change')
@@ -407,13 +445,26 @@ try {
     await imagePage.goto(`${base}?seed=${eventSeeds.get(definition.id)}`)
     await waitForChoices(imagePage)
     await imagePage.waitForFunction(() => {
-      const image = document.querySelector('#event-image')
+      const image = document.querySelector('.console-event-image')
       return image?.complete && image.naturalWidth === 320 && image.naturalHeight === 200
     })
-    const image = await imagePage.locator('#event-image').evaluate(element => ({ id: element.dataset.eventId, src: element.currentSrc, alt: element.alt }))
+    const image = await imagePage.locator('.console-event-image').first().evaluate(element => ({ id: element.dataset.eventId, src: element.currentSrc, alt: element.alt }))
     assert.equal(image.id, definition.id, `${definition.id} is selected by its event ID`)
     assert.ok(image.src.endsWith(`/events/${definition.id}.svg`), `${definition.id} maps to its own local SVG`)
     assert.equal(image.alt, `${definition.title}の設備`, `${definition.id} image has descriptive alternative text`)
+    const order = await imagePage.locator('#transcript .console-line').filter({ hasText: '[EVENT]' }).first().evaluate(heading => {
+      const frame = heading.nextElementSibling
+      return {
+        imageClass: frame?.className,
+        imageId: frame?.querySelector('img')?.dataset.eventId,
+        description: frame?.nextElementSibling?.textContent,
+        observation: frame?.nextElementSibling?.nextElementSibling?.textContent,
+      }
+    })
+    assert.equal(order.imageClass, 'console-image-row', `${definition.id} image immediately follows the event heading`)
+    assert.equal(order.imageId, definition.id, `${definition.id} heading has its matching image`)
+    assert.equal(order.description, definition.description, `${definition.id} description follows its image`)
+    assert.ok(Object.values(definition.clues).includes(order.observation?.replace(/^観測：/, '')), `${definition.id} observation follows its description`)
     assertRegions(await measureRegions(imagePage), { width: 320, height: 640 })
     const choiceRows = await imagePage.locator('.action-command').allInnerTexts()
     const choices = await imagePage.locator('#command-dock').innerText()
@@ -427,7 +478,83 @@ try {
     for (const action of definition.actions) assert.ok(!choices.includes(action.detail), `${definition.id} keeps action detail off the three visible rows`)
   }
   await imageContext.close()
-  console.log('event illustrations: all ten IDs load their own shaded local SVG')
+  console.log('event illustrations: all ten IDs load their own shaded local SVG in the transcript')
+
+  let repeatedRun = null
+  for (let seed = 0; seed < 10000 && !repeatedRun; seed++) {
+    const random = createSeededRandom(seed)
+    let state = createGame(random, seed)
+    const eventIds = [state.currentEvent.eventId]
+    for (let turn = 0; turn < 12 && state.status === 'playing'; turn++) {
+      state = resolveAction(state, 0, 0, random)
+      if (state.status !== 'playing') break
+      eventIds.push(state.currentEvent.eventId)
+      if (new Set(eventIds).size < eventIds.length) repeatedRun = { seed, eventIds }
+    }
+  }
+  assert.ok(repeatedRun, 'a deterministic run repeats at least one event')
+  const repeatedContext = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' })
+  const repeatedPage = await repeatedContext.newPage()
+  repeatedPage.setDefaultTimeout(5000)
+  await forceSlotValue(repeatedPage, 0)
+  await repeatedPage.goto(`${base}?seed=${repeatedRun.seed}`)
+  await waitForChoices(repeatedPage)
+  for (let turn = 1; turn < repeatedRun.eventIds.length; turn++) {
+    const slotsBefore = await repeatedPage.locator('.slot-line').count()
+    await repeatedPage.locator('.action-command:not(:disabled)').first().click()
+    await repeatedPage.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBefore)
+    await repeatedPage.keyboard.press('Enter')
+    await waitForChoices(repeatedPage)
+  }
+  const retainedIds = await repeatedPage.locator('.console-event-image').evaluateAll(images => images.map(image => image.dataset.eventId))
+  assert.deepEqual(retainedIds, repeatedRun.eventIds, 'every event gets one appended image, including repeated event IDs')
+  assert.ok(new Set(retainedIds).size < retainedIds.length, 'the run contains a repeated event image')
+  assert.equal(await repeatedPage.locator('.console-image-row').count(), repeatedRun.eventIds.length, 'past images are not replaced when an event repeats')
+  await repeatedContext.close()
+  console.log('repeated events: each occurrence retains a separate image row')
+
+  const failedImageContext = await browser.newContext({ viewport: { width: 320, height: 640 }, reducedMotion: 'reduce' })
+  const failedImagePage = await failedImageContext.newPage()
+  failedImagePage.setDefaultTimeout(5000)
+  await failedImagePage.goto(`${base}?seed=123456`)
+  await waitForChoices(failedImagePage)
+  await failedImagePage.locator('.console-event-image').first().evaluate(image => { image.src = new URL('events/missing.svg', document.baseURI).href })
+  await failedImagePage.waitForFunction(() => {
+    const image = document.querySelector('.console-event-image')
+    return image?.complete && image.naturalWidth === 0
+  })
+  assert.match(await failedImagePage.locator('#transcript').innerText(), /観測：/)
+  assert.equal(await failedImagePage.locator('.action-command:not(:disabled)').count(), 3, 'failed image loading does not block action input')
+  await failedImageContext.close()
+  console.log('failed image request: text output and action input continue')
+
+  const sizingContext = await browser.newContext({ viewport: { width: 320, height: 640 }, reducedMotion: 'reduce' })
+  await sizingContext.route('**/events/*.svg', async route => {
+    await new Promise(resolve => setTimeout(resolve, 350))
+    await route.continue()
+  })
+  const sizingPage = await sizingContext.newPage()
+  sizingPage.setDefaultTimeout(5000)
+  await sizingPage.goto(`${base}?seed=123456`, { waitUntil: 'domcontentloaded' })
+  await waitForChoices(sizingPage)
+  const sizeBeforeLoad = await sizingPage.locator('.console-image-row').first().evaluate(frame => {
+    const { width, height } = frame.getBoundingClientRect()
+    return { width, height, scrollTop: document.querySelector('.console-window').scrollTop }
+  })
+  assert.ok(sizeBeforeLoad.width > 0 && sizeBeforeLoad.height > 0, 'image dimensions are reserved before the file loads')
+  await sizingPage.waitForFunction(() => {
+    const image = document.querySelector('.console-event-image')
+    return image?.complete && image.naturalWidth > 0
+  })
+  const sizeAfterLoad = await sizingPage.locator('.console-image-row').first().evaluate(frame => {
+    const { width, height } = frame.getBoundingClientRect()
+    return { width, height, scrollTop: document.querySelector('.console-window').scrollTop }
+  })
+  assert.ok(Math.abs(sizeBeforeLoad.width - sizeAfterLoad.width) <= 1, 'image width stays fixed after loading')
+  assert.ok(Math.abs(sizeBeforeLoad.height - sizeAfterLoad.height) <= 1, 'image height stays fixed after loading')
+  assert.equal(sizeAfterLoad.scrollTop, sizeBeforeLoad.scrollTop, 'image loading does not move the log scroll position')
+  await sizingContext.close()
+  console.log('image reservation: dimensions and scroll position stay stable while loading')
 
   const reducedContext = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -511,7 +638,7 @@ try {
   await waitForChoices(page)
   assert.match(await page.locator('#transcript').innerText(), /\[SYSTEM\] 脱出シーケンス開始/)
   assert.doesNotMatch(await page.locator('#transcript').innerText(), /\[CLEAR\]|\[GAME OVER\]/)
-  assert.equal(await page.locator('#transcript .console-line').count(), 5, 'restart clears the previous run transcript')
+  assert.equal(await page.locator('#transcript .console-line').count(), 6, 'restart clears the previous run transcript')
   assert.equal(await page.locator('#transcript .prompt-line').count(), 1, 'restart creates one fresh prompt')
   assert.equal(await page.locator('#transcript .console-cursor').count(), 1, 'restart does not leave an old cursor behind')
   assert.doesNotMatch(await page.locator('#command-dock').innerText(), />/)
