@@ -1,4 +1,4 @@
-import { createGame, createSeededRandom, estimateSuccessProbability, resolveAction } from '../src/game.ts'
+import { createGame, createSeededRandom, estimateSuccessProbability, resolveAction, successProbabilityPercent } from '../src/game.ts'
 import { eventById } from '../src/events.ts'
 
 const RUNS = 12_000
@@ -46,7 +46,7 @@ const policies = [
       let bestScore = Number.NEGATIVE_INFINITY
       for (let index = 0; index < event.actions.length; index++) {
         const action = event.actions[index]
-        const chance = estimateSuccessProbability(state, index)
+        const chance = successProbabilityPercent(state, index) / 100
         const expectedPower = expectedValue(state, event, action, chance)
         const survives = (state.power + action.successDelta > 0 ? chance : 0)
           + (state.power + action.failureDelta > 0 ? 1 - chance : 0)
@@ -75,12 +75,13 @@ function runPolicy(policy) {
   for (let index = 0; index < RUNS; index++) {
     const seed = (FIRST_SEED + index) >>> 0
     const gameRandom = createSeededRandom(seed)
+    const slotRandom = createSeededRandom(seed ^ 0x51_07_5e9d)
     const policyRandom = createSeededRandom(seed ^ 0xA5A5_5A5A)
     let state = createGame(gameRandom, seed)
     while (state.status === 'playing') {
       const event = eventById(state.currentEvent.eventId)
       const actionIndex = policy.choose(state, event, policyRandom)
-      state = resolveAction(state, actionIndex, gameRandom)
+      state = resolveAction(state, actionIndex, Math.floor(slotRandom() * 100), gameRandom)
     }
     if (state.status === 'won') {
       clears++

@@ -18,12 +18,79 @@ async function skipOutput(page) {
   await waitForChoices(page)
 }
 
-async function finishCurrentTurn(page, index = 0) {
+async function forceSlotValue(page, value) {
+  await page.addInitScript(forcedValue => {
+    Object.defineProperty(Crypto.prototype, 'getRandomValues', {
+      configurable: true,
+      value(array) { array.fill(forcedValue); return array },
+    })
+  }, value)
+}
+
+async function forceFirstSpinChange(page) {
+  await page.addInitScript(() => {
+    let nextValue = 0
+    Object.defineProperty(Crypto.prototype, 'getRandomValues', {
+      configurable: true,
+      value(array) { array.fill(nextValue < 3 ? nextValue++ : 0); return array },
+    })
+  })
+}
+
+async function selectBestSuccessAction(page) {
+  const choices = await page.locator('.action-command:not(:disabled)').all()
+  let selected = 0
+  let bestDelta = Number.NEGATIVE_INFINITY
+  for (let index = 0; index < choices.length; index++) {
+    const text = await choices[index].innerText()
+    const powerText = text.match(/([+-]?\d+)\/[+-]?\d+$/)
+    const delta = Number(powerText[1])
+    if (delta > bestDelta) { bestDelta = delta; selected = index }
+  }
+  await choices[selected].tap()
+}
+
+async function finishCurrentTurn(page, index = 0, stopMethod = 'Enter') {
   const position = await page.locator('#status-position').innerText()
+  const power = await page.locator('#status-power').innerText()
+  const oldSlotCount = await page.locator('.slot-line').count()
   await page.locator('.action-command:not(:disabled)').nth(index).click()
-  await page.waitForFunction(previous => document.querySelector('#status-position')?.textContent !== previous, position)
-  await page.keyboard.press('Space')
-  await waitForChoices(page)
+  await page.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, oldSlotCount)
+  const activeSlot = page.locator('.slot-line').last()
+  const activeNumber = activeSlot.locator('.slot-number')
+  const rowCount = await page.locator('#transcript .console-line').count()
+  await activeNumber.evaluate(element => { window.__rollElement = element })
+  await page.waitForTimeout(120)
+  assert.match(await activeNumber.innerText(), /^\d{2}$/)
+  assert.equal(await page.locator('#status-position').innerText(), position, 'position stays fixed while the slot spins')
+  assert.equal(await page.locator('#status-power').innerText(), power, 'power stays fixed while the slot spins')
+  assert.equal(await page.locator('.action-command:not(:disabled)').count(), 0, 'choices are locked while the slot spins')
+  assert.equal(await page.locator('#transcript .console-line').count(), rowCount, 'roll updates reuse one log row')
+  assert.equal(await activeSlot.evaluate(element => element.scrollWidth > element.clientWidth), false, 'the two-digit roll stays inside the console width')
+  assert.equal(await activeNumber.evaluate(element => window.__rollElement === element), true, 'the rolling number keeps the same DOM node')
+  const roll = await activeNumber.innerText()
+  const probabilityLine = await page.locator('.console-line').filter({ hasText: /^成功率 \d+%$/ }).last().innerText()
+  const probability = Number(probabilityLine.match(/(\d+)%/)[1])
+  const previousResults = await page.locator('.line-good, .line-bad').filter({ hasText: /^\[(?:SUCCESS|FAILED)\]/ }).count()
+  if (stopMethod === 'tap') await page.locator('.slot-line').tap()
+  else if (stopMethod === 'click') {
+    const bounds = await page.locator('.slot-line').boundingBox()
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+  } else await page.keyboard.press(stopMethod)
+  try {
+    await page.waitForFunction(previous => document.querySelectorAll('.line-good, .line-bad').length > previous, previousResults)
+  } catch (error) {
+    console.error('slot stop debug', { previousResults, transcript: await page.locator('#transcript').innerText(), slot: await page.locator('.slot-number').innerText().catch(() => null), status: await page.locator('#status-position').innerText() })
+    throw error
+  }
+  assert.equal(await activeNumber.innerText(), roll, 'stopped roll does not change')
+  const expected = Number(roll) < probability ? '[SUCCESS]' : '[FAILED]'
+  await page.waitForFunction(value => [...document.querySelectorAll('.line-good, .line-bad')].some(line => line.textContent?.startsWith(value)), expected)
+  assert.match(await page.locator('#transcript').innerText(), new RegExp(`\\[ROLL\\] ${roll}`))
+  const result = await page.locator('.line-good, .line-bad').filter({ hasText: /^\[(?:SUCCESS|FAILED)\]/ }).last().innerText()
+  assert.ok(result.startsWith(expected), 'the visible roll and integer success threshold determine the result')
+  await page.waitForFunction(() => document.querySelector('.action-command:not(:disabled)') || document.querySelector('[data-restart]'))
+  if (await page.locator('.action-command:not(:disabled)').count()) await waitForChoices(page)
   await page.waitForFunction(() => {
     const image = document.querySelector('.event-image')
     return image?.complete && image.naturalWidth > 0 && new URL(image.currentSrc).pathname.endsWith(`/events/${image.dataset.eventId}.svg`)
@@ -49,6 +116,7 @@ async function measureRegions(page) {
         status: getComputedStyle(document.querySelector('.status-values')).fontSize,
         log: getComputedStyle(document.querySelector('.transcript')).fontSize,
         action: getComputedStyle(document.querySelector('.command-number')).fontSize,
+        probability: getComputedStyle(document.querySelector('.command-probability')).fontSize,
         delta: getComputedStyle(document.querySelector('.command-delta')).fontSize,
         latest: getComputedStyle(document.querySelector('.latest-log')).fontSize,
         restart: restartFontSize,
@@ -107,7 +175,7 @@ function assertRegions(measurements, layout) {
   assert.deepEqual(measurements.overflowing, [], `no clipped console or choice text at ${layout.width}px`)
   assert.ok(measurements.choiceTextOverflow.every(value => value !== 'ellipsis'), 'action labels never use ellipsis')
   assert.deepEqual(measurements.fontSizes, {
-    title: '18px', status: '16px', log: '15px', action: '15px', delta: '14px', latest: '14px', restart: '15px',
+    title: '18px', status: '16px', log: '15px', action: '15px', probability: '14px', delta: '14px', latest: '14px', restart: '15px',
   }, `required text sizes are used at ${layout.width}px`)
   assert.ok(Object.values(measurements.fontSizes).every(size => Number.parseFloat(size) >= 14), 'no game UI text is smaller than 14px')
   assert.ok(measurements.buttons.every(button => button.left >= measurements.dock.left - 1 && button.right <= measurements.dock.right + 1), 'choices stay inside the input dock')
@@ -131,6 +199,7 @@ try {
     })
     const page = await context.newPage()
     page.setDefaultTimeout(5000)
+    await forceFirstSpinChange(page)
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(`${base}?seed=123456`)
@@ -174,12 +243,13 @@ try {
         prompt: color('.prompt-prefix'),
         cursor: getComputedStyle(document.querySelector('.console-cursor')).backgroundColor,
         choice: color('.command-number'),
+        probability: color('.command-probability'),
         delta: color('.command-delta'),
         latest: color('.latest-log'),
       }
     })
     const terminalGreen = 'rgb(79, 214, 106)'
-    assert.deepEqual(Object.values(palette), Array(10).fill(terminalGreen), 'all text and the cursor use one deep green')
+    assert.deepEqual(Object.values(palette), Array(11).fill(terminalGreen), 'all text and the cursor use one deep green')
     const activeChoice = page.locator('.action-command:not(:disabled)').first()
     await activeChoice.hover()
     assert.equal(await activeChoice.evaluate(button => getComputedStyle(button).color), terminalGreen, 'hover keeps the terminal text color')
@@ -203,10 +273,11 @@ try {
     assert.match(bodyText, /\[1\]/)
     for (const choice of await page.locator('.action-command').all()) {
       const text = (await choice.innerText()).replace(/\s+/g, ' ')
-      assert.match(text, /^\[\d+\] .+ [+-]?\d+\/[+-]?\d+$/, 'each choice shows the full action name and compact success/failure deltas')
+      assert.match(text, /^\[\d+\] .+ \d+% [+-]?\d+\/[+-]?\d+$/, 'each choice shows its full action name, integer percent and compact power deltas')
       assert.equal(await choice.getAttribute('title'), null, 'action descriptions do not appear as hover tooltips')
     }
-    assert.doesNotMatch(bodyText, /(?:0|[1-9]\d?)\s*%|facilityConditions|\b(?:stable|degraded)\b/i)
+    assert.doesNotMatch(bodyText, /facilityConditions|baseChance|\b(?:stable|degraded)\b/i)
+    assert.doesNotMatch(await page.locator('body').evaluate(element => element.innerHTML), /facilityConditions|baseChance|stableModifier|degraded/i)
     assert.equal(await page.locator('.wordmark').innerText(), 'EXIT SEQUENCE')
     assert.equal(await page.locator('#status-position').innerText(), 'POSITION 01/15')
     assert.equal(await page.locator('#status-power').innerText(), 'POWER 20/20')
@@ -219,15 +290,36 @@ try {
       await page.locator('.action-command:not(:disabled)').nth(1).tap()
       const dockTopWhileOutputRuns = (await page.locator('.command-dock').boundingBox()).y
       assert.ok(Math.abs(dockTopWhileOutputRuns - dockTop) <= 1, 'the input dock stays fixed while the selected line is written')
+      const powerBeforeSpin = await page.locator('#status-power').innerText()
+      await page.locator('.slot-line').waitFor()
+      assert.equal(await page.locator('#status-power').innerText(), powerBeforeSpin, 'power does not change before the slot is stopped')
+      const oldRoll = await page.locator('.slot-number').innerText()
+      const logRowsAtSpin = await page.locator('#transcript .console-line').count()
+      await page.waitForFunction(previous => document.querySelector('.slot-number')?.textContent !== previous, oldRoll)
+      assert.equal(await page.locator('#transcript .console-line').count(), logRowsAtSpin, 'slot updates do not append log rows')
       await page.keyboard.press('1')
+      await page.locator('.action-command:disabled').first().evaluate(button => button.click())
+      assert.equal(await page.locator('.slot-line').count(), 1, 'keyboard and disabled-choice input cannot begin another action during a roll')
+      assert.equal(await page.locator('#status-position').innerText(), 'POSITION 01/15')
+      const rollRow = page.locator('.slot-number')
+      await rollRow.tap()
+      const stoppedRoll = await rollRow.innerText()
+      await page.waitForSelector('.line-good, .line-bad')
+      await page.waitForTimeout(80)
+      assert.equal(await rollRow.innerText(), stoppedRoll, 'the tapped number is frozen')
+      assert.ok((await page.locator('.line-good, .line-bad').last().innerText()).length < 12, 'the slot tap does not also skip the result typewriter')
+      assert.equal(await page.locator('#status-position').innerText(), 'POSITION 01/15', 'position remains unchanged until result output completes')
       await waitForChoices(page)
-      const resultText = await page.locator('#transcript').innerText()
+    const resultText = await page.locator('#transcript').innerText()
       const promptRows = await page.locator('#transcript .prompt-line').allInnerTexts()
       const selectedAction = selectedLabel.replace(/^\[2\]\s*/, '')
       assert.equal(promptRows.length, 2, 'the selected command remains as a past prompt line and the next event gets a new prompt')
       assert.equal(promptRows[0], `> 2. ${selectedAction}`, 'the selection number and action name share the prompt line')
       assert.match(promptRows[1], /^>\s*$/, 'the new event has a fresh prompt')
-      assert.match(resultText, /\[SUCCESS\]|\[FAILED\]/)
+      const loggedLines = await page.locator('#transcript .console-line').allInnerTexts()
+      assert.ok(loggedLines.some(line => /^成功率 \d+%$/.test(line)), 'the selected integer rate is logged')
+      assert.ok(loggedLines.some(line => /^\[ROLL\] \d{2}/.test(line)), 'the final two-digit roll remains in log history')
+      assert.ok(loggedLines.some(line => /^\[(?:SUCCESS|FAILED)\]/.test(line)), 'the matching result follows the roll')
       assert.ok(resultText.indexOf(promptRows[0]) < Math.max(resultText.indexOf('[SUCCESS]'), resultText.indexOf('[FAILED]')), 'the committed choice appears before its result')
       assert.ok(Math.max(resultText.indexOf('[SUCCESS]'), resultText.indexOf('[FAILED]')) < resultText.lastIndexOf('[EVENT]'), 'the result precedes the next event')
       assert.doesNotMatch(resultText, /\[(?:ACTION|STATUS|POSITION|MOVE)\]/, 'duplicate action and status log lines are omitted')
@@ -250,29 +342,49 @@ try {
       assert.equal(canScroll, true, 'long run logs scroll inside the console')
       await page.locator('.console-window').evaluate(element => { element.scrollTop = 0 })
       await page.locator('#latest-log').waitFor({ state: 'visible' })
-      await finishCurrentTurn(page, 0)
-      assert.equal(await page.locator('.console-window').evaluate(element => element.scrollTop), 0, 'reading old output does not auto-scroll to the tail')
+      const previousSlotRows = await page.locator('.slot-line').count()
+      await page.locator('.action-command:not(:disabled)').first().click()
+      await page.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, previousSlotRows)
+      const activeSlot = page.locator('.slot-line').last()
+      const slotBounds = await activeSlot.boundingBox()
+      const consoleBounds = await page.locator('.console-window').boundingBox()
+      assert.ok(slotBounds.y >= consoleBounds.y && slotBounds.y + slotBounds.height <= consoleBounds.y + consoleBounds.height, 'the active roll is scrolled into view')
+      await page.locator('.console-window').evaluate(element => { element.scrollTop = 0 })
+      await page.locator('#latest-log').waitFor({ state: 'visible' })
       await page.locator('#latest-log').click()
       assert.equal(await page.locator('#latest-log').isVisible(), false, 'latest log control returns to the tail')
+      assert.equal(await page.locator('.slot-line').count(), previousSlotRows + 1, 'using the log scroll control does not stop the slot')
+      await page.keyboard.press('Space')
+      await waitForChoices(page)
       const latestCursor = await page.locator('#transcript .console-cursor').boundingBox()
       const logBounds = await page.locator('.console-window').boundingBox()
       assert.ok(latestCursor && latestCursor.y >= logBounds.y && latestCursor.y + latestCursor.height <= logBounds.y + logBounds.height, 'latest prompt is actually visible inside the log viewport')
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320)
     } else if (layout.width === 390) {
       await page.keyboard.press('2')
+      await page.locator('.slot-line').waitFor()
+      await page.keyboard.press('Space')
       await waitForChoices(page)
       assert.match((await page.locator('#transcript .prompt-line').first().innerText()), /^> 2\. /, 'number keys also commit a prompt history line')
       assert.match(await page.locator('#status-position').innerText(), /02\/15/)
     } else if (layout.width === 1280) {
       assert.ok(measurements.buttons.every(button => button.width < 760), 'desktop console is centered and width-limited')
       await page.locator('.action-command:not(:disabled)').nth(1).click()
+      await page.locator('.slot-line').waitFor()
+      await page.keyboard.press('Enter')
       await waitForChoices(page)
+      const slotsBeforeKeyboardChoice = await page.locator('.slot-line').count()
       await page.keyboard.press('3')
+      await page.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBeforeKeyboardChoice)
+      await page.mouse.click(700, 700)
       await waitForChoices(page)
       assert.match(await page.locator('#status-position').innerText(), /03\/15/)
       assert.match((await page.locator('#transcript .prompt-line').nth(1).innerText()), /^> 3\. /, 'a later numeric choice is retained in the log')
     } else {
+      const slotsBeforeTap = await page.locator('.slot-line').count()
       await page.locator('.action-command:not(:disabled)').last().tap()
+      await page.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBeforeTap)
+      await page.locator('.slot-line').last().tap()
       await waitForChoices(page)
       assert.match((await page.locator('#transcript .prompt-line').first().innerText()), /^> 3\. /, 'landscape tap appends the selected command')
     }
@@ -311,7 +423,7 @@ try {
       return text.startsWith(`[${index + 1}]`) && /[+-]?\d+\/[+-]?\d+$/.test(text)
     }), `${definition.id} shows compact power changes on each one-line option`)
     assert.ok(choiceRows.every(row => !row.includes('…')), `${definition.id} action names are not ellipsized`)
-    assert.doesNotMatch(choices, /\d+\s*%/, `${definition.id} does not expose success rates`)
+    assert.ok(choiceRows.every(row => /\d+%/.test(row)), `${definition.id} shows integer success rates`)
     for (const action of definition.actions) assert.ok(!choices.includes(action.detail), `${definition.id} keeps action detail off the three visible rows`)
   }
   await imageContext.close()
@@ -329,6 +441,13 @@ try {
   assert.equal(await reducedPage.locator('.action-command:not(:disabled)').count(), 3)
   assert.equal(await reducedPage.locator('.console-cursor').evaluate(element => getComputedStyle(element).visibility), 'visible', 'Reduced Motion keeps the waiting cursor visible without animation')
   await reducedPage.keyboard.press('1')
+  await reducedPage.locator('.slot-line').waitFor()
+  const reducedRoll = await reducedPage.locator('.slot-number').innerText()
+  assert.match(reducedRoll, /^\d{2}$/)
+  await reducedPage.waitForTimeout(120)
+  assert.equal(await reducedPage.locator('.slot-number').innerText(), reducedRoll, 'Reduced Motion keeps the initial random roll still')
+  assert.equal(await reducedPage.locator('#status-position').innerText(), 'POSITION 01/15', 'position waits for a reduced-motion slot stop')
+  await reducedPage.keyboard.press('Enter')
   await waitForChoices(reducedPage)
   assert.match(await reducedPage.locator('#status-position').innerText(), /02\/15/)
   assert.match(await reducedPage.locator('#transcript .prompt-line').first().innerText(), /^> 1\. /)
@@ -336,13 +455,40 @@ try {
   console.log('reduced motion full output and keyboard action: ok')
   await reducedContext.close()
 
+  const visibilityContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const visibilityPage = await visibilityContext.newPage()
+  visibilityPage.setDefaultTimeout(5000)
+  await visibilityPage.goto(`${base}?seed=123456`)
+  await skipOutput(visibilityPage)
+  const slotsBeforeVisibility = await visibilityPage.locator('.slot-line').count()
+  await visibilityPage.locator('.action-command:not(:disabled)').first().click()
+  await visibilityPage.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBeforeVisibility)
+  await visibilityPage.evaluate(() => {
+    let hidden = true
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
+    document.dispatchEvent(new Event('visibilitychange'))
+    window.__setDocumentHidden = value => { hidden = value; document.dispatchEvent(new Event('visibilitychange')) }
+  })
+  const hiddenRoll = await visibilityPage.locator('.slot-line').last().locator('.slot-number').innerText()
+  await visibilityPage.waitForTimeout(160)
+  assert.equal(await visibilityPage.locator('.slot-line').last().locator('.slot-number').innerText(), hiddenRoll, 'hidden tabs pause the rolling digits')
+  await visibilityPage.evaluate(() => window.__setDocumentHidden(false))
+  await visibilityPage.waitForFunction(previous => document.querySelector('.slot-line:last-child .slot-number')?.textContent !== previous, hiddenRoll)
+  await visibilityPage.keyboard.press('Enter')
+  await waitForChoices(visibilityPage)
+  console.log('hidden-tab pause and resume: ok')
+  await visibilityContext.close()
+
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
   const page = await context.newPage()
   page.setDefaultTimeout(5000)
+  await forceSlotValue(page, 4_294_967_199)
   await page.goto(`${base}?seed=1`)
   await skipOutput(page)
   for (let turn = 0; turn < 15 && await page.locator('.action-command:not(:disabled)').count() > 0; turn++) {
+    const slotsBefore = await page.locator('.slot-line').count()
     await page.locator('.action-command:not(:disabled)').last().tap()
+    await page.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBefore)
     await page.keyboard.press('Enter')
     await page.waitForFunction(() => document.querySelector('.action-command:not(:disabled)') || document.querySelector('[data-restart]'))
   }
@@ -376,10 +522,13 @@ try {
   const clearContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
   const clearPage = await clearContext.newPage()
   clearPage.setDefaultTimeout(5000)
+  await forceSlotValue(clearPage, 0)
   await clearPage.goto(`${base}?seed=1`)
   await skipOutput(clearPage)
   for (let turn = 0; turn < 15 && await clearPage.locator('.action-command:not(:disabled)').count() > 0; turn++) {
-    await clearPage.locator('.action-command:not(:disabled)').first().tap()
+    const slotsBefore = await clearPage.locator('.slot-line').count()
+    await selectBestSuccessAction(clearPage)
+    await clearPage.waitForFunction(previous => document.querySelectorAll('.slot-line').length > previous, slotsBefore)
     await clearPage.keyboard.press('Enter')
     await clearPage.waitForFunction(() => document.querySelector('.action-command:not(:disabled)') || document.querySelector('[data-restart]'))
   }

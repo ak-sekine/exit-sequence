@@ -44,6 +44,7 @@ export interface ActionView {
   id: string
   label: string
   detail: string
+  successProbabilityPercent: number
   successDelta: number
   failureDelta: number
 }
@@ -148,14 +149,25 @@ export function displayedPowerDelta(power: number, delta: number): number {
   return adjustedPower(power, delta) - power
 }
 
-export function resolveAction(state: GameState, actionIndex: number, random: RandomSource = Math.random): GameState {
+export function successProbabilityPercent(state: GameState, actionIndex: number): number {
+  return Math.round(estimateSuccessProbability(state, actionIndex) * 100)
+}
+
+export function resolveAction(
+  state: GameState,
+  actionIndex: number,
+  rollValue: number,
+  random: RandomSource = Math.random,
+): GameState {
   if (state.status !== 'playing') return state
   const event = eventById(state.currentEvent.eventId)
   const action = event.actions[actionIndex]
   if (!action) return state
+  if (!Number.isInteger(rollValue) || rollValue < 0 || rollValue > 99) {
+    throw new RangeError('Slot roll must be an integer in [0, 99]')
+  }
 
-  const condition = state.facilityConditions[state.currentEvent.zone - 1]!
-  const success = draw(random) < successChance(action, condition)
+  const success = rollValue < successProbabilityPercent(state, actionIndex)
   const powerBefore = state.power
   const powerAfter = adjustedPower(powerBefore, success ? action.successDelta : action.failureDelta)
   const entry: HistoryEntry = {
@@ -205,19 +217,9 @@ export function inferStableProbability(state: GameState, zone: number): number {
     stableLikelihood *= OBSERVATION_LIKELIHOOD.stable[observation]
     degradedLikelihood *= OBSERVATION_LIKELIHOOD.degraded[observation]
   }
-  const applyResult = (entry: HistoryEntry) => {
-    const event = eventById(entry.eventId)
-    const action = actionById(event, entry.actionId)
-    const stableChance = successChance(action, 'stable')
-    const degradedChance = successChance(action, 'degraded')
-    stableLikelihood *= entry.success ? stableChance : 1 - stableChance
-    degradedLikelihood *= entry.success ? degradedChance : 1 - degradedChance
-  }
-
   for (const entry of state.history) {
     if (entry.zone !== zone) continue
     applyObservation(entry.observation)
-    applyResult(entry)
   }
   if (state.status === 'playing' && state.currentEvent.zone === zone) {
     applyObservation(state.currentEvent.observation)
@@ -265,10 +267,11 @@ export function toGameView(state: GameState): GameView {
       title: definition.title,
       description: definition.description,
       observationText: definition.clues[state.currentEvent.observation],
-      actions: definition.actions.map(action => ({
+      actions: definition.actions.map((action, index) => ({
         id: action.id,
         label: action.label,
         detail: action.detail,
+        successProbabilityPercent: successProbabilityPercent(state, index),
         successDelta: action.successDelta,
         failureDelta: action.failureDelta,
       })),

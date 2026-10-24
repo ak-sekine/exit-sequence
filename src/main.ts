@@ -24,7 +24,7 @@ app.innerHTML = `
         </div>
       </div>
     </header>
-    <section class="console-window" aria-label="コンソールログをクリックすると文字送りをスキップします">
+    <section class="console-window" aria-label="コンソールログ。文字送り中はクリックでスキップし、スロット回転中はタップまたはクリックで停止します">
       <div id="transcript" class="transcript" role="log" aria-live="off" aria-relevant="additions"></div>
       <button id="latest-log" class="latest-log" type="button" hidden>最新ログへ ↓</button>
     </section>
@@ -43,15 +43,22 @@ const commandList = app.querySelector<HTMLDivElement>('#command-list')!
 const restartCommand = app.querySelector<HTMLDivElement>('#restart-command')!
 const latestLogButton = app.querySelector<HTMLButtonElement>('#latest-log')!
 
+type Phase = 'event-log' | 'waiting' | 'selection-echo' | 'probability-log' | 'slot' | 'end-log' | 'idle'
+type PendingChoice = { index: number; action: ActionView }
+
 let seed = seedFromAddress()
-let random = createSeededRandom(seed)
-let game = createGame(random, seed)
+let gameRandom = createSeededRandom(seed)
+let game = createGame(gameRandom, seed)
 let followTail = true
-let inputReady = false
-let phase: 'event-log' | 'selection-echo' | 'end-log' | 'idle' = 'idle'
+let phase: Phase = 'idle'
 let activeChoiceButtons: HTMLButtonElement[] = []
 let activePromptLine: { row: HTMLDivElement; text: Text; cursor: HTMLElement } | null = null
-let pendingChoice: { index: number; action: ActionView } | null = null
+let pendingChoice: PendingChoice | null = null
+let currentRoll: number | null = null
+let rollText: Text | null = null
+let rollTimer: number | null = null
+let suppressClickAfterStop = false
+let pointerStart: { id: number; x: number; y: number; scrollTop: number } | null = null
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const output = new ConsoleOutput({
@@ -71,20 +78,38 @@ function signed(value: number): string {
   return `${value >= 0 ? '+' : ''}${value}`
 }
 
-function appendTranscriptLines(lines: readonly string[]): void {
+function formatRoll(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+function randomSlotNumber(): number {
+  const values = new Uint32Array(1)
+  const limit = Math.floor(0x1_0000_0000 / 100) * 100
+  do {
+    window.crypto.getRandomValues(values)
+  } while (values[0]! >= limit)
+  return values[0]! % 100
+}
+
+function appendTranscriptLines(lines: readonly string[], extraHooks: OutputHooks = {}): void {
   let activeText: Text | null = null
   const hooks: OutputHooks = {
-    onLineStart(text) {
+    onLineStart(text, lineIndex) {
       const row = document.createElement('div')
       row.className = `console-line${text.startsWith('[SUCCESS]') || text.startsWith('[CLEAR]') ? ' line-good' : ''}${text.startsWith('[FAILED]') || text.startsWith('[GAME OVER]') ? ' line-bad' : ''}`
       activeText = document.createTextNode('')
       row.append(activeText)
       transcript.append(row)
       scrollIfFollowing()
+      extraHooks.onLineStart?.(text, lineIndex)
     },
-    onCharacter(character) {
+    onCharacter(character, text, lineIndex) {
       activeText?.appendData(character)
       scrollIfFollowing()
+      extraHooks.onCharacter?.(character, text, lineIndex)
+    },
+    onLineEnd(text, lineIndex) {
+      extraHooks.onLineEnd?.(text, lineIndex)
     },
   }
   output.enqueue(lines, hooks)
@@ -138,15 +163,18 @@ function appendCommandLines(actions: readonly ActionView[]): void {
     button.className = 'action-command'
     button.dataset.actionIndex = String(index)
     button.disabled = true
-    button.setAttribute('aria-label', `${index + 1}: ${action.label}. ${action.detail}. 成功時 ${signed(successDelta)}、失敗時 ${signed(failureDelta)}`)
+    button.setAttribute('aria-label', `${index + 1}: ${action.label}. ${action.detail}. 成功率 ${action.successProbabilityPercent}%。成功時 ${signed(successDelta)}、失敗時 ${signed(failureDelta)}`)
 
     const label = document.createElement('span')
     label.className = 'command-number'
     label.textContent = `[${index + 1}] ${action.label}`
+    const probability = document.createElement('span')
+    probability.className = 'command-probability'
+    probability.textContent = `${action.successProbabilityPercent}%`
     const delta = document.createElement('span')
     delta.className = 'command-delta'
     delta.textContent = `${signed(successDelta)}/${signed(failureDelta)}`
-    button.append(label, delta)
+    button.append(label, probability, delta)
     activeChoiceButtons.push(button)
     commandList.append(button)
   }
@@ -165,15 +193,20 @@ function appendRestartCommand(): void {
 
 function outputBecameIdle(): void {
   if (phase === 'event-log') {
-    phase = 'idle'
-    inputReady = true
+    phase = 'waiting'
     activeChoiceButtons.forEach(button => { button.disabled = false })
     appendPromptLine()
     return
   }
   if (phase === 'selection-echo') {
-    phase = 'idle'
-    executePendingChoice()
+    const choice = pendingChoice
+    if (!choice) return
+    phase = 'probability-log'
+    appendTranscriptLines([`成功率 ${choice.action.successProbabilityPercent}%`])
+    return
+  }
+  if (phase === 'probability-log') {
+    beginSlot()
     return
   }
   if (phase === 'end-log') {
@@ -184,6 +217,12 @@ function outputBecameIdle(): void {
 
 function scrollIfFollowing(): void {
   if (followTail) consoleWindow.scrollTop = consoleWindow.scrollHeight
+}
+
+function scrollToLatest(): void {
+  followTail = true
+  consoleWindow.scrollTop = consoleWindow.scrollHeight
+  latestLogButton.hidden = true
 }
 
 function updateStatus(view: GameView): void {
@@ -204,6 +243,7 @@ function eventLines(view: GameView): string[] {
 }
 
 function beginRunOutput(): void {
+  stopSlotTimer()
   transcript.replaceChildren()
   commandList.replaceChildren()
   restartCommand.replaceChildren()
@@ -211,14 +251,15 @@ function beginRunOutput(): void {
   activeChoiceButtons = []
   activePromptLine = null
   pendingChoice = null
-  inputReady = false
+  currentRoll = null
+  rollText = null
+  phase = 'event-log'
   followTail = true
   consoleWindow.scrollTop = 0
   latestLogButton.hidden = true
   const view = toGameView(game)
   updateStatus(view)
   appendCommandLines(view.currentEvent.actions)
-  phase = 'event-log'
   appendTranscriptLines([
     '[SYSTEM] 脱出シーケンス開始',
     ...eventLines(view),
@@ -246,41 +287,103 @@ function resultLines(view: GameView, action: ActionView): string[] {
   return lines
 }
 
-function executePendingChoice(): void {
+function beginSlot(): void {
   const choice = pendingChoice
-  pendingChoice = null
   if (!choice || game.status !== 'playing') return
 
-  game = resolveAction(game, choice.index, random)
-  const view = toGameView(game)
-  updateStatus(view)
-  if (view.status === 'playing') appendCommandLines(view.currentEvent.actions)
-  else {
-    commandList.replaceChildren()
-    activeChoiceButtons = []
+  currentRoll = randomSlotNumber()
+  const row = document.createElement('div')
+  row.className = 'console-line slot-line'
+  const visibleText = document.createTextNode('[ROLL] ')
+  rollText = document.createTextNode(formatRoll(currentRoll))
+  const number = document.createElement('span')
+  number.className = 'slot-number'
+  number.setAttribute('aria-hidden', 'true')
+  number.append(rollText)
+  const announcement = document.createElement('span')
+  announcement.className = 'sr-only slot-announcement'
+  announcement.setAttribute('role', 'status')
+  announcement.setAttribute('aria-live', 'polite')
+  announcement.setAttribute('aria-atomic', 'true')
+  row.append(visibleText, number, announcement)
+  transcript.append(row)
+  phase = 'slot'
+  scrollToLatest()
+  resumeSlotTimer()
+}
+
+function spinOnce(): void {
+  if (phase !== 'slot' || rollText === null) return
+  currentRoll = randomSlotNumber()
+  rollText.data = formatRoll(currentRoll)
+  scrollIfFollowing()
+}
+
+function stopSlotTimer(): void {
+  if (rollTimer === null) return
+  window.clearInterval(rollTimer)
+  rollTimer = null
+}
+
+function resumeSlotTimer(): void {
+  stopSlotTimer()
+  if (phase === 'slot' && !document.hidden && !motionPreference.matches) {
+    rollTimer = window.setInterval(spinOnce, 50)
   }
-  phase = view.status === 'playing' ? 'event-log' : 'end-log'
-  appendTranscriptLines(resultLines(view, choice.action))
+}
+
+function stopSlot(): void {
+  if (phase !== 'slot' || currentRoll === null || rollText === null) return
+  stopSlotTimer()
+  const roll = currentRoll
+  const choice = pendingChoice
+  if (!choice) return
+
+  // Lock the phase before resolving so a second tap cannot resolve the turn twice.
+  phase = 'idle'
+  rollText.data = formatRoll(roll)
+  game = resolveAction(game, choice.index, roll, gameRandom)
+  pendingChoice = null
+  const resolvedView = toGameView(game)
+  const result = resolvedView.lastResult!
+  const announcement = transcript.querySelector<HTMLElement>('.slot-announcement:last-child')
+  if (announcement) announcement.textContent = `停止数値 ${formatRoll(roll)}。${result.success ? '成功' : '失敗'}。`
+
+  if (resolvedView.status === 'playing') {
+    phase = 'event-log'
+  } else {
+    phase = 'end-log'
+  }
+  appendTranscriptLines(resultLines(resolvedView, choice.action), {
+    onLineEnd(_text, lineIndex) {
+      if (lineIndex !== 0) return
+      updateStatus(resolvedView)
+      if (resolvedView.status === 'playing') {
+        appendCommandLines(resolvedView.currentEvent.actions)
+      } else {
+        commandList.replaceChildren()
+        activeChoiceButtons = []
+      }
+    },
+  })
 }
 
 function selectAction(index: number): void {
-  if (!inputReady || !activePromptLine || output.isBusy || game.status !== 'playing') return
-  const before = toGameView(game)
-  const action = before.currentEvent.actions[index]
+  if (phase !== 'waiting' || !activePromptLine || output.isBusy || game.status !== 'playing') return
+  const action = toGameView(game).currentEvent.actions[index]
   if (!action) return
 
-  inputReady = false
   pendingChoice = { index, action }
   activeChoiceButtons.forEach(button => { button.disabled = true })
-  commandList.replaceChildren()
   appendSelectionEcho(index, action)
 }
 
 function startNewRun(): void {
+  stopSlotTimer()
   output.stop()
   seed = randomSeed()
-  random = createSeededRandom(seed)
-  game = createGame(random, seed)
+  gameRandom = createSeededRandom(seed)
+  game = createGame(gameRandom, seed)
   const nextUrl = new URL(window.location.href)
   nextUrl.searchParams.set('seed', String(seed))
   window.history.replaceState(null, '', nextUrl)
@@ -292,11 +395,7 @@ consoleWindow.addEventListener('scroll', () => {
   latestLogButton.hidden = followTail
 })
 
-latestLogButton.addEventListener('click', () => {
-  followTail = true
-  consoleWindow.scrollTop = consoleWindow.scrollHeight
-  latestLogButton.hidden = true
-})
+latestLogButton.addEventListener('click', scrollToLatest)
 
 consoleWindow.addEventListener('click', () => {
   if (output.isBusy) output.skip()
@@ -316,24 +415,61 @@ restartCommand.addEventListener('click', event => {
   if (target instanceof Element && target.closest('[data-restart]')) startNewRun()
 })
 
+document.addEventListener('pointerdown', event => {
+  if (!event.isPrimary) return
+  pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY, scrollTop: consoleWindow.scrollTop }
+}, true)
+
+document.addEventListener('pointerup', event => {
+  const start = pointerStart
+  pointerStart = null
+  if (phase !== 'slot' || !start || start.id !== event.pointerId) return
+  const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8
+  const logScrolled = Math.abs(consoleWindow.scrollTop - start.scrollTop) > 1
+  const isLatestLogControl = event.target instanceof Element && Boolean(event.target.closest('#latest-log'))
+  if (moved || logScrolled || isLatestLogControl) return
+  suppressClickAfterStop = true
+  stopSlot()
+}, true)
+
+document.addEventListener('pointercancel', () => { pointerStart = null }, true)
+
+document.addEventListener('click', event => {
+  if (!suppressClickAfterStop) return
+  suppressClickAfterStop = false
+  event.preventDefault()
+  event.stopImmediatePropagation()
+}, true)
+
 window.addEventListener('keydown', event => {
   if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return
   if (event.code === 'Space' || event.key === 'Enter') {
-    if (output.isBusy) {
+    if (phase === 'slot') {
+      event.preventDefault()
+      stopSlot()
+    } else if (output.isBusy) {
       event.preventDefault()
       output.skip()
     }
     return
   }
-  if (event.key !== '1' && event.key !== '2' && event.key !== '3') return
-  if (!inputReady || output.isBusy || game.status !== 'playing') return
+  if (phase !== 'waiting' || (event.key !== '1' && event.key !== '2' && event.key !== '3')) return
   const index = Number(event.key) - 1
   if (!toGameView(game).currentEvent.actions[index]) return
   event.preventDefault()
   selectAction(index)
 })
 
-document.addEventListener('visibilitychange', () => output.setPaused(document.hidden))
-motionPreference.addEventListener('change', event => output.setReducedMotion(event.matches))
+document.addEventListener('visibilitychange', () => {
+  output.setPaused(document.hidden)
+  if (document.hidden) stopSlotTimer()
+  else resumeSlotTimer()
+})
+
+motionPreference.addEventListener('change', event => {
+  output.setReducedMotion(event.matches)
+  if (event.matches) stopSlotTimer()
+  else resumeSlotTimer()
+})
 
 beginRunOutput()
